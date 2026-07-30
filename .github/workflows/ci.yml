@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: pnpmを準備
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+      - name: Node.jsを準備
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: 依存関係をインストール
+        run: pnpm install --frozen-lockfile=false
+      - name: 型チェック
+        run: pnpm typecheck
+      - name: ビルド
+        run: pnpm build
+
+  agent:
+    name: Agent
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Goを準備
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+          cache: false
+      - name: テスト
+        working-directory: apps/agent
+        run: go test ./...
+      - name: ビルド出力先を作成
+        run: mkdir -p dist
+      - name: ARM64ビルド
+        working-directory: apps/agent
+        run: GOOS=linux GOARCH=arm64 go build -o ../../dist/ivrm-agent-linux-arm64 ./cmd/ivrm-agent
+      - name: AMD64ビルド
+        working-directory: apps/agent
+        run: GOOS=linux GOARCH=amd64 go build -o ../../dist/ivrm-agent-linux-amd64 ./cmd/ivrm-agent
