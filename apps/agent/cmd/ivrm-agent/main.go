@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -251,9 +252,16 @@ func readMemory() (uint64, uint64, error) {
 	}
 	defer file.Close()
 
+	return readMemoryFrom(file)
+}
+
+func readMemoryFrom(reader io.Reader) (uint64, uint64, error) {
 	var total uint64
 	var available uint64
-	scanner := bufio.NewScanner(file)
+	var totalFound bool
+	var availableFound bool
+
+	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())
 		if len(fields) < 2 {
@@ -266,14 +274,16 @@ func readMemory() (uint64, uint64, error) {
 		switch strings.TrimSuffix(fields[0], ":") {
 		case "MemTotal":
 			total = value * 1024
+			totalFound = true
 		case "MemAvailable":
 			available = value * 1024
+			availableFound = true
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return 0, 0, err
 	}
-	if total == 0 || available == 0 {
+	if !totalFound || !availableFound || total == 0 {
 		return 0, 0, errors.New("必要なメモリ情報がありません")
 	}
 	return total, available, nil
