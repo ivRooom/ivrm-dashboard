@@ -4,7 +4,7 @@
 
 - `apps/web`: Next.js管理画面とHeartbeat受信API。Vercelへ配置する。
 - `apps/agent`: 各ホストでメトリクスを収集し、外向きHTTPSで送信する。
-- `supabase`: 状態、履歴、権限、監査ログ、Realtime配信を管理する。
+- `supabase`: MVPでは状態・履歴を管理する。Realtime配信、アプリ利用者の権限、監査ログは将来実装する。
 
 ```text
 OCI / Lightsail / EC2
@@ -47,7 +47,7 @@ X-IVRM-Signature
 5. Nonceが16バイト乱数の16進表現
 6. HMAC-SHA256署名を定時間比較
 7. HostがDB上で有効
-8. 最終受信から8秒以上経過
+8. Host行ロック内で最終受信から8秒以上経過していることを確認
 9. NonceのDB一意制約による再送拒否
 
 ## Secret管理
@@ -64,6 +64,7 @@ X-IVRM-Signature
 - MVPは読み取り専用とし、任意Shell・任意Dockerコマンド・任意RCONを実装しない。
 - Agent Secretをログへ出力しない。
 - SupabaseテーブルはRLSを有効化し、受信APIだけがService Roleで書き込む。
+- Heartbeat保存はPostgres関数内でHostロック、レート制限確認、Nonce重複判定、INSERTを原子的に行う。
 - APIエラーでSecret、署名、本文、Supabaseレスポンスを返却しない。
 
 ## OCIへのAgent導入準備
