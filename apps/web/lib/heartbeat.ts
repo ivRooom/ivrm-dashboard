@@ -5,7 +5,6 @@ import {
 } from "node:crypto";
 
 const MAX_CLOCK_SKEW_SECONDS = 300;
-const MIN_HEARTBEAT_INTERVAL_MS = 8_000;
 export const MAX_HEARTBEAT_BODY_BYTES = 32 * 1024;
 
 export type HeartbeatPayload = {
@@ -25,14 +24,11 @@ export type HeartbeatPayload = {
   };
 };
 
-type HostRecord = {
-  id: string;
-  enabled: boolean;
-};
-
-type LatestHeartbeat = {
-  received_at: string;
-};
+type PersistResult =
+  | "accepted"
+  | "unknown_agent"
+  | "rate_limited"
+  | "replayed_request";
 
 export class HeartbeatError extends Error {
   constructor(
@@ -196,49 +192,16 @@ function supabaseHeaders(serviceRoleKey: string): HeadersInit {
   };
 }
 
-async function findHost(serverId: string): Promise<HostRecord> {
-  const { url, serviceRoleKey } = getSupabaseConfiguration();
-  const endpoint = new URL(`${url}/rest/v1/hosts`);
-  endpoint.searchParams.set("server_id", `eq.${serverId}`);
-  endpoint.searchParams.set("select", "id,enabled");
-  endpoint.searchParams.set("limit", "1");
-
-  const response = await fetch(endpoint, {
-    headers: supabaseHeaders(serviceRoleKey),
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    throw new HeartbeatError(503, "storage_unavailable");
-  }
-
-  const hosts = (await response.json()) as HostRecord[];
-  const host = hosts.at(0);
-  if (!host || !host.enabled) {
-    throw new HeartbeatError(401, "unknown_agent");
-  }
-  return host;
-}
-
-async function enforceRateLimit(hostId: string): Promise<void> {
-  const { url, serviceRoleKey } = getSupabaseConfiguration();
-  const endpoint = new URL(`${url}/rest/v1/agent_heartbeats`);
-  endpoint.searchParams.set("host_id", `eq.${hostId}`);
-  endpoint.searchParams.set("select", "received_at");
-  endpoint.searchParams.set("order", "received_at.desc");
-  endpoint.searchParams.set("limit", "1");
-
-  const response = await fetch(endpoint, {
-    headers: supabaseHeaders(serviceRoleKey),
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    throw new HeartbeatError(503, "storage_unavailable");
-  }
-
-  const records = (await response.json()) as LatestHeartbeat[];
-  const latest = records.at(0);
-  if (latest && Date.now() - Date.parse(latest.received_at) < MIN_HEARTBEAT_INTERVAL_MS) {
-    throw new HeartbeatError(429, "rate_limited");
+function handlePersistResult(result: PersistResult): void {
+  switch (result) {
+    case "accepted":
+      return;
+    case "unknown_agent":
+      throw new HeartbeatError(401, result);
+    case "rate_limited":
+      throw new HeartbeatError(429, result);
+    case "replayed_request":
+      throw new HeartbeatError(409, result);
   }
 }
 
@@ -247,39 +210,41 @@ export async function persistHeartbeat(
   nonce: string,
   bodySha256: string,
 ): Promise<void> {
-  const host = await findHost(payload.serverId);
-  await enforceRateLimit(host.id);
-
   const { url, serviceRoleKey } = getSupabaseConfiguration();
-  const response = await fetch(`${url}/rest/v1/agent_heartbeats`, {
+  const response = await fetch(`${url}/rest/v1/rpc/insert_agent_heartbeat`, {
     method: "POST",
-    headers: {
-      ...supabaseHeaders(serviceRoleKey),
-      Prefer: "return=minimal",
-    },
+    headers: supabaseHeaders(serviceRoleKey),
     body: JSON.stringify({
-      host_id: host.id,
-      agent_version: payload.agentVersion,
-      sent_at: payload.sentAt,
-      request_nonce: nonce,
-      body_sha256: bodySha256,
-      cpu_count: payload.host.cpuCount,
-      memory_total_bytes: payload.host.memoryTotalBytes,
-      memory_available_bytes: payload.host.memoryAvailableBytes,
-      disk_total_bytes: payload.host.diskTotalBytes,
-      disk_available_bytes: payload.host.diskAvailableBytes,
-      load_average_1: payload.host.loadAverage1,
-      load_average_5: payload.host.loadAverage5,
-      load_average_15: payload.host.loadAverage15,
-      uptime_seconds: payload.host.uptimeSeconds,
+      p_server_id: payload.serverId,
+      p_agent_version: payload.agentVersion,
+      p_sent_at: payload.sentAt,
+      p_request_nonce: nonce,
+      p_body_sha256: bodySha256,
+      p_cpu_count: payload.host.cpuCount,
+      p_memory_total_bytes: payload.host.memoryTotalBytes,
+      p_memory_available_bytes: payload.host.memoryAvailableBytes,
+      p_disk_total_bytes: payload.host.diskTotalBytes,
+      p_disk_available_bytes: payload.host.diskAvailableBytes,
+      p_load_average_1: payload.host.loadAverage1,
+      p_load_average_5: payload.host.loadAverage5,
+      p_load_average_15: payload.host.loadAverage15,
+      p_uptime_seconds: payload.host.uptimeSeconds,
     }),
     cache: "no-store",
   });
 
-  if (response.status === 409) {
-    throw new HeartbeatError(409, "replayed_request");
-  }
   if (!response.ok) {
     throw new HeartbeatError(503, "storage_unavailable");
   }
+
+  const result = (await response.json()) as PersistResult;
+  if (
+    result !== "accepted" &&
+    result !== "unknown_agent" &&
+    result !== "rate_limited" &&
+    result !== "replayed_request"
+  ) {
+    throw new HeartbeatError(503, "storage_unavailable");
+  }
+  handlePersistResult(result);
 }
