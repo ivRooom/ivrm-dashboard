@@ -32,10 +32,6 @@ ivrm-dashboard/
 ├─ apps/
 │  ├─ web/          # Next.js管理画面
 │  └─ agent/        # Go製の監視Agent
-├─ packages/
-│  ├─ contracts/    # API型・スキーマ
-│  ├─ config/       # 共有設定
-│  └─ ui/           # 共通UI
 ├─ supabase/
 │  └─ migrations/   # DBマイグレーション
 └─ docs/            # 設計・セキュリティ・運用資料
@@ -56,6 +52,23 @@ ivrm-dashboard/
 5. 最終バックアップ状態表示
 6. Online / Offline / Stale / Errorの区別
 7. 認証済みユーザーだけが内部メトリクスを閲覧可能
+
+## ローカル開発
+
+```bash
+corepack enable
+pnpm install
+pnpm dev
+```
+
+Agentは別ターミナルで起動します。
+
+```bash
+cd apps/agent
+cp .env.example .env
+set -a && source .env && set +a
+go run ./cmd/ivrm-agent
+```
 
 ## セキュリティ方針
 

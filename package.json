@@ -1,0 +1,16 @@
+{
+  "name": "ivrm-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.14.0",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @ivrm/web dev",
+    "build": "pnpm --filter @ivrm/web build",
+    "typecheck": "pnpm --filter @ivrm/web typecheck",
+    "agent:test": "cd apps/agent && go test ./...",
+    "check": "pnpm typecheck && pnpm agent:test"
+  }
+}
