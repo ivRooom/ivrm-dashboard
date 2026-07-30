@@ -57,7 +57,7 @@ ivrm-dashboard/
 
 ```bash
 corepack enable
-pnpm install
+pnpm install --frozen-lockfile
 pnpm dev
 ```
 
@@ -100,6 +100,13 @@ go run ./cmd/ivrm-agent
 - Webデプロイ: Vercel
 - Agent配布: GitHub ActionsでLinux ARM64 / AMD64をビルド
 
-## ステータス
+## 実環境ステータス
 
-現在はMVP基盤の初期構築段階です。最初に読み取り専用監視を完成させ、その後に安全な操作機能を追加します。
+- Supabase: `ivrm-core`へ監視用Migration適用済み
+- Vercel: Node.js 22.xで`ivrm-dashboard`をデプロイ済み
+- Health Check: `https://ivrm-dashboard.vercel.app/api/health`
+- `console.ivrm.jp`: 未接続
+- OCI Agent: 未配置
+- 画面のサービス値: 現在はデモデータ
+
+次はVercelのSecret設定、`console.ivrm.jp`の割り当て、OCI AgentとのEnd-to-End Heartbeat疎通を行います。
