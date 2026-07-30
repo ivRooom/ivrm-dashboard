@@ -14,6 +14,11 @@ const services: readonly Service[] = [
   { name: "Resource Router", detail: "TCP 25999", status: "online", cpu: "0.2%", memory: "0.08 / 0.25 GiB" },
 ];
 
+const navigation = [
+  { label: "概要", href: "#top" },
+  { label: "サービス", href: "#services" },
+] as const;
+
 const labels: Record<Status, string> = {
   online: "稼働中",
   offline: "停止中",
@@ -29,8 +34,8 @@ export default function HomePage() {
       <aside className="sidebar">
         <a className="brand" href="#top"><span>IV</span><strong>IVRM Console</strong></a>
         <nav aria-label="メインナビゲーション">
-          {["概要", "Minecraft", "ホスト", "Herta.", "AWS", "監査ログ"].map((item, index) => (
-            <a className={index === 0 ? "active" : ""} href="#services" key={item}>{item}</a>
+          {navigation.map((item) => (
+            <a href={item.href} key={item.href}>{item.label}</a>
           ))}
         </nav>
         <div className="agent"><i />OCI Agent<br /><small>Heartbeat 正常</small></div>
