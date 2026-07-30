@@ -2,6 +2,7 @@ package main
 
 import (
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -31,5 +32,29 @@ func TestNewNonce(t *testing.T) {
 	}
 	if !regexp.MustCompile(`^[a-f0-9]{32}$`).MatchString(first) {
 		t.Fatalf("Nonce形式が不正です: %s", first)
+	}
+}
+
+func TestReadMemoryAcceptsZeroAvailable(t *testing.T) {
+	t.Parallel()
+
+	total, available, err := readMemoryFrom(strings.NewReader("MemTotal: 1024 kB\nMemAvailable: 0 kB\n"))
+	if err != nil {
+		t.Fatalf("空きメモリ0を読み取れません: %v", err)
+	}
+	if total != 1024*1024 {
+		t.Fatalf("総メモリが不正です: %d", total)
+	}
+	if available != 0 {
+		t.Fatalf("空きメモリが不正です: %d", available)
+	}
+}
+
+func TestReadMemoryRejectsMissingAvailable(t *testing.T) {
+	t.Parallel()
+
+	_, _, err := readMemoryFrom(strings.NewReader("MemTotal: 1024 kB\n"))
+	if err == nil {
+		t.Fatal("MemAvailable欠落を検出できませんでした")
 	}
 }
