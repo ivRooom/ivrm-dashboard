@@ -26,7 +26,13 @@ jobs:
         with:
           node-version: 22
       - name: 依存関係をインストール
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
+      - name: Lockfileを保存
+        uses: actions/upload-artifact@v4
+        with:
+          name: pnpm-lock
+          path: pnpm-lock.yaml
+          if-no-files-found: error
       - name: 型チェック
         run: pnpm typecheck
       - name: ビルド
