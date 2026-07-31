@@ -1,0 +1,13 @@
+node_modules/
+.next/
+out/
+dist/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+.vscode/
+.idea/
+apps/agent/ivrm-agent

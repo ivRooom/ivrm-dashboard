@@ -32,10 +32,6 @@ ivrm-dashboard/
 ├─ apps/
 │  ├─ web/          # Next.js管理画面
 │  └─ agent/        # Go製の監視Agent
-├─ packages/
-│  ├─ contracts/    # API型・スキーマ
-│  ├─ config/       # 共有設定
-│  └─ ui/           # 共通UI
 ├─ supabase/
 │  └─ migrations/   # DBマイグレーション
 └─ docs/            # 設計・セキュリティ・運用資料
@@ -56,6 +52,23 @@ ivrm-dashboard/
 5. 最終バックアップ状態表示
 6. Online / Offline / Stale / Errorの区別
 7. 認証済みユーザーだけが内部メトリクスを閲覧可能
+
+## ローカル開発
+
+```bash
+corepack enable
+pnpm install --frozen-lockfile
+pnpm dev
+```
+
+Agentは別ターミナルで起動します。
+
+```bash
+cd apps/agent
+cp .env.example .env
+set -a && source .env && set +a
+go run ./cmd/ivrm-agent
+```
 
 ## セキュリティ方針
 
@@ -87,6 +100,13 @@ ivrm-dashboard/
 - Webデプロイ: Vercel
 - Agent配布: GitHub ActionsでLinux ARM64 / AMD64をビルド
 
-## ステータス
+## 実環境ステータス
 
-現在はMVP基盤の初期構築段階です。最初に読み取り専用監視を完成させ、その後に安全な操作機能を追加します。
+- Supabase: `ivrm-core`へ監視用Migration適用済み
+- Vercel: Node.js 22.xで`ivrm-dashboard`をデプロイ済み
+- Health Check: `https://ivrm-dashboard.vercel.app/api/health`
+- `console.ivrm.jp`: 未接続
+- OCI Agent: 未配置
+- 画面のサービス値: 現在はデモデータ
+
+次はVercelのSecret設定、`console.ivrm.jp`の割り当て、OCI AgentとのEnd-to-End Heartbeat疎通を行います。
