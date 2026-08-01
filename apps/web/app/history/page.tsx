@@ -27,9 +27,9 @@ export default async function HistoryPage() {
 
   try {
     history = await getContainerMetricHistory(HOURS, BUCKET_SECONDS);
-  } catch {
+  } catch (error) {
     hasDataError = true;
-    console.error("監視履歴の取得に失敗しました");
+    console.error("監視履歴の取得に失敗しました", error);
   }
 
   const cpuSeries = history.map((item) => ({
@@ -56,7 +56,7 @@ export default async function HistoryPage() {
 
   return (
     <main className="shell">
-      <AutoRefresh />
+      <AutoRefresh intervalMs={60_000} />
 
       <aside className="sidebar">
         <a className="brand" href="/#top">
