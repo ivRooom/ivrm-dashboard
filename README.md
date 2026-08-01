@@ -77,6 +77,8 @@ go run ./cmd/ivrm-agent
 - MVPでは読み取り専用とする
 - 任意Shell・任意Dockerコマンド・任意RCONは実装しない
 - 将来の操作機能は許可リスト・権限確認・監査ログを必須とする
+- Supabase Service Role KeyはVercelのServer Componentからのみ利用する
+- 実メトリクスの公開前にCloudflare Accessで閲覧者を制限する
 
 ## ドメイン
 
@@ -103,10 +105,17 @@ go run ./cmd/ivrm-agent
 ## 実環境ステータス
 
 - Supabase: `ivrm-core`へ監視用Migration適用済み
-- Vercel: Node.js 22.xで`ivrm-dashboard`をデプロイ済み
-- Health Check: `https://ivrm-dashboard.vercel.app/api/health`
-- `console.ivrm.jp`: 未接続
-- OCI Agent: 未配置
-- 画面のサービス値: 現在はデモデータ
+- Vercel: `ivrm-dashboard`をProduction Deployment済み
+- Health Check: `https://console.ivrm.jp/api/health`でHTTP 200を確認済み
+- `console.ivrm.jp`: Cloudflare経由で接続済み
+- OCI Agent: Oracle Linux ARM64へsystemdサービスとして配置済み
+- Heartbeat: 15秒間隔でEnd-to-End疎通済み
+- Agent認証: Agent ID・Timestamp・Nonce・HMAC-SHA256署名を検証
+- 画面データ: Supabaseの最新HeartbeatをServer Componentから取得
 
-次はVercelのSecret設定、`console.ivrm.jp`の割り当て、OCI AgentとのEnd-to-End Heartbeat疎通を行います。
+## 次の開発項目
+
+1. Cloudflare Access / Discord OAuthで内部メトリクスを保護する
+2. Dockerコンテナの状態・Health・RestartCountをAgentから収集する
+3. Docker CPU・メモリ・Network I/O・Block I/O・PIDsを保存・表示する
+4. Stale / Offline / Error判定の通知と履歴表示を追加する
