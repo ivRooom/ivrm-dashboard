@@ -16,6 +16,7 @@ const navigation = [
   { label: "概要", href: "#top" },
   { label: "ホスト", href: "#hosts" },
   { label: "コンテナ", href: "#containers" },
+  { label: "履歴グラフ", href: "/history" },
 ] as const;
 
 const labels: Record<ContainerStatus, string> = {
