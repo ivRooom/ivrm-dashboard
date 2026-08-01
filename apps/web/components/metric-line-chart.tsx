@@ -6,7 +6,8 @@ type MetricChartPoint = {
 };
 
 type MetricChartSeries = {
-  name: string;
+  id: string;
+  label: string;
   points: MetricChartPoint[];
 };
 
@@ -161,7 +162,7 @@ export function MetricLineChart({
               className={styles.chart}
               viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
               role="img"
-              aria-label={`${title}。${visibleSeries.map((item) => item.name).join("、")}の直近24時間の推移`}
+              aria-label={`${title}。${visibleSeries.map((item) => item.label).join("、")}の直近24時間の推移`}
             >
               <title>{title}</title>
 
@@ -245,7 +246,7 @@ export function MetricLineChart({
                 const seriesClass = seriesClasses[seriesIndex % seriesClasses.length];
 
                 return (
-                  <g key={item.name}>
+                  <g key={item.id}>
                     {segments.map((segment, segmentIndex) => {
                       if (segment.length === 1) {
                         const point = segment[0];
@@ -254,7 +255,7 @@ export function MetricLineChart({
                             className={`${styles.point} ${seriesClass}`}
                             cx={point.x}
                             cy={point.y}
-                            key={`${item.name}-${segmentIndex}`}
+                            key={`${item.id}-${segmentIndex}`}
                             r="3"
                           />
                         );
@@ -270,7 +271,7 @@ export function MetricLineChart({
                         <path
                           className={`${styles.line} ${seriesClass}`}
                           d={path}
-                          key={`${item.name}-${segmentIndex}`}
+                          key={`${item.id}-${segmentIndex}`}
                         />
                       );
                     })}
@@ -295,7 +296,7 @@ export function MetricLineChart({
               const minimum = Math.min(...valuesForSeries);
               const peak = Math.max(...valuesForSeries);
               return (
-                <div className={styles.legendItem} key={item.name}>
+                <div className={styles.legendItem} key={item.id}>
                   <i
                     className={
                       seriesBackgroundClasses[
@@ -304,7 +305,7 @@ export function MetricLineChart({
                     }
                   />
                   <div>
-                    <strong>{item.name}</strong>
+                    <strong>{item.label}</strong>
                     <span>
                       最新 {formatValue(latest, unit)} / 最小{" "}
                       {formatValue(minimum, unit)} / 最大 {formatValue(peak, unit)}
