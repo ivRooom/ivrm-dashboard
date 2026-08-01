@@ -1,3 +1,5 @@
+import styles from "./metric-line-chart.module.css";
+
 type MetricChartPoint = {
   timestamp: string;
   value: number | null;
@@ -31,6 +33,22 @@ const HEIGHT = 300;
 const PADDING = { top: 22, right: 20, bottom: 38, left: 58 };
 const PLOT_WIDTH = WIDTH - PADDING.left - PADDING.right;
 const PLOT_HEIGHT = HEIGHT - PADDING.top - PADDING.bottom;
+
+const seriesClasses = [
+  styles.series0,
+  styles.series1,
+  styles.series2,
+  styles.series3,
+  styles.series4,
+];
+
+const seriesBackgroundClasses = [
+  styles.seriesBackground0,
+  styles.seriesBackground1,
+  styles.seriesBackground2,
+  styles.seriesBackground3,
+  styles.seriesBackground4,
+];
 
 function formatTime(timestamp: number): string {
   return new Intl.DateTimeFormat("ja-JP", {
@@ -122,8 +140,8 @@ export function MetricLineChart({
   );
 
   return (
-    <article className="chart-card">
-      <div className="chart-heading">
+    <article className={styles.card}>
+      <div className={styles.heading}>
         <div>
           <h3>{title}</h3>
           <p>{description}</p>
@@ -132,15 +150,15 @@ export function MetricLineChart({
       </div>
 
       {visibleSeries.length === 0 ? (
-        <div className="chart-empty">
+        <div className={styles.empty}>
           <strong>グラフ化できるデータがまだありません</strong>
           <p>Agent 0.4.0のデータが蓄積されると自動的に表示されます。</p>
         </div>
       ) : (
         <>
-          <div className="chart-scroll">
+          <div className={styles.scroll}>
             <svg
-              className="metric-chart"
+              className={styles.chart}
               viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
               role="img"
               aria-label={`${title}。${visibleSeries.map((item) => item.name).join("、")}の直近24時間の推移`}
@@ -155,14 +173,14 @@ export function MetricLineChart({
                 return (
                   <g key={tick}>
                     <line
-                      className="chart-grid-line"
+                      className={styles.gridLine}
                       x1={PADDING.left}
                       x2={WIDTH - PADDING.right}
                       y1={y}
                       y2={y}
                     />
                     <text
-                      className="chart-axis-label"
+                      className={styles.axisLabel}
                       x={PADDING.left - 10}
                       y={y + 4}
                       textAnchor="end"
@@ -180,14 +198,14 @@ export function MetricLineChart({
                 return (
                   <g key={tick}>
                     <line
-                      className="chart-grid-line chart-grid-line-vertical"
+                      className={`${styles.gridLine} ${styles.verticalGridLine}`}
                       x1={x}
                       x2={x}
                       y1={PADDING.top}
                       y2={HEIGHT - PADDING.bottom}
                     />
                     <text
-                      className="chart-axis-label"
+                      className={styles.axisLabel}
                       x={x}
                       y={HEIGHT - 12}
                       textAnchor={
@@ -224,6 +242,7 @@ export function MetricLineChart({
                   expectedIntervalSeconds,
                 );
                 const lastPoint = positionedPoints.at(-1);
+                const seriesClass = seriesClasses[seriesIndex % seriesClasses.length];
 
                 return (
                   <g key={item.name}>
@@ -232,7 +251,7 @@ export function MetricLineChart({
                         const point = segment[0];
                         return (
                           <circle
-                            className={`chart-point chart-series-${seriesIndex % 5}`}
+                            className={`${styles.point} ${seriesClass}`}
                             cx={point.x}
                             cy={point.y}
                             key={`${item.name}-${segmentIndex}`}
@@ -249,7 +268,7 @@ export function MetricLineChart({
                         .join(" ");
                       return (
                         <path
-                          className={`chart-line chart-series-${seriesIndex % 5}`}
+                          className={`${styles.line} ${seriesClass}`}
                           d={path}
                           key={`${item.name}-${segmentIndex}`}
                         />
@@ -257,7 +276,7 @@ export function MetricLineChart({
                     })}
                     {lastPoint ? (
                       <circle
-                        className={`chart-last-point chart-series-${seriesIndex % 5}`}
+                        className={`${styles.lastPoint} ${seriesClass}`}
                         cx={lastPoint.x}
                         cy={lastPoint.y}
                         r="4"
@@ -269,15 +288,21 @@ export function MetricLineChart({
             </svg>
           </div>
 
-          <div className="chart-legend" aria-label={`${title}の凡例`}>
+          <div className={styles.legend} aria-label={`${title}の凡例`}>
             {visibleSeries.map((item, index) => {
               const valuesForSeries = item.points.map((point) => point.value);
               const latest = valuesForSeries.at(-1) ?? 0;
               const minimum = Math.min(...valuesForSeries);
               const peak = Math.max(...valuesForSeries);
               return (
-                <div className="chart-legend-item" key={item.name}>
-                  <i className={`chart-series-bg-${index % 5}`} />
+                <div className={styles.legendItem} key={item.name}>
+                  <i
+                    className={
+                      seriesBackgroundClasses[
+                        index % seriesBackgroundClasses.length
+                      ]
+                    }
+                  />
                   <div>
                     <strong>{item.name}</strong>
                     <span>
