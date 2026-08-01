@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -26,10 +27,11 @@ import (
 )
 
 const (
-	agentVersion              = "0.3.0"
+	agentVersion              = "0.4.0"
 	defaultDockerSnapshotPath = "/run/ivrm-agent/docker-state.json"
 	maxDockerSnapshotAge      = 45 * time.Second
 	maxContainersPerSnapshot  = 20
+	maxSafeInteger      uint64 = 9_007_199_254_740_991
 )
 
 var containerNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$`)
@@ -75,12 +77,20 @@ type hostMetrics struct {
 }
 
 type containerMetrics struct {
-	Name         string `json:"name"`
-	State        string `json:"state"`
-	Health       string `json:"health"`
-	RestartCount int    `json:"restartCount"`
-	OOMKilled    bool   `json:"oomKilled"`
-	ExitCode     *int   `json:"exitCode"`
+	Name               string   `json:"name"`
+	State              string   `json:"state"`
+	Health             string   `json:"health"`
+	RestartCount       int      `json:"restartCount"`
+	OOMKilled          bool     `json:"oomKilled"`
+	ExitCode           *int     `json:"exitCode"`
+	CPUPercent         *float64 `json:"cpuPercent"`
+	MemoryUsageBytes   *uint64  `json:"memoryUsageBytes"`
+	MemoryLimitBytes   *uint64  `json:"memoryLimitBytes"`
+	NetworkRxBytes     *uint64  `json:"networkRxBytes"`
+	NetworkTxBytes     *uint64  `json:"networkTxBytes"`
+	BlockReadBytes     *uint64  `json:"blockReadBytes"`
+	BlockWriteBytes    *uint64  `json:"blockWriteBytes"`
+	PIDs               *int     `json:"pids"`
 }
 
 type dockerSnapshot struct {
@@ -277,9 +287,55 @@ func readContainerSnapshot(path string, now time.Time) ([]containerMetrics, erro
 		if container.RestartCount < 0 {
 			return nil, fmt.Errorf("Docker再起動回数が不正です: %d", container.RestartCount)
 		}
+		if err := validateContainerResourceMetrics(container); err != nil {
+			return nil, fmt.Errorf("Dockerリソース値が不正です: %s: %w", container.Name, err)
+		}
 	}
 
 	return snapshot.Containers, nil
+}
+
+func validateContainerResourceMetrics(container containerMetrics) error {
+	metricsCount := 0
+	if container.CPUPercent != nil { metricsCount++ }
+	if container.MemoryUsageBytes != nil { metricsCount++ }
+	if container.MemoryLimitBytes != nil { metricsCount++ }
+	if container.NetworkRxBytes != nil { metricsCount++ }
+	if container.NetworkTxBytes != nil { metricsCount++ }
+	if container.BlockReadBytes != nil { metricsCount++ }
+	if container.BlockWriteBytes != nil { metricsCount++ }
+	if container.PIDs != nil { metricsCount++ }
+
+	if metricsCount != 0 && metricsCount != 8 {
+		return errors.New("リソース値は全項目を設定するか全項目をnullにしてください")
+	}
+	if metricsCount == 0 {
+		return nil
+	}
+
+	if math.IsNaN(*container.CPUPercent) || math.IsInf(*container.CPUPercent, 0) || *container.CPUPercent < 0 || *container.CPUPercent > 100_000 {
+		return errors.New("CPU使用率が許容範囲外です")
+	}
+	byteValues := []*uint64{
+		container.MemoryUsageBytes,
+		container.MemoryLimitBytes,
+		container.NetworkRxBytes,
+		container.NetworkTxBytes,
+		container.BlockReadBytes,
+		container.BlockWriteBytes,
+	}
+	for _, value := range byteValues {
+		if *value > maxSafeInteger {
+			return errors.New("バイト値がJavaScript安全整数の範囲外です")
+		}
+	}
+	if *container.MemoryUsageBytes > *container.MemoryLimitBytes {
+		return errors.New("メモリ使用量が上限を超えています")
+	}
+	if *container.PIDs < 0 {
+		return errors.New("PIDsが負数です")
+	}
+	return nil
 }
 
 func newNonce() (string, error) {
