@@ -1,0 +1,296 @@
+type MetricChartPoint = {
+  timestamp: string;
+  value: number | null;
+};
+
+type MetricChartSeries = {
+  name: string;
+  points: MetricChartPoint[];
+};
+
+type MetricLineChartProps = {
+  title: string;
+  description: string;
+  series: MetricChartSeries[];
+  startAt: string;
+  endAt: string;
+  expectedIntervalSeconds: number;
+  unit: string;
+  maximum?: number;
+};
+
+type PositionedPoint = {
+  timestamp: number;
+  x: number;
+  y: number;
+  value: number;
+};
+
+const WIDTH = 960;
+const HEIGHT = 300;
+const PADDING = { top: 22, right: 20, bottom: 38, left: 58 };
+const PLOT_WIDTH = WIDTH - PADDING.left - PADDING.right;
+const PLOT_HEIGHT = HEIGHT - PADDING.top - PADDING.bottom;
+
+function formatTime(timestamp: number): string {
+  return new Intl.DateTimeFormat("ja-JP", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Tokyo",
+  }).format(new Date(timestamp));
+}
+
+function formatValue(value: number, unit: string): string {
+  const digits = value >= 10 ? 1 : 2;
+  return `${value.toFixed(digits)}${unit}`;
+}
+
+function splitSegments(
+  points: PositionedPoint[],
+  expectedIntervalSeconds: number,
+): PositionedPoint[][] {
+  const segments: PositionedPoint[][] = [];
+  let current: PositionedPoint[] = [];
+  const maximumGapMilliseconds = expectedIntervalSeconds * 2.5 * 1_000;
+
+  for (const point of points) {
+    const previous = current.at(-1);
+    if (
+      previous &&
+      point.timestamp - previous.timestamp > maximumGapMilliseconds
+    ) {
+      segments.push(current);
+      current = [];
+    }
+    current.push(point);
+  }
+
+  if (current.length > 0) {
+    segments.push(current);
+  }
+  return segments;
+}
+
+export function MetricLineChart({
+  title,
+  description,
+  series,
+  startAt,
+  endAt,
+  expectedIntervalSeconds,
+  unit,
+  maximum,
+}: MetricLineChartProps) {
+  const startMilliseconds = Date.parse(startAt);
+  const endMilliseconds = Date.parse(endAt);
+  const duration = Math.max(1, endMilliseconds - startMilliseconds);
+
+  const visibleSeries = series
+    .map((item) => ({
+      ...item,
+      points: item.points
+        .map((point) => ({
+          timestamp: Date.parse(point.timestamp),
+          value: point.value,
+        }))
+        .filter(
+          (point): point is { timestamp: number; value: number } =>
+            Number.isFinite(point.timestamp) &&
+            point.timestamp >= startMilliseconds &&
+            point.timestamp <= endMilliseconds &&
+            point.value !== null &&
+            Number.isFinite(point.value),
+        )
+        .sort((left, right) => left.timestamp - right.timestamp),
+    }))
+    .filter((item) => item.points.length > 0);
+
+  const values = visibleSeries.flatMap((item) =>
+    item.points.map((point) => point.value),
+  );
+  const observedMaximum = values.length > 0 ? Math.max(...values) : 0;
+  const yMaximum =
+    maximum ?? Math.max(1, Math.ceil(observedMaximum * 1.15 * 10) / 10);
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(
+    (ratio) => yMaximum * ratio,
+  );
+  const xTicks = [0, 0.25, 0.5, 0.75, 1].map(
+    (ratio) => startMilliseconds + duration * ratio,
+  );
+
+  return (
+    <article className="chart-card">
+      <div className="chart-heading">
+        <div>
+          <h3>{title}</h3>
+          <p>{description}</p>
+        </div>
+        <span>5分平均</span>
+      </div>
+
+      {visibleSeries.length === 0 ? (
+        <div className="chart-empty">
+          <strong>グラフ化できるデータがまだありません</strong>
+          <p>Agent 0.4.0のデータが蓄積されると自動的に表示されます。</p>
+        </div>
+      ) : (
+        <>
+          <div className="chart-scroll">
+            <svg
+              className="metric-chart"
+              viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+              role="img"
+              aria-label={`${title}。${visibleSeries.map((item) => item.name).join("、")}の直近24時間の推移`}
+            >
+              <title>{title}</title>
+
+              {yTicks.map((tick) => {
+                const y =
+                  PADDING.top +
+                  PLOT_HEIGHT -
+                  (tick / Math.max(yMaximum, 1)) * PLOT_HEIGHT;
+                return (
+                  <g key={tick}>
+                    <line
+                      className="chart-grid-line"
+                      x1={PADDING.left}
+                      x2={WIDTH - PADDING.right}
+                      y1={y}
+                      y2={y}
+                    />
+                    <text
+                      className="chart-axis-label"
+                      x={PADDING.left - 10}
+                      y={y + 4}
+                      textAnchor="end"
+                    >
+                      {formatValue(tick, unit)}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {xTicks.map((tick, index) => {
+                const x =
+                  PADDING.left +
+                  ((tick - startMilliseconds) / duration) * PLOT_WIDTH;
+                return (
+                  <g key={tick}>
+                    <line
+                      className="chart-grid-line chart-grid-line-vertical"
+                      x1={x}
+                      x2={x}
+                      y1={PADDING.top}
+                      y2={HEIGHT - PADDING.bottom}
+                    />
+                    <text
+                      className="chart-axis-label"
+                      x={x}
+                      y={HEIGHT - 12}
+                      textAnchor={
+                        index === 0
+                          ? "start"
+                          : index === xTicks.length - 1
+                            ? "end"
+                            : "middle"
+                      }
+                    >
+                      {formatTime(tick)}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {visibleSeries.map((item, seriesIndex) => {
+                const positionedPoints: PositionedPoint[] = item.points.map(
+                  (point) => ({
+                    timestamp: point.timestamp,
+                    value: point.value,
+                    x:
+                      PADDING.left +
+                      ((point.timestamp - startMilliseconds) / duration) *
+                        PLOT_WIDTH,
+                    y:
+                      PADDING.top +
+                      PLOT_HEIGHT -
+                      (point.value / Math.max(yMaximum, 1)) * PLOT_HEIGHT,
+                  }),
+                );
+                const segments = splitSegments(
+                  positionedPoints,
+                  expectedIntervalSeconds,
+                );
+                const lastPoint = positionedPoints.at(-1);
+
+                return (
+                  <g key={item.name}>
+                    {segments.map((segment, segmentIndex) => {
+                      if (segment.length === 1) {
+                        const point = segment[0];
+                        return (
+                          <circle
+                            className={`chart-point chart-series-${seriesIndex % 5}`}
+                            cx={point.x}
+                            cy={point.y}
+                            key={`${item.name}-${segmentIndex}`}
+                            r="3"
+                          />
+                        );
+                      }
+
+                      const path = segment
+                        .map(
+                          (point, pointIndex) =>
+                            `${pointIndex === 0 ? "M" : "L"}${point.x.toFixed(2)},${point.y.toFixed(2)}`,
+                        )
+                        .join(" ");
+                      return (
+                        <path
+                          className={`chart-line chart-series-${seriesIndex % 5}`}
+                          d={path}
+                          key={`${item.name}-${segmentIndex}`}
+                        />
+                      );
+                    })}
+                    {lastPoint ? (
+                      <circle
+                        className={`chart-last-point chart-series-${seriesIndex % 5}`}
+                        cx={lastPoint.x}
+                        cy={lastPoint.y}
+                        r="4"
+                      />
+                    ) : null}
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+
+          <div className="chart-legend" aria-label={`${title}の凡例`}>
+            {visibleSeries.map((item, index) => {
+              const valuesForSeries = item.points.map((point) => point.value);
+              const latest = valuesForSeries.at(-1) ?? 0;
+              const minimum = Math.min(...valuesForSeries);
+              const peak = Math.max(...valuesForSeries);
+              return (
+                <div className="chart-legend-item" key={item.name}>
+                  <i className={`chart-series-bg-${index % 5}`} />
+                  <div>
+                    <strong>{item.name}</strong>
+                    <span>
+                      最新 {formatValue(latest, unit)} / 最小{" "}
+                      {formatValue(minimum, unit)} / 最大 {formatValue(peak, unit)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </article>
+  );
+}
