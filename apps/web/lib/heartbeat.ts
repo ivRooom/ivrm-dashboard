@@ -5,7 +5,37 @@ import {
 } from "node:crypto";
 
 const MAX_CLOCK_SKEW_SECONDS = 300;
+const MAX_CONTAINERS = 20;
 export const MAX_HEARTBEAT_BODY_BYTES = 32 * 1024;
+
+const containerStates = new Set([
+  "created",
+  "running",
+  "paused",
+  "restarting",
+  "removing",
+  "exited",
+  "dead",
+  "unknown",
+  "not_found",
+]);
+
+const containerHealthStates = new Set([
+  "starting",
+  "healthy",
+  "unhealthy",
+  "none",
+  "unknown",
+]);
+
+export type ContainerHeartbeat = {
+  name: string;
+  state: string;
+  health: string;
+  restartCount: number;
+  oomKilled: boolean;
+  exitCode: number | null;
+};
 
 export type HeartbeatPayload = {
   serverId: string;
@@ -22,13 +52,15 @@ export type HeartbeatPayload = {
     loadAverage15: number;
     uptimeSeconds: number;
   };
+  containers: ContainerHeartbeat[];
 };
 
 type PersistResult =
   | "accepted"
   | "unknown_agent"
   | "rate_limited"
-  | "replayed_request";
+  | "replayed_request"
+  | "invalid_payload";
 
 export class HeartbeatError extends Error {
   constructor(
@@ -76,43 +108,108 @@ function isFiniteNonNegative(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
-function isHeartbeatPayload(value: unknown): value is HeartbeatPayload {
-  if (!isRecord(value) || !isRecord(value.host)) {
+function isContainerHeartbeat(value: unknown): value is ContainerHeartbeat {
+  if (!isRecord(value)) {
     return false;
   }
 
-  const host = value.host;
   return (
-    typeof value.serverId === "string" &&
-    /^[a-zA-Z0-9._-]{1,64}$/.test(value.serverId) &&
-    typeof value.agentVersion === "string" &&
-    value.agentVersion.length >= 1 &&
-    value.agentVersion.length <= 32 &&
-    typeof value.sentAt === "string" &&
-    Number.isInteger(host.cpuCount) &&
-    Number(host.cpuCount) > 0 &&
-    isFiniteNonNegative(host.memoryTotalBytes) &&
-    isFiniteNonNegative(host.memoryAvailableBytes) &&
-    host.memoryAvailableBytes <= host.memoryTotalBytes &&
-    isFiniteNonNegative(host.diskTotalBytes) &&
-    isFiniteNonNegative(host.diskAvailableBytes) &&
-    host.diskAvailableBytes <= host.diskTotalBytes &&
-    isFiniteNonNegative(host.loadAverage1) &&
-    isFiniteNonNegative(host.loadAverage5) &&
-    isFiniteNonNegative(host.loadAverage15) &&
-    isFiniteNonNegative(host.uptimeSeconds)
+    typeof value.name === "string" &&
+    /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(value.name) &&
+    typeof value.state === "string" &&
+    containerStates.has(value.state) &&
+    typeof value.health === "string" &&
+    containerHealthStates.has(value.health) &&
+    Number.isInteger(value.restartCount) &&
+    Number(value.restartCount) >= 0 &&
+    typeof value.oomKilled === "boolean" &&
+    (value.exitCode === null || Number.isInteger(value.exitCode))
   );
 }
 
+function normalizeContainers(value: unknown): ContainerHeartbeat[] | null {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value) || value.length > MAX_CONTAINERS) {
+    return null;
+  }
+
+  const seen = new Set<string>();
+  const containers: ContainerHeartbeat[] = [];
+  for (const container of value) {
+    if (!isContainerHeartbeat(container) || seen.has(container.name)) {
+      return null;
+    }
+    seen.add(container.name);
+    containers.push(container);
+  }
+  return containers;
+}
+
+function parseHeartbeatValue(value: unknown): HeartbeatPayload | null {
+  if (!isRecord(value) || !isRecord(value.host)) {
+    return null;
+  }
+
+  const host = value.host;
+  const containers = normalizeContainers(value.containers);
+  if (containers === null) {
+    return null;
+  }
+
+  if (
+    typeof value.serverId !== "string" ||
+    !/^[a-zA-Z0-9._-]{1,64}$/.test(value.serverId) ||
+    typeof value.agentVersion !== "string" ||
+    value.agentVersion.length < 1 ||
+    value.agentVersion.length > 32 ||
+    typeof value.sentAt !== "string" ||
+    !Number.isInteger(host.cpuCount) ||
+    Number(host.cpuCount) <= 0 ||
+    !isFiniteNonNegative(host.memoryTotalBytes) ||
+    !isFiniteNonNegative(host.memoryAvailableBytes) ||
+    host.memoryAvailableBytes > host.memoryTotalBytes ||
+    !isFiniteNonNegative(host.diskTotalBytes) ||
+    !isFiniteNonNegative(host.diskAvailableBytes) ||
+    host.diskAvailableBytes > host.diskTotalBytes ||
+    !isFiniteNonNegative(host.loadAverage1) ||
+    !isFiniteNonNegative(host.loadAverage5) ||
+    !isFiniteNonNegative(host.loadAverage15) ||
+    !isFiniteNonNegative(host.uptimeSeconds)
+  ) {
+    return null;
+  }
+
+  return {
+    serverId: value.serverId,
+    agentVersion: value.agentVersion,
+    sentAt: value.sentAt,
+    host: {
+      cpuCount: Number(host.cpuCount),
+      memoryTotalBytes: host.memoryTotalBytes,
+      memoryAvailableBytes: host.memoryAvailableBytes,
+      diskTotalBytes: host.diskTotalBytes,
+      diskAvailableBytes: host.diskAvailableBytes,
+      loadAverage1: host.loadAverage1,
+      loadAverage5: host.loadAverage5,
+      loadAverage15: host.loadAverage15,
+      uptimeSeconds: host.uptimeSeconds,
+    },
+    containers,
+  };
+}
+
 export function parseHeartbeat(rawBody: Uint8Array): HeartbeatPayload {
-  let parsed: unknown;
+  let value: unknown;
   try {
-    parsed = JSON.parse(new TextDecoder().decode(rawBody));
+    value = JSON.parse(new TextDecoder().decode(rawBody));
   } catch {
     throw new HeartbeatError(400, "invalid_json");
   }
 
-  if (!isHeartbeatPayload(parsed)) {
+  const parsed = parseHeartbeatValue(value);
+  if (!parsed) {
     throw new HeartbeatError(400, "invalid_payload");
   }
 
@@ -202,6 +299,8 @@ function handlePersistResult(result: PersistResult): void {
       throw new HeartbeatError(429, result);
     case "replayed_request":
       throw new HeartbeatError(409, result);
+    case "invalid_payload":
+      throw new HeartbeatError(400, result);
   }
 }
 
@@ -229,6 +328,7 @@ export async function persistHeartbeat(
       p_load_average_5: payload.host.loadAverage5,
       p_load_average_15: payload.host.loadAverage15,
       p_uptime_seconds: payload.host.uptimeSeconds,
+      p_containers: payload.containers,
     }),
     cache: "no-store",
   });
@@ -242,7 +342,8 @@ export async function persistHeartbeat(
     result !== "accepted" &&
     result !== "unknown_agent" &&
     result !== "rate_limited" &&
-    result !== "replayed_request"
+    result !== "replayed_request" &&
+    result !== "invalid_payload"
   ) {
     throw new HeartbeatError(503, "storage_unavailable");
   }
