@@ -92,6 +92,66 @@ func TestReadContainerSnapshot(t *testing.T) {
 	}
 }
 
+func TestValidateContainerResourceMetricsAcceptsCompleteValues(t *testing.T) {
+	t.Parallel()
+
+	cpu := 12.34
+	memoryUsage := uint64(1024)
+	memoryLimit := uint64(2048)
+	networkRx := uint64(3000)
+	networkTx := uint64(4000)
+	blockRead := uint64(5000)
+	blockWrite := uint64(6000)
+	pids := 42
+
+	err := validateContainerResourceMetrics(containerMetrics{
+		CPUPercent:       &cpu,
+		MemoryUsageBytes: &memoryUsage,
+		MemoryLimitBytes: &memoryLimit,
+		NetworkRxBytes:   &networkRx,
+		NetworkTxBytes:   &networkTx,
+		BlockReadBytes:   &blockRead,
+		BlockWriteBytes:  &blockWrite,
+		PIDs:             &pids,
+	})
+	if err != nil {
+		t.Fatalf("完全なリソース値を拒否しました: %v", err)
+	}
+}
+
+func TestValidateContainerResourceMetricsRejectsPartialValues(t *testing.T) {
+	t.Parallel()
+
+	cpu := 1.0
+	err := validateContainerResourceMetrics(containerMetrics{CPUPercent: &cpu})
+	if err == nil {
+		t.Fatal("一部だけのリソース値を拒否できませんでした")
+	}
+}
+
+func TestValidateContainerResourceMetricsRejectsMemoryOverflow(t *testing.T) {
+	t.Parallel()
+
+	cpu := 1.0
+	memoryUsage := uint64(2048)
+	memoryLimit := uint64(1024)
+	zero := uint64(0)
+	pids := 1
+	err := validateContainerResourceMetrics(containerMetrics{
+		CPUPercent:       &cpu,
+		MemoryUsageBytes: &memoryUsage,
+		MemoryLimitBytes: &memoryLimit,
+		NetworkRxBytes:   &zero,
+		NetworkTxBytes:   &zero,
+		BlockReadBytes:   &zero,
+		BlockWriteBytes:  &zero,
+		PIDs:             &pids,
+	})
+	if err == nil {
+		t.Fatal("上限を超えたメモリ使用量を拒否できませんでした")
+	}
+}
+
 func TestReadContainerSnapshotIgnoresMissingFile(t *testing.T) {
 	t.Parallel()
 
