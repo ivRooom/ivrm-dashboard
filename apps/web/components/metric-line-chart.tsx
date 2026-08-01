@@ -34,22 +34,11 @@ const HEIGHT = 300;
 const PADDING = { top: 22, right: 20, bottom: 38, left: 58 };
 const PLOT_WIDTH = WIDTH - PADDING.left - PADDING.right;
 const PLOT_HEIGHT = HEIGHT - PADDING.top - PADDING.bottom;
+const SERIES_HUE_STEP = 47;
 
-const seriesClasses = [
-  styles.series0,
-  styles.series1,
-  styles.series2,
-  styles.series3,
-  styles.series4,
-];
-
-const seriesBackgroundClasses = [
-  styles.seriesBackground0,
-  styles.seriesBackground1,
-  styles.seriesBackground2,
-  styles.seriesBackground3,
-  styles.seriesBackground4,
-];
+function seriesColor(index: number): string {
+  return `hsl(${(index * SERIES_HUE_STEP + 84) % 360}deg 72% 60%)`;
+}
 
 function formatTime(timestamp: number): string {
   return new Intl.DateTimeFormat("ja-JP", {
@@ -73,7 +62,7 @@ function splitSegments(
 ): PositionedPoint[][] {
   const segments: PositionedPoint[][] = [];
   let current: PositionedPoint[] = [];
-  const maximumGapMilliseconds = expectedIntervalSeconds * 2.5 * 1_000;
+  const maximumGapMilliseconds = expectedIntervalSeconds * 1.1 * 1_000;
 
   for (const point of points) {
     const previous = current.at(-1);
@@ -243,7 +232,7 @@ export function MetricLineChart({
                   expectedIntervalSeconds,
                 );
                 const lastPoint = positionedPoints.at(-1);
-                const seriesClass = seriesClasses[seriesIndex % seriesClasses.length];
+                const color = seriesColor(seriesIndex);
 
                 return (
                   <g key={item.id}>
@@ -252,11 +241,12 @@ export function MetricLineChart({
                         const point = segment[0];
                         return (
                           <circle
-                            className={`${styles.point} ${seriesClass}`}
+                            className={styles.point}
                             cx={point.x}
                             cy={point.y}
                             key={`${item.id}-${segmentIndex}`}
                             r="3"
+                            style={{ fill: color, stroke: color }}
                           />
                         );
                       }
@@ -269,18 +259,20 @@ export function MetricLineChart({
                         .join(" ");
                       return (
                         <path
-                          className={`${styles.line} ${seriesClass}`}
+                          className={styles.line}
                           d={path}
                           key={`${item.id}-${segmentIndex}`}
+                          style={{ stroke: color }}
                         />
                       );
                     })}
                     {lastPoint ? (
                       <circle
-                        className={`${styles.lastPoint} ${seriesClass}`}
+                        className={styles.lastPoint}
                         cx={lastPoint.x}
                         cy={lastPoint.y}
                         r="4"
+                        style={{ stroke: color }}
                       />
                     ) : null}
                   </g>
@@ -297,13 +289,7 @@ export function MetricLineChart({
               const peak = Math.max(...valuesForSeries);
               return (
                 <div className={styles.legendItem} key={item.id}>
-                  <i
-                    className={
-                      seriesBackgroundClasses[
-                        index % seriesBackgroundClasses.length
-                      ]
-                    }
-                  />
+                  <i style={{ background: seriesColor(index) }} />
                   <div>
                     <strong>{item.label}</strong>
                     <span>
