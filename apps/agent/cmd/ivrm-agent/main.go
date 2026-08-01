@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -24,13 +25,41 @@ import (
 	"time"
 )
 
-const agentVersion = "0.2.0"
+const (
+	agentVersion              = "0.3.0"
+	defaultDockerSnapshotPath = "/run/ivrm-agent/docker-state.json"
+	maxDockerSnapshotAge      = 45 * time.Second
+	maxContainersPerSnapshot  = 20
+)
+
+var containerNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$`)
+
+var validContainerStates = map[string]struct{}{
+	"created":    {},
+	"running":    {},
+	"paused":     {},
+	"restarting": {},
+	"removing":   {},
+	"exited":     {},
+	"dead":       {},
+	"unknown":    {},
+	"not_found":  {},
+}
+
+var validContainerHealth = map[string]struct{}{
+	"starting":  {},
+	"healthy":   {},
+	"unhealthy": {},
+	"none":      {},
+	"unknown":   {},
+}
 
 type config struct {
-	serverID string
-	endpoint string
-	token    string
-	interval time.Duration
+	serverID           string
+	endpoint           string
+	token              string
+	interval           time.Duration
+	dockerSnapshotPath string
 }
 
 type hostMetrics struct {
@@ -45,11 +74,26 @@ type hostMetrics struct {
 	UptimeSeconds        float64 `json:"uptimeSeconds"`
 }
 
+type containerMetrics struct {
+	Name         string `json:"name"`
+	State        string `json:"state"`
+	Health       string `json:"health"`
+	RestartCount int    `json:"restartCount"`
+	OOMKilled    bool   `json:"oomKilled"`
+	ExitCode     *int   `json:"exitCode"`
+}
+
+type dockerSnapshot struct {
+	GeneratedAt time.Time          `json:"generatedAt"`
+	Containers  []containerMetrics `json:"containers"`
+}
+
 type payload struct {
-	ServerID     string      `json:"serverId"`
-	AgentVersion string      `json:"agentVersion"`
-	SentAt       time.Time   `json:"sentAt"`
-	Host         hostMetrics `json:"host"`
+	ServerID     string             `json:"serverId"`
+	AgentVersion string             `json:"agentVersion"`
+	SentAt       time.Time          `json:"sentAt"`
+	Host         hostMetrics        `json:"host"`
+	Containers   []containerMetrics `json:"containers"`
 }
 
 func main() {
@@ -90,11 +134,17 @@ func loadConfig() (config, error) {
 		interval = parsed
 	}
 
+	dockerSnapshotPath := strings.TrimSpace(os.Getenv("IVRM_AGENT_DOCKER_SNAPSHOT_PATH"))
+	if dockerSnapshotPath == "" {
+		dockerSnapshotPath = defaultDockerSnapshotPath
+	}
+
 	cfg := config{
-		serverID: os.Getenv("IVRM_AGENT_SERVER_ID"),
-		endpoint: os.Getenv("IVRM_AGENT_ENDPOINT"),
-		token:    os.Getenv("IVRM_AGENT_TOKEN"),
-		interval: interval,
+		serverID:           os.Getenv("IVRM_AGENT_SERVER_ID"),
+		endpoint:           os.Getenv("IVRM_AGENT_ENDPOINT"),
+		token:              os.Getenv("IVRM_AGENT_TOKEN"),
+		interval:           interval,
+		dockerSnapshotPath: dockerSnapshotPath,
 	}
 	if cfg.serverID == "" || cfg.endpoint == "" || cfg.token == "" {
 		return config{}, errors.New("SERVER_ID・ENDPOINT・TOKENは必須です")
@@ -104,6 +154,9 @@ func loadConfig() (config, error) {
 	}
 	if cfg.interval < 10*time.Second {
 		return config{}, errors.New("送信間隔は10秒以上にしてください")
+	}
+	if !strings.HasPrefix(cfg.dockerSnapshotPath, "/") {
+		return config{}, errors.New("Dockerスナップショットのパスは絶対パスにしてください")
 	}
 
 	parsed, err := url.Parse(cfg.endpoint)
@@ -124,11 +177,18 @@ func runOnce(ctx context.Context, logger *slog.Logger, cfg config) {
 	}
 
 	now := time.Now().UTC()
+	containers, err := readContainerSnapshot(cfg.dockerSnapshotPath, now)
+	if err != nil {
+		logger.Warn("Docker状態スナップショットを利用できません", "error", err)
+		containers = []containerMetrics{}
+	}
+
 	body, err := json.Marshal(payload{
 		ServerID:     cfg.serverID,
 		AgentVersion: agentVersion,
 		SentAt:       now,
 		Host:         metrics,
+		Containers:   containers,
 	})
 	if err != nil {
 		logger.Error("JSON変換に失敗しました", "error", err)
@@ -165,7 +225,61 @@ func runOnce(ctx context.Context, logger *slog.Logger, cfg config) {
 		logger.Warn("Heartbeat APIがエラーを返しました", "status", response.StatusCode)
 		return
 	}
-	logger.Info("Heartbeatを送信しました")
+	logger.Info("Heartbeatを送信しました", "containers", len(containers))
+}
+
+func readContainerSnapshot(path string, now time.Time) ([]containerMetrics, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return []containerMetrics{}, nil
+		}
+		return nil, err
+	}
+	defer file.Close()
+
+	decoder := json.NewDecoder(io.LimitReader(file, 128*1024))
+	decoder.DisallowUnknownFields()
+
+	var snapshot dockerSnapshot
+	if err := decoder.Decode(&snapshot); err != nil {
+		return nil, fmt.Errorf("DockerスナップショットのJSONが不正です: %w", err)
+	}
+	if snapshot.GeneratedAt.IsZero() {
+		return nil, errors.New("Dockerスナップショットの生成時刻がありません")
+	}
+	age := now.Sub(snapshot.GeneratedAt)
+	if age < -5*time.Second {
+		return nil, errors.New("Dockerスナップショットの生成時刻が未来です")
+	}
+	if age > maxDockerSnapshotAge {
+		return nil, fmt.Errorf("Dockerスナップショットが古すぎます: %s", age.Round(time.Second))
+	}
+	if len(snapshot.Containers) > maxContainersPerSnapshot {
+		return nil, fmt.Errorf("Dockerコンテナ数が上限を超えています: %d", len(snapshot.Containers))
+	}
+
+	seen := make(map[string]struct{}, len(snapshot.Containers))
+	for index, container := range snapshot.Containers {
+		if !containerNamePattern.MatchString(container.Name) {
+			return nil, fmt.Errorf("Dockerコンテナ名が不正です: index=%d", index)
+		}
+		if _, ok := seen[container.Name]; ok {
+			return nil, fmt.Errorf("Dockerコンテナ名が重複しています: %s", container.Name)
+		}
+		seen[container.Name] = struct{}{}
+		if _, ok := validContainerStates[container.State]; !ok {
+			return nil, fmt.Errorf("Dockerコンテナ状態が不正です: %s", container.State)
+		}
+		if _, ok := validContainerHealth[container.Health]; !ok {
+			return nil, fmt.Errorf("Docker Healthが不正です: %s", container.Health)
+		}
+		if container.RestartCount < 0 {
+			return nil, fmt.Errorf("Docker再起動回数が不正です: %d", container.RestartCount)
+		}
+	}
+
+	return snapshot.Containers, nil
 }
 
 func newNonce() (string, error) {

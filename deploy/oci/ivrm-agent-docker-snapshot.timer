@@ -1,0 +1,11 @@
+[Unit]
+Description=Collect IVRM Docker state every 10 seconds
+
+[Timer]
+OnBootSec=5s
+OnUnitActiveSec=10s
+AccuracySec=1s
+Unit=ivrm-agent-docker-snapshot.service
+
+[Install]
+WantedBy=timers.target

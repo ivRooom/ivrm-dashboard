@@ -1,5 +1,23 @@
 export type HostStatus = "online" | "offline" | "stale" | "error";
 
+export type ContainerState =
+  | "created"
+  | "running"
+  | "paused"
+  | "restarting"
+  | "removing"
+  | "exited"
+  | "dead"
+  | "unknown"
+  | "not_found";
+
+export type ContainerHealth =
+  | "starting"
+  | "healthy"
+  | "unhealthy"
+  | "none"
+  | "unknown";
+
 type HostRow = {
   id: string;
   server_id: string;
@@ -25,6 +43,17 @@ type HeartbeatRow = {
   uptime_seconds: number;
 };
 
+type ContainerSampleRow = {
+  host_id: string;
+  container_name: string;
+  state: ContainerState;
+  health: ContainerHealth;
+  restart_count: number;
+  oom_killed: boolean;
+  exit_code: number | null;
+  received_at: string;
+};
+
 export type HostOverview = {
   id: string;
   serverId: string;
@@ -47,14 +76,30 @@ export type HostOverview = {
   uptimeSeconds: number | null;
 };
 
+export type ContainerOverview = {
+  hostId: string;
+  hostDisplayName: string;
+  name: string;
+  status: HostStatus;
+  state: ContainerState;
+  health: ContainerHealth;
+  restartCount: number;
+  oomKilled: boolean;
+  exitCode: number | null;
+  receivedAt: string;
+  ageSeconds: number;
+};
+
 export type MonitoringSnapshot = {
   hosts: HostOverview[];
+  containers: ContainerOverview[];
   generatedAt: string;
 };
 
 const ONLINE_THRESHOLD_SECONDS = 45;
 const STALE_THRESHOLD_SECONDS = 180;
 const HEARTBEAT_FETCH_LIMIT = 500;
+const CONTAINER_FETCH_LIMIT = 2_000;
 
 function requireEnvironment(name: string): string {
   const value = process.env[name]?.trim();
@@ -89,24 +134,65 @@ async function fetchSupabase<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-function determineStatus(ageSeconds: number | null): Exclude<HostStatus, "error"> {
-  if (ageSeconds === null || ageSeconds > STALE_THRESHOLD_SECONDS) {
+function ageSeconds(timestamp: string, now: Date): number | null {
+  const milliseconds = Date.parse(timestamp);
+  if (!Number.isFinite(milliseconds)) {
+    return null;
+  }
+  return Math.max(0, Math.floor((now.getTime() - milliseconds) / 1_000));
+}
+
+function determineHostStatus(age: number | null): Exclude<HostStatus, "error"> {
+  if (age === null || age > STALE_THRESHOLD_SECONDS) {
     return "offline";
   }
-  if (ageSeconds > ONLINE_THRESHOLD_SECONDS) {
+  if (age > ONLINE_THRESHOLD_SECONDS) {
     return "stale";
   }
   return "online";
 }
 
+function determineContainerStatus(
+  container: ContainerSampleRow,
+  age: number,
+): HostStatus {
+  if (age > STALE_THRESHOLD_SECONDS) {
+    return "offline";
+  }
+  if (age > ONLINE_THRESHOLD_SECONDS) {
+    return "stale";
+  }
+  if (
+    container.oom_killed ||
+    container.health === "unhealthy" ||
+    container.state === "dead"
+  ) {
+    return "error";
+  }
+  if (
+    container.state === "restarting" ||
+    container.state === "paused" ||
+    container.health === "starting"
+  ) {
+    return "stale";
+  }
+  if (container.state === "running") {
+    return "online";
+  }
+  return "offline";
+}
+
 export async function getMonitoringSnapshot(): Promise<MonitoringSnapshot> {
   const now = new Date();
-  const [hosts, heartbeats] = await Promise.all([
+  const [hosts, heartbeats, containerSamples] = await Promise.all([
     fetchSupabase<HostRow[]>(
       "/rest/v1/hosts?select=id,server_id,display_name,provider,environment,enabled&enabled=eq.true&order=display_name.asc",
     ),
     fetchSupabase<HeartbeatRow[]>(
       `/rest/v1/agent_heartbeats?select=host_id,agent_version,received_at,sent_at,cpu_count,memory_total_bytes,memory_available_bytes,disk_total_bytes,disk_available_bytes,load_average_1,load_average_5,load_average_15,uptime_seconds&order=received_at.desc&limit=${HEARTBEAT_FETCH_LIMIT}`,
+    ),
+    fetchSupabase<ContainerSampleRow[]>(
+      `/rest/v1/container_samples?select=host_id,container_name,state,health,restart_count,oom_killed,exit_code,received_at&order=received_at.desc&limit=${CONTAINER_FETCH_LIMIT}`,
     ),
   ]);
 
@@ -117,16 +203,20 @@ export async function getMonitoringSnapshot(): Promise<MonitoringSnapshot> {
     }
   }
 
+  const hostNameById = new Map(hosts.map((host) => [host.id, host.display_name]));
+  const latestContainerByKey = new Map<string, ContainerSampleRow>();
+  for (const container of containerSamples) {
+    const key = `${container.host_id}:${container.container_name}`;
+    if (!latestContainerByKey.has(key) && hostNameById.has(container.host_id)) {
+      latestContainerByKey.set(key, container);
+    }
+  }
+
   return {
     generatedAt: now.toISOString(),
     hosts: hosts.map((host) => {
       const heartbeat = latestByHost.get(host.id) ?? null;
-      const receivedAtMilliseconds = heartbeat
-        ? Date.parse(heartbeat.received_at)
-        : Number.NaN;
-      const ageSeconds = Number.isFinite(receivedAtMilliseconds)
-        ? Math.max(0, Math.floor((now.getTime() - receivedAtMilliseconds) / 1_000))
-        : null;
+      const age = heartbeat ? ageSeconds(heartbeat.received_at, now) : null;
 
       return {
         id: host.id,
@@ -134,11 +224,11 @@ export async function getMonitoringSnapshot(): Promise<MonitoringSnapshot> {
         displayName: host.display_name,
         provider: host.provider,
         environment: host.environment,
-        status: determineStatus(ageSeconds),
+        status: determineHostStatus(age),
         agentVersion: heartbeat?.agent_version ?? null,
         receivedAt: heartbeat?.received_at ?? null,
         sentAt: heartbeat?.sent_at ?? null,
-        ageSeconds,
+        ageSeconds: age,
         cpuCount: heartbeat?.cpu_count ?? null,
         memoryTotalBytes: heartbeat?.memory_total_bytes ?? null,
         memoryAvailableBytes: heartbeat?.memory_available_bytes ?? null,
@@ -150,5 +240,29 @@ export async function getMonitoringSnapshot(): Promise<MonitoringSnapshot> {
         uptimeSeconds: heartbeat?.uptime_seconds ?? null,
       };
     }),
+    containers: [...latestContainerByKey.values()]
+      .map((container) => {
+        const age =
+          ageSeconds(container.received_at, now) ?? STALE_THRESHOLD_SECONDS + 1;
+        return {
+          hostId: container.host_id,
+          hostDisplayName: hostNameById.get(container.host_id) ?? "Unknown Host",
+          name: container.container_name,
+          status: determineContainerStatus(container, age),
+          state: container.state,
+          health: container.health,
+          restartCount: container.restart_count,
+          oomKilled: container.oom_killed,
+          exitCode: container.exit_code,
+          receivedAt: container.received_at,
+          ageSeconds: age,
+        };
+      })
+      .sort((left, right) =>
+        `${left.hostDisplayName}:${left.name}`.localeCompare(
+          `${right.hostDisplayName}:${right.name}`,
+          "ja",
+        ),
+      ),
   };
 }
