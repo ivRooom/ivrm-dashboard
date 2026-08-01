@@ -73,6 +73,18 @@ ivrm-dashboard/
 | `mc-resource` | 停止 |
 | `mc-resource-router` | 稼働 |
 
+## Dockerリソースメトリクス
+
+rootの短時間Collectorが許可済みかつ稼働中のコンテナだけに`docker stats --no-stream`を実行し、次の値を取得します。
+
+- CPU使用率
+- メモリ使用量・上限
+- Network RX / TX累計
+- Block Read / Write累計
+- PIDs
+
+停止中・未作成・Stats取得失敗時はリソース値を未取得として扱い、State・Healthなどの状態監視は継続します。Collectorが取得したDockerのSI・IEC単位はバイトへ変換して保存します。
+
 ## ローカル開発
 
 ```bash
@@ -90,7 +102,7 @@ set -a && source .env && set +a
 go run ./cmd/ivrm-agent
 ```
 
-Docker状態監視のOCI配置手順は[`docs/oci-docker-monitoring.md`](docs/oci-docker-monitoring.md)を参照してください。
+Docker監視のOCI配置・更新手順は[`docs/oci-docker-monitoring.md`](docs/oci-docker-monitoring.md)を参照してください。
 
 ## セキュリティ方針
 
@@ -98,12 +110,13 @@ Docker状態監視のOCI配置手順は[`docs/oci-docker-monitoring.md`](docs/oc
 - Docker Socket、Docker API、SSH、RCONを外部公開しない
 - 非特権Agentを`docker`グループへ追加しない
 - rootの短時間Collectorと非特権Agentを分離する
+- Collectorは許可済みコンテナ名だけを対象にする
 - Dockerから取得した環境変数、Mount、IP、ログ本文を送信しない
 - MVPでは読み取り専用とする
 - 任意Shell・任意Dockerコマンド・任意RCONは実装しない
 - 将来の操作機能は許可リスト・権限確認・監査ログを必須とする
 - Supabase Service Role KeyはVercelのServer Componentからのみ利用する
-- `container_expectations`は`anon`・`authenticated`から参照できない
+- `container_expectations`と監視メトリクスは`anon`・`authenticated`から参照できない
 - 実メトリクスの公開前にCloudflare Accessで閲覧者を制限する
 
 ## ドメイン
@@ -116,7 +129,7 @@ Docker状態監視のOCI配置手順は[`docs/oci-docker-monitoring.md`](docs/oc
 - `console.ivrm.jp/herta`
 - `console.ivrm.jp/aws`
 
-`mc.console.ivrm.jp`や`herta.console.ivrm.jp`は、独立した権限境界またはデプロイが必要になった段階で再評価します。
+`mc.console.ivrm.jp`や`herta.console.ivrm.jp`は、独立デプロイや独立した権限境界が必要になった段階で再評価します。
 
 ## 開発方針
 
@@ -130,7 +143,7 @@ Docker状態監視のOCI配置手順は[`docs/oci-docker-monitoring.md`](docs/oc
 
 ## 実環境ステータス
 
-- Supabase: `ivrm-core`へホスト・Docker状態・期待状態Migration適用済み
+- Supabase: `ivrm-core`へホスト・Docker状態・期待状態・リソース列のMigration適用済み
 - Vercel: `ivrm-dashboard`をProduction Deployment済み
 - Health Check: `https://console.ivrm.jp/api/health`でHTTP 200を確認済み
 - `console.ivrm.jp`: Cloudflare経由で接続済み
@@ -139,11 +152,12 @@ Docker状態監視のOCI配置手順は[`docs/oci-docker-monitoring.md`](docs/oc
 - Agent認証: Agent ID・Timestamp・Nonce・HMAC-SHA256署名を検証
 - ホスト画面: Supabaseの最新HeartbeatをServer Componentから取得
 - Docker状態監視: State・Health・RestartCount・OOMKilledを3コンテナで本番表示済み
-- 期待状態: `mc-resource`の計画停止を待機中として区別する実装を追加中
+- 期待状態: `mc-resource`の計画停止を「待機中」としてProduction表示済み
+- Dockerリソース監視: Agent `0.4.0`・Collector・API・画面をPR #11で実装中
 
 ## 次の開発項目
 
-1. コンテナ期待状態・メンテナンス表示をProductionへ反映する
-2. Docker CPU・メモリ・Network I/O・Block I/O・PIDsを保存・表示する
-3. Minecraft TPS・MSPT・プレイヤー数を取得する
+1. PR #11をマージ後、OCIへCollectorとAgent `0.4.0`を配置する
+2. Minecraft TPS・MSPT・プレイヤー数を取得する
+3. 最終バックアップ結果を表示する
 4. Stale / Offline / Error判定の通知と履歴表示を追加する
