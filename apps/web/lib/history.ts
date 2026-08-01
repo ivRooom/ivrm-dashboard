@@ -71,6 +71,7 @@ export async function getContainerMetricHistory(
         p_bucket_seconds: bucketSeconds,
       }),
       cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
     },
   );
 
