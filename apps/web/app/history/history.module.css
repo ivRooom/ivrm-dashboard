@@ -1,0 +1,138 @@
+.historyContent {
+  max-width: 1540px;
+}
+
+.secondaryLink {
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.secondaryLink:hover {
+  border-color: #3c4453;
+  background: var(--panel-2);
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 38px 0 20px;
+}
+
+.summary > div {
+  min-height: 100px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.summary span,
+.summary strong {
+  display: block;
+}
+
+.summary span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.summary strong {
+  margin-top: 14px;
+  font-size: 20px;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.toolbar > small {
+  color: var(--muted);
+}
+
+.periodSelector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.periodSelector span {
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.periodSelector .active {
+  border-color: rgb(184 255 61 / 45%);
+  background: rgb(184 255 61 / 10%);
+  color: var(--accent);
+}
+
+.periodSelector span[aria-disabled="true"] {
+  opacity: 0.55;
+}
+
+.chartGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.note {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.note p {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+@media (max-width: 1180px) {
+  .chartGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .toolbar {
+    display: block;
+  }
+
+  .toolbar > small {
+    display: block;
+    margin-top: 10px;
+  }
+}
+
+@media (max-width: 620px) {
+  .summary {
+    grid-template-columns: 1fr;
+    margin-top: 28px;
+  }
+
+  .secondaryLink {
+    display: inline-block;
+    margin-top: 16px;
+  }
+}
