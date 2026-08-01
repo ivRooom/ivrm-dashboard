@@ -79,7 +79,6 @@
 
 .line {
   fill: none;
-  stroke: var(--series-color);
   stroke-width: 2.25;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -88,37 +87,12 @@
 
 .point,
 .lastPoint {
-  stroke: var(--series-color);
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
 }
 
-.point {
-  fill: var(--series-color);
-}
-
 .lastPoint {
   fill: var(--panel);
-}
-
-.series0 {
-  --series-color: var(--accent);
-}
-
-.series1 {
-  --series-color: var(--standby);
-}
-
-.series2 {
-  --series-color: var(--maintenance);
-}
-
-.series3 {
-  --series-color: var(--warn);
-}
-
-.series4 {
-  --series-color: var(--ok);
 }
 
 .legend {
@@ -161,26 +135,6 @@
   color: var(--muted);
   font-size: 10px;
   line-height: 1.5;
-}
-
-.seriesBackground0 {
-  background: var(--accent);
-}
-
-.seriesBackground1 {
-  background: var(--standby);
-}
-
-.seriesBackground2 {
-  background: var(--maintenance);
-}
-
-.seriesBackground3 {
-  background: var(--warn);
-}
-
-.seriesBackground4 {
-  background: var(--ok);
 }
 
 @media (max-width: 620px) {
