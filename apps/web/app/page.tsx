@@ -1,6 +1,9 @@
 import { AutoRefresh } from "../components/auto-refresh";
 import {
   getMonitoringSnapshot,
+  type ContainerHealth,
+  type ContainerOverview,
+  type ContainerState,
   type HostOverview,
   type HostStatus,
 } from "../lib/monitoring";
@@ -10,13 +13,34 @@ export const dynamic = "force-dynamic";
 const navigation = [
   { label: "概要", href: "#top" },
   { label: "ホスト", href: "#hosts" },
+  { label: "コンテナ", href: "#containers" },
 ] as const;
 
 const labels: Record<HostStatus, string> = {
   online: "稼働中",
   offline: "停止中",
   stale: "更新遅延",
-  error: "取得異常",
+  error: "異常",
+};
+
+const containerStateLabels: Record<ContainerState, string> = {
+  created: "作成済み",
+  running: "実行中",
+  paused: "一時停止",
+  restarting: "再起動中",
+  removing: "削除中",
+  exited: "終了",
+  dead: "異常終了",
+  unknown: "不明",
+  not_found: "未作成",
+};
+
+const containerHealthLabels: Record<ContainerHealth, string> = {
+  starting: "確認中",
+  healthy: "正常",
+  unhealthy: "異常",
+  none: "未設定",
+  unknown: "不明",
 };
 
 function formatGiB(bytes: number): string {
@@ -94,14 +118,26 @@ function overallStatus(hosts: HostOverview[], hasDataError: boolean): HostStatus
   return "offline";
 }
 
+function formatExit(container: ContainerOverview): string {
+  if (container.oomKilled) {
+    return "OOMKilled";
+  }
+  if (container.exitCode === null) {
+    return "—";
+  }
+  return `Code ${container.exitCode}`;
+}
+
 export default async function HomePage() {
   let hosts: HostOverview[] = [];
+  let containers: ContainerOverview[] = [];
   let generatedAt = new Date().toISOString();
   let hasDataError = false;
 
   try {
     const snapshot = await getMonitoringSnapshot();
     hosts = snapshot.hosts;
+    containers = snapshot.containers;
     generatedAt = snapshot.generatedAt;
   } catch {
     hasDataError = true;
@@ -114,10 +150,11 @@ export default async function HomePage() {
     (total, host) => total + (host.memoryTotalBytes ?? 0),
     0,
   );
-  const latestHeartbeat = hosts
-    .map((host) => host.receivedAt)
-    .filter((receivedAt): receivedAt is string => receivedAt !== null)
-    .sort((left, right) => Date.parse(right) - Date.parse(left))[0] ?? null;
+  const latestHeartbeat =
+    hosts
+      .map((host) => host.receivedAt)
+      .filter((receivedAt): receivedAt is string => receivedAt !== null)
+      .sort((left, right) => Date.parse(right) - Date.parse(left))[0] ?? null;
 
   return (
     <main className="shell">
@@ -147,7 +184,7 @@ export default async function HomePage() {
         <header>
           <div>
             <h1>システム概要</h1>
-            <p>OCIホストの最新HeartbeatをSupabaseから取得しています。</p>
+            <p>OCIホストとDockerコンテナの最新状態を表示しています。</p>
           </div>
           <button disabled>管理者メニュー</button>
         </header>
@@ -159,9 +196,9 @@ export default async function HomePage() {
             <small>有効なAgent登録数</small>
           </article>
           <article>
-            <span>正常</span>
-            <strong>{hasDataError ? "—" : onlineCount}</strong>
-            <small>45秒以内に受信</small>
+            <span>監視コンテナ</span>
+            <strong>{hasDataError ? "—" : containers.length}</strong>
+            <small>最新スナップショット</small>
           </article>
           <article>
             <span>ホストメモリ</span>
@@ -175,7 +212,7 @@ export default async function HomePage() {
           <article>
             <span>最終受信</span>
             <strong>{formatRelativeTime(latestHeartbeat, generatedAt)}</strong>
-            <small>15秒ごとに自動更新</small>
+            <small>{onlineCount}ホスト正常 / 15秒更新</small>
           </article>
         </section>
 
@@ -207,7 +244,9 @@ export default async function HomePage() {
                     <div>
                       <h3>{host.displayName}</h3>
                       <p>
-                        {host.provider.toUpperCase()} / {host.environment} / {host.cpuCount ?? "—"} vCPU / {formatUptime(host.uptimeSeconds)}
+                        {host.provider.toUpperCase()} / {host.environment} /{" "}
+                        {host.cpuCount ?? "—"} vCPU /{" "}
+                        {formatUptime(host.uptimeSeconds)}
                       </p>
                     </div>
                   </div>
@@ -239,6 +278,64 @@ export default async function HomePage() {
                   <time dateTime={host.receivedAt ?? undefined}>
                     {formatRelativeTime(host.receivedAt, generatedAt)}
                     <small>Agent {host.agentVersion ?? "未受信"}</small>
+                  </time>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section id="containers">
+          <div className="heading">
+            <div>
+              <h2>Dockerコンテナ</h2>
+              <p>許可済みコンテナのState、Health、再起動回数を表示します。</p>
+            </div>
+            <small>{containers.length}コンテナ</small>
+          </div>
+
+          {hasDataError ? (
+            <div className="empty error-panel" role="alert">
+              <strong>コンテナ状態を取得できませんでした</strong>
+              <p>SupabaseのMigrationと監視APIを確認してください。</p>
+            </div>
+          ) : containers.length === 0 ? (
+            <div className="empty">
+              <strong>Dockerスナップショットがありません</strong>
+              <p>OCIへスナップショット収集Timerを配置すると表示されます。</p>
+            </div>
+          ) : (
+            <div className="list">
+              {containers.map((container) => (
+                <article
+                  className="row"
+                  key={`${container.hostId}:${container.name}`}
+                >
+                  <div className="identity">
+                    <b>{container.name.slice(0, 1).toUpperCase()}</b>
+                    <div>
+                      <h3>{container.name}</h3>
+                      <p>{container.hostDisplayName}</p>
+                    </div>
+                  </div>
+                  <span className={`status ${container.status}`}>
+                    {containerStateLabels[container.state]}
+                  </span>
+                  <div className="metric">
+                    <small>HEALTH</small>
+                    <strong>{containerHealthLabels[container.health]}</strong>
+                  </div>
+                  <div className="metric">
+                    <small>RESTART COUNT</small>
+                    <strong>{container.restartCount}</strong>
+                  </div>
+                  <div className="metric">
+                    <small>EXIT / OOM</small>
+                    <strong>{formatExit(container)}</strong>
+                  </div>
+                  <time dateTime={container.receivedAt}>
+                    {formatRelativeTime(container.receivedAt, generatedAt)}
+                    <small>{labels[container.status]}</small>
                   </time>
                 </article>
               ))}
