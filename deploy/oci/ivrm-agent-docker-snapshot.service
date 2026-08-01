@@ -1,0 +1,26 @@
+[Unit]
+Description=IVRM Docker State Snapshot
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=/etc/ivrm-agent/docker.env
+ExecStart=/usr/local/libexec/ivrm-agent-docker-snapshot
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_UNIX
+ReadWritePaths=/run/ivrm-agent
+UMask=0027
