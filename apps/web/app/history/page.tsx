@@ -1,6 +1,7 @@
 import { AutoRefresh } from "../../components/auto-refresh";
 import { MetricLineChart } from "../../components/metric-line-chart";
 import { getContainerMetricHistory } from "../../lib/history";
+import styles from "./history.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -76,18 +77,18 @@ export default async function HistoryPage() {
         </div>
       </aside>
 
-      <section className="content history-content">
+      <section className={`content ${styles.historyContent}`}>
         <header>
           <div>
             <h1>監視履歴</h1>
             <p>DockerコンテナのCPU・メモリ推移を時系列で確認できます。</p>
           </div>
-          <a className="secondary-link" href="/">
+          <a className={styles.secondaryLink} href="/">
             現在値へ戻る
           </a>
         </header>
 
-        <section className="history-summary" aria-label="履歴表示条件">
+        <section className={styles.summary} aria-label="履歴表示条件">
           <div>
             <span>表示期間</span>
             <strong>直近24時間</strong>
@@ -102,13 +103,15 @@ export default async function HistoryPage() {
           </div>
           <div>
             <span>元サンプル</span>
-            <strong>{hasDataError ? "—" : sampleCount.toLocaleString("ja-JP")}</strong>
+            <strong>
+              {hasDataError ? "—" : sampleCount.toLocaleString("ja-JP")}
+            </strong>
           </div>
         </section>
 
-        <div className="history-toolbar">
-          <div className="period-selector" aria-label="表示期間">
-            <span className="active">24時間</span>
+        <div className={styles.toolbar}>
+          <div className={styles.periodSelector} aria-label="表示期間">
+            <span className={styles.active}>24時間</span>
             <span aria-disabled="true">7日（準備中）</span>
             <span aria-disabled="true">30日（準備中）</span>
           </div>
@@ -124,7 +127,7 @@ export default async function HistoryPage() {
             <p>Supabaseの履歴RPCとVercel環境変数を確認してください。</p>
           </div>
         ) : (
-          <section className="chart-grid" aria-label="Dockerリソース履歴">
+          <section className={styles.chartGrid} aria-label="Dockerリソース履歴">
             <MetricLineChart
               title="CPU使用率"
               description="各コンテナの5分平均です。欠損区間は線を接続しません。"
@@ -147,7 +150,7 @@ export default async function HistoryPage() {
           </section>
         )}
 
-        <section className="history-note">
+        <section className={styles.note}>
           <strong>データ保持について</strong>
           <p>
             現在は既存の生データから直近24時間を5分単位で集約しています。7日・30日表示は、1分・5分・1時間ロールアップと自動削除処理を追加してから有効化します。
