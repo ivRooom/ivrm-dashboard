@@ -122,14 +122,18 @@ def parse_pids(value: str) -> int:
 
 
 def collect_stats(docker_binary: str, name: str) -> dict[str, Any]:
-    completed = subprocess.run(
-        [docker_binary, "stats", "--no-stream", "--format", "{{json .}}", name],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=12,
-        env={"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
-    )
+    try:
+        completed = subprocess.run(
+            [docker_binary, "stats", "--no-stream", "--format", "{{json .}}", name],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=12,
+            env={"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"docker statsがタイムアウトしました: {name}") from exc
+
     if completed.returncode != 0:
         raise RuntimeError(f"docker statsに失敗しました: {name}")
 
