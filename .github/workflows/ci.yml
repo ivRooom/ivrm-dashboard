@@ -42,6 +42,8 @@ jobs:
           persist-credentials: false
       - name: Docker Collectorの構文を確認
         run: python3 -m py_compile deploy/oci/ivrm-agent-docker-snapshot.py
+      - name: Docker Collectorをテスト
+        run: python3 -m unittest deploy/oci/test_ivrm_agent_docker_snapshot.py
       - name: Goを準備
         uses: actions/setup-go@v5
         with:

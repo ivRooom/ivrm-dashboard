@@ -57,6 +57,24 @@ function formatGiB(bytes: number): string {
   return (bytes / 1024 ** 3).toFixed(bytes >= 10 * 1024 ** 3 ? 0 : 1);
 }
 
+function formatBytes(bytes: number | null): string {
+  if (bytes === null) {
+    return "未取得";
+  }
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+
+  const units = ["KiB", "MiB", "GiB", "TiB", "PiB"];
+  let value = bytes;
+  let unitIndex = -1;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value.toFixed(value >= 10 ? 1 : 2)} ${units[unitIndex]}`;
+}
+
 function formatCapacity(total: number | null, available: number | null): string {
   if (total === null || available === null || total <= 0) {
     return "未取得";
@@ -65,6 +83,21 @@ function formatCapacity(total: number | null, available: number | null): string 
   const used = Math.max(0, total - available);
   const percent = Math.min(100, Math.max(0, (used / total) * 100));
   return `${formatGiB(used)} / ${formatGiB(total)} GiB (${percent.toFixed(0)}%)`;
+}
+
+function formatContainerMemory(container: ContainerOverview): string {
+  if (
+    container.memoryUsageBytes === null ||
+    container.memoryLimitBytes === null
+  ) {
+    return "未取得";
+  }
+
+  const percent =
+    container.memoryLimitBytes > 0
+      ? (container.memoryUsageBytes / container.memoryLimitBytes) * 100
+      : 0;
+  return `${formatBytes(container.memoryUsageBytes)} / ${formatBytes(container.memoryLimitBytes)} (${percent.toFixed(1)}%)`;
 }
 
 function formatLoad(host: HostOverview): string {
@@ -334,7 +367,7 @@ export default async function HomePage() {
           <div className="heading">
             <div>
               <h2>Dockerコンテナ</h2>
-              <p>実状態と期待状態を比較し、計画停止と障害を区別します。</p>
+              <p>状態、期待値、CPU、メモリ、I/O、PIDsを表示します。</p>
             </div>
             <small>
               {normalContainerCount} / {containers.length} 正常・待機
@@ -355,7 +388,7 @@ export default async function HomePage() {
             <div className="list">
               {containers.map((container) => (
                 <article
-                  className="row"
+                  className="row container-row"
                   key={`${container.hostId}:${container.name}`}
                 >
                   <div className="identity">
@@ -377,11 +410,34 @@ export default async function HomePage() {
                       {containerStateLabels[container.state]} / {" "}
                       {containerHealthLabels[container.health]}
                     </strong>
+                    <span className="metric-detail">
+                      Restart {container.restartCount} / {formatExit(container)}
+                    </span>
                   </div>
                   <div className="metric">
-                    <small>RESTART / EXIT</small>
+                    <small>CPU / PIDS</small>
                     <strong>
-                      {container.restartCount}回 / {formatExit(container)}
+                      {container.cpuPercent === null
+                        ? "未取得"
+                        : `${container.cpuPercent.toFixed(2)}% / ${container.pids ?? "—"}`}
+                    </strong>
+                  </div>
+                  <div className="metric">
+                    <small>MEMORY</small>
+                    <strong>{formatContainerMemory(container)}</strong>
+                  </div>
+                  <div className="metric">
+                    <small>NETWORK RX / TX</small>
+                    <strong>
+                      {formatBytes(container.networkRxBytes)} / {" "}
+                      {formatBytes(container.networkTxBytes)}
+                    </strong>
+                  </div>
+                  <div className="metric">
+                    <small>BLOCK READ / WRITE</small>
+                    <strong>
+                      {formatBytes(container.blockReadBytes)} / {" "}
+                      {formatBytes(container.blockWriteBytes)}
                     </strong>
                   </div>
                   <div className="metric">
