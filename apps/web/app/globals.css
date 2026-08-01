@@ -10,6 +10,8 @@
   --ok: #78e79a;
   --warn: #f3c768;
   --bad: #ff7777;
+  --standby: #7cc4ff;
+  --maintenance: #c7a7ff;
 }
 
 * {
@@ -216,7 +218,7 @@ button {
   display: grid;
   grid-template-columns:
     minmax(260px, 1.4fr)
-    90px
+    110px
     minmax(140px, 0.7fr)
     minmax(180px, 0.9fr)
     minmax(180px, 0.9fr)
@@ -261,10 +263,12 @@ button {
 
 .status {
   width: max-content;
+  max-width: 110px;
   padding: 5px 8px;
   border-radius: 6px;
   font-size: 11px;
   font-weight: 700;
+  text-align: center;
 }
 
 .status.online {
@@ -287,6 +291,16 @@ button {
   color: var(--bad);
 }
 
+.status.standby {
+  background: rgb(124 196 255 / 12%);
+  color: var(--standby);
+}
+
+.status.maintenance {
+  background: rgb(199 167 255 / 12%);
+  color: var(--maintenance);
+}
+
 .metric small,
 .metric strong {
   display: block;
@@ -299,6 +313,7 @@ button {
 }
 
 .metric strong {
+  overflow-wrap: anywhere;
   font-size: 13px;
   line-height: 1.45;
 }
@@ -333,7 +348,7 @@ button {
 
 @media (max-width: 1180px) {
   .row {
-    grid-template-columns: minmax(250px, 1.4fr) 90px minmax(140px, 0.7fr) minmax(180px, 0.9fr) 80px;
+    grid-template-columns: minmax(250px, 1.4fr) 110px minmax(140px, 0.7fr) minmax(180px, 0.9fr) 80px;
   }
 
   .row .metric:nth-of-type(3) {
@@ -368,7 +383,7 @@ button {
   }
 
   .row {
-    grid-template-columns: minmax(220px, 1fr) 90px minmax(150px, 0.8fr);
+    grid-template-columns: minmax(220px, 1fr) 110px minmax(150px, 0.8fr);
   }
 
   .row .metric:nth-of-type(2),

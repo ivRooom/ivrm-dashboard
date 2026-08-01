@@ -1,5 +1,10 @@
 export type HostStatus = "online" | "offline" | "stale" | "error";
 
+export type ContainerStatus =
+  | HostStatus
+  | "standby"
+  | "maintenance";
+
 export type ContainerState =
   | "created"
   | "running"
@@ -17,6 +22,8 @@ export type ContainerHealth =
   | "unhealthy"
   | "none"
   | "unknown";
+
+export type ContainerExpectedState = "running" | "stopped" | "absent";
 
 type HostRow = {
   id: string;
@@ -54,6 +61,15 @@ type ContainerSampleRow = {
   received_at: string;
 };
 
+type ContainerExpectationRow = {
+  host_id: string;
+  container_name: string;
+  expected_state: ContainerExpectedState;
+  maintenance_mode: boolean;
+  maintenance_reason: string | null;
+  maintenance_until: string | null;
+};
+
 export type HostOverview = {
   id: string;
   serverId: string;
@@ -80,7 +96,7 @@ export type ContainerOverview = {
   hostId: string;
   hostDisplayName: string;
   name: string;
-  status: HostStatus;
+  status: ContainerStatus;
   state: ContainerState;
   health: ContainerHealth;
   restartCount: number;
@@ -88,6 +104,11 @@ export type ContainerOverview = {
   exitCode: number | null;
   receivedAt: string;
   ageSeconds: number;
+  expectedState: ContainerExpectedState | null;
+  maintenanceMode: boolean;
+  maintenanceActive: boolean;
+  maintenanceReason: string | null;
+  maintenanceUntil: string | null;
 };
 
 export type MonitoringSnapshot = {
@@ -152,49 +173,102 @@ function determineHostStatus(age: number | null): Exclude<HostStatus, "error"> {
   return "online";
 }
 
+function isMaintenanceActive(
+  expectation: ContainerExpectationRow | null,
+  now: Date,
+): boolean {
+  if (!expectation?.maintenance_mode) {
+    return false;
+  }
+  if (!expectation.maintenance_until) {
+    return true;
+  }
+
+  const maintenanceUntil = Date.parse(expectation.maintenance_until);
+  return Number.isFinite(maintenanceUntil) && maintenanceUntil > now.getTime();
+}
+
 function determineContainerStatus(
   container: ContainerSampleRow,
   age: number,
-): HostStatus {
+  expectation: ContainerExpectationRow | null,
+  now: Date,
+): ContainerStatus {
   if (age > STALE_THRESHOLD_SECONDS) {
     return "offline";
   }
   if (age > ONLINE_THRESHOLD_SECONDS) {
     return "stale";
   }
-  if (
-    container.oom_killed ||
-    container.health === "unhealthy" ||
-    container.state === "dead"
-  ) {
-    return "error";
+  if (isMaintenanceActive(expectation, now)) {
+    return "maintenance";
   }
-  if (
-    container.state === "restarting" ||
-    container.state === "paused" ||
-    container.health === "starting"
-  ) {
-    return "stale";
+
+  switch (expectation?.expected_state) {
+    case "stopped":
+      return container.state === "exited" || container.state === "created"
+        ? "standby"
+        : "error";
+    case "absent":
+      return container.state === "not_found" ? "standby" : "error";
+    case "running":
+      if (
+        container.oom_killed ||
+        container.health === "unhealthy" ||
+        container.state === "dead" ||
+        container.state === "exited" ||
+        container.state === "created" ||
+        container.state === "removing" ||
+        container.state === "not_found" ||
+        container.state === "unknown"
+      ) {
+        return "error";
+      }
+      if (
+        container.state === "restarting" ||
+        container.state === "paused" ||
+        container.health === "starting" ||
+        container.health === "unknown"
+      ) {
+        return "stale";
+      }
+      return container.state === "running" ? "online" : "error";
+    default:
+      if (
+        container.oom_killed ||
+        container.health === "unhealthy" ||
+        container.state === "dead"
+      ) {
+        return "error";
+      }
+      if (
+        container.state === "restarting" ||
+        container.state === "paused" ||
+        container.health === "starting"
+      ) {
+        return "stale";
+      }
+      return container.state === "running" ? "online" : "offline";
   }
-  if (container.state === "running") {
-    return "online";
-  }
-  return "offline";
 }
 
 export async function getMonitoringSnapshot(): Promise<MonitoringSnapshot> {
   const now = new Date();
-  const [hosts, heartbeats, containerSamples] = await Promise.all([
-    fetchSupabase<HostRow[]>(
-      "/rest/v1/hosts?select=id,server_id,display_name,provider,environment,enabled&enabled=eq.true&order=display_name.asc",
-    ),
-    fetchSupabase<HeartbeatRow[]>(
-      `/rest/v1/agent_heartbeats?select=host_id,agent_version,received_at,sent_at,cpu_count,memory_total_bytes,memory_available_bytes,disk_total_bytes,disk_available_bytes,load_average_1,load_average_5,load_average_15,uptime_seconds&order=received_at.desc&limit=${HEARTBEAT_FETCH_LIMIT}`,
-    ),
-    fetchSupabase<ContainerSampleRow[]>(
-      `/rest/v1/container_samples?select=host_id,container_name,state,health,restart_count,oom_killed,exit_code,received_at&order=received_at.desc&limit=${CONTAINER_FETCH_LIMIT}`,
-    ),
-  ]);
+  const [hosts, heartbeats, containerSamples, containerExpectations] =
+    await Promise.all([
+      fetchSupabase<HostRow[]>(
+        "/rest/v1/hosts?select=id,server_id,display_name,provider,environment,enabled&enabled=eq.true&order=display_name.asc",
+      ),
+      fetchSupabase<HeartbeatRow[]>(
+        `/rest/v1/agent_heartbeats?select=host_id,agent_version,received_at,sent_at,cpu_count,memory_total_bytes,memory_available_bytes,disk_total_bytes,disk_available_bytes,load_average_1,load_average_5,load_average_15,uptime_seconds&order=received_at.desc&limit=${HEARTBEAT_FETCH_LIMIT}`,
+      ),
+      fetchSupabase<ContainerSampleRow[]>(
+        `/rest/v1/container_samples?select=host_id,container_name,state,health,restart_count,oom_killed,exit_code,received_at&order=received_at.desc&limit=${CONTAINER_FETCH_LIMIT}`,
+      ),
+      fetchSupabase<ContainerExpectationRow[]>(
+        "/rest/v1/container_expectations?select=host_id,container_name,expected_state,maintenance_mode,maintenance_reason,maintenance_until",
+      ),
+    ]);
 
   const latestByHost = new Map<string, HeartbeatRow>();
   for (const heartbeat of heartbeats) {
@@ -210,6 +284,14 @@ export async function getMonitoringSnapshot(): Promise<MonitoringSnapshot> {
     if (!latestContainerByKey.has(key) && hostNameById.has(container.host_id)) {
       latestContainerByKey.set(key, container);
     }
+  }
+
+  const expectationByKey = new Map<string, ContainerExpectationRow>();
+  for (const expectation of containerExpectations) {
+    expectationByKey.set(
+      `${expectation.host_id}:${expectation.container_name}`,
+      expectation,
+    );
   }
 
   return {
@@ -244,11 +326,14 @@ export async function getMonitoringSnapshot(): Promise<MonitoringSnapshot> {
       .map((container) => {
         const age =
           ageSeconds(container.received_at, now) ?? STALE_THRESHOLD_SECONDS + 1;
+        const key = `${container.host_id}:${container.container_name}`;
+        const expectation = expectationByKey.get(key) ?? null;
+
         return {
           hostId: container.host_id,
           hostDisplayName: hostNameById.get(container.host_id) ?? "Unknown Host",
           name: container.container_name,
-          status: determineContainerStatus(container, age),
+          status: determineContainerStatus(container, age, expectation, now),
           state: container.state,
           health: container.health,
           restartCount: container.restart_count,
@@ -256,6 +341,11 @@ export async function getMonitoringSnapshot(): Promise<MonitoringSnapshot> {
           exitCode: container.exit_code,
           receivedAt: container.received_at,
           ageSeconds: age,
+          expectedState: expectation?.expected_state ?? null,
+          maintenanceMode: expectation?.maintenance_mode ?? false,
+          maintenanceActive: isMaintenanceActive(expectation, now),
+          maintenanceReason: expectation?.maintenance_reason ?? null,
+          maintenanceUntil: expectation?.maintenance_until ?? null,
         };
       })
       .sort((left, right) =>

@@ -1,9 +1,11 @@
 import { AutoRefresh } from "../components/auto-refresh";
 import {
   getMonitoringSnapshot,
+  type ContainerExpectedState,
   type ContainerHealth,
   type ContainerOverview,
   type ContainerState,
+  type ContainerStatus,
   type HostOverview,
   type HostStatus,
 } from "../lib/monitoring";
@@ -16,11 +18,13 @@ const navigation = [
   { label: "コンテナ", href: "#containers" },
 ] as const;
 
-const labels: Record<HostStatus, string> = {
+const labels: Record<ContainerStatus, string> = {
   online: "稼働中",
-  offline: "停止中",
+  offline: "受信停止",
   stale: "更新遅延",
   error: "異常",
+  standby: "待機中",
+  maintenance: "メンテナンス",
 };
 
 const containerStateLabels: Record<ContainerState, string> = {
@@ -41,6 +45,12 @@ const containerHealthLabels: Record<ContainerHealth, string> = {
   unhealthy: "異常",
   none: "未設定",
   unknown: "不明",
+};
+
+const expectedStateLabels: Record<ContainerExpectedState, string> = {
+  running: "稼働",
+  stopped: "停止",
+  absent: "未作成",
 };
 
 function formatGiB(bytes: number): string {
@@ -128,6 +138,36 @@ function formatExit(container: ContainerOverview): string {
   return `Code ${container.exitCode}`;
 }
 
+function formatExpectedState(
+  expectedState: ContainerExpectedState | null,
+): string {
+  return expectedState ? expectedStateLabels[expectedState] : "未設定";
+}
+
+function formatMaintenance(container: ContainerOverview): string {
+  if (container.maintenanceActive) {
+    const reason = container.maintenanceReason ?? "実施中";
+    if (!container.maintenanceUntil) {
+      return reason;
+    }
+
+    const until = new Intl.DateTimeFormat("ja-JP", {
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: "Asia/Tokyo",
+    }).format(new Date(container.maintenanceUntil));
+    return `${reason} / ${until}まで`;
+  }
+
+  if (container.maintenanceMode) {
+    return "期限切れ";
+  }
+  return "なし";
+}
+
 export default async function HomePage() {
   let hosts: HostOverview[] = [];
   let containers: ContainerOverview[] = [];
@@ -146,6 +186,9 @@ export default async function HomePage() {
 
   const status = overallStatus(hosts, hasDataError);
   const onlineCount = hosts.filter((host) => host.status === "online").length;
+  const normalContainerCount = containers.filter((container) =>
+    ["online", "standby", "maintenance"].includes(container.status),
+  ).length;
   const totalMemoryBytes = hosts.reduce(
     (total, host) => total + (host.memoryTotalBytes ?? 0),
     0,
@@ -196,9 +239,11 @@ export default async function HomePage() {
             <small>有効なAgent登録数</small>
           </article>
           <article>
-            <span>監視コンテナ</span>
-            <strong>{hasDataError ? "—" : containers.length}</strong>
-            <small>最新スナップショット</small>
+            <span>コンテナ正常</span>
+            <strong>
+              {hasDataError ? "—" : `${normalContainerCount} / ${containers.length}`}
+            </strong>
+            <small>稼働・待機・メンテナンス</small>
           </article>
           <article>
             <span>ホストメモリ</span>
@@ -289,9 +334,11 @@ export default async function HomePage() {
           <div className="heading">
             <div>
               <h2>Dockerコンテナ</h2>
-              <p>許可済みコンテナのState、Health、再起動回数を表示します。</p>
+              <p>実状態と期待状態を比較し、計画停止と障害を区別します。</p>
             </div>
-            <small>{containers.length}コンテナ</small>
+            <small>
+              {normalContainerCount} / {containers.length} 正常・待機
+            </small>
           </div>
 
           {hasDataError ? (
@@ -315,23 +362,31 @@ export default async function HomePage() {
                     <b>{container.name.slice(0, 1).toUpperCase()}</b>
                     <div>
                       <h3>{container.name}</h3>
-                      <p>{container.hostDisplayName}</p>
+                      <p>
+                        {container.hostDisplayName} / 期待: {" "}
+                        {formatExpectedState(container.expectedState)}
+                      </p>
                     </div>
                   </div>
                   <span className={`status ${container.status}`}>
-                    {containerStateLabels[container.state]}
+                    {labels[container.status]}
                   </span>
                   <div className="metric">
-                    <small>HEALTH</small>
-                    <strong>{containerHealthLabels[container.health]}</strong>
+                    <small>STATE / HEALTH</small>
+                    <strong>
+                      {containerStateLabels[container.state]} / {" "}
+                      {containerHealthLabels[container.health]}
+                    </strong>
                   </div>
                   <div className="metric">
-                    <small>RESTART COUNT</small>
-                    <strong>{container.restartCount}</strong>
+                    <small>RESTART / EXIT</small>
+                    <strong>
+                      {container.restartCount}回 / {formatExit(container)}
+                    </strong>
                   </div>
                   <div className="metric">
-                    <small>EXIT / OOM</small>
-                    <strong>{formatExit(container)}</strong>
+                    <small>メンテナンス</small>
+                    <strong>{formatMaintenance(container)}</strong>
                   </div>
                   <time dateTime={container.receivedAt}>
                     {formatRelativeTime(container.receivedAt, generatedAt)}

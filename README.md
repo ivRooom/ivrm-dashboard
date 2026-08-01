@@ -50,10 +50,28 @@ ivrm-dashboard/
 1. ホストとAgentのHeartbeat表示
 2. DockerコンテナのCPU・メモリ・Network I/O・Block I/O・PIDs表示
 3. コンテナ状態・Health・RestartCount・OOMKilled表示
-4. MinecraftのOnline・TPS・MSPT・Player count表示
-5. 最終バックアップ状態表示
-6. Online / Offline / Stale / Errorの区別
-7. 認証済みユーザーだけが内部メトリクスを閲覧可能
+4. コンテナの期待状態・計画停止・メンテナンス表示
+5. MinecraftのOnline・TPS・MSPT・Player count表示
+6. 最終バックアップ状態表示
+7. Online / Offline / Stale / Error / Standby / Maintenanceの区別
+8. 認証済みユーザーだけが内部メトリクスを閲覧可能
+
+## コンテナ状態の判定
+
+コンテナの実状態だけでなく、`container_expectations`に登録した期待状態と比較して運用状態を判定します。
+
+- `running`: 稼働を期待する。停止・異常終了・Unhealthyは異常扱い
+- `stopped`: 停止を期待する。`exited`または`created`なら待機中
+- `absent`: 未作成を期待する。`not_found`なら待機中
+- `maintenance_mode`: 有効期限内はメンテナンス扱い
+
+初期設定は次のとおりです。
+
+| コンテナ | 期待状態 |
+| --- | --- |
+| `mc-main` | 稼働 |
+| `mc-resource` | 停止 |
+| `mc-resource-router` | 稼働 |
 
 ## ローカル開発
 
@@ -85,6 +103,7 @@ Docker状態監視のOCI配置手順は[`docs/oci-docker-monitoring.md`](docs/oc
 - 任意Shell・任意Dockerコマンド・任意RCONは実装しない
 - 将来の操作機能は許可リスト・権限確認・監査ログを必須とする
 - Supabase Service Role KeyはVercelのServer Componentからのみ利用する
+- `container_expectations`は`anon`・`authenticated`から参照できない
 - 実メトリクスの公開前にCloudflare Accessで閲覧者を制限する
 
 ## ドメイン
@@ -111,19 +130,20 @@ Docker状態監視のOCI配置手順は[`docs/oci-docker-monitoring.md`](docs/oc
 
 ## 実環境ステータス
 
-- Supabase: `ivrm-core`へホスト・Docker状態監視Migration適用済み
+- Supabase: `ivrm-core`へホスト・Docker状態・期待状態Migration適用済み
 - Vercel: `ivrm-dashboard`をProduction Deployment済み
 - Health Check: `https://console.ivrm.jp/api/health`でHTTP 200を確認済み
 - `console.ivrm.jp`: Cloudflare経由で接続済み
-- OCI Agent: Oracle Linux ARM64へsystemdサービスとして配置済み
-- Heartbeat: 15秒間隔でEnd-to-End疎通済み
+- OCI Agent: `0.3.0`をOracle Linux ARM64へsystemdサービスとして配置済み
+- Docker Collector: 10秒間隔、Heartbeat: 15秒間隔で継続稼働
 - Agent認証: Agent ID・Timestamp・Nonce・HMAC-SHA256署名を検証
 - ホスト画面: Supabaseの最新HeartbeatをServer Componentから取得
-- Docker状態監視: State・Health・RestartCount・OOMKilledの実装中
+- Docker状態監視: State・Health・RestartCount・OOMKilledを3コンテナで本番表示済み
+- 期待状態: `mc-resource`の計画停止を待機中として区別する実装を追加中
 
 ## 次の開発項目
 
-1. OCIへDocker Snapshot CollectorとAgent `0.3.0`を配置する
+1. コンテナ期待状態・メンテナンス表示をProductionへ反映する
 2. Docker CPU・メモリ・Network I/O・Block I/O・PIDsを保存・表示する
 3. Minecraft TPS・MSPT・プレイヤー数を取得する
 4. Stale / Offline / Error判定の通知と履歴表示を追加する
