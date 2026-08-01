@@ -79,6 +79,7 @@
 
 .line {
   fill: none;
+  stroke: var(--series-color);
   stroke-width: 2.25;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -87,8 +88,13 @@
 
 .point,
 .lastPoint {
+  stroke: var(--series-color);
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
+}
+
+.point {
+  fill: var(--series-color);
 }
 
 .lastPoint {
@@ -96,28 +102,23 @@
 }
 
 .series0 {
-  stroke: var(--accent);
-  fill: var(--accent);
+  --series-color: var(--accent);
 }
 
 .series1 {
-  stroke: var(--standby);
-  fill: var(--standby);
+  --series-color: var(--standby);
 }
 
 .series2 {
-  stroke: var(--maintenance);
-  fill: var(--maintenance);
+  --series-color: var(--maintenance);
 }
 
 .series3 {
-  stroke: var(--warn);
-  fill: var(--warn);
+  --series-color: var(--warn);
 }
 
 .series4 {
-  stroke: var(--ok);
-  fill: var(--ok);
+  --series-color: var(--ok);
 }
 
 .legend {
