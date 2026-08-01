@@ -229,6 +229,20 @@ button {
   border-bottom: 1px solid var(--line);
 }
 
+.container-row {
+  grid-template-columns:
+    minmax(220px, 1.25fr)
+    110px
+    minmax(125px, 0.8fr)
+    minmax(100px, 0.6fr)
+    minmax(150px, 0.9fr)
+    minmax(125px, 0.75fr)
+    minmax(125px, 0.75fr)
+    minmax(120px, 0.7fr)
+    78px;
+  gap: 12px;
+}
+
 .identity {
   display: flex;
   align-items: center;
@@ -302,7 +316,8 @@ button {
 }
 
 .metric small,
-.metric strong {
+.metric strong,
+.metric-detail {
   display: block;
 }
 
@@ -316,6 +331,13 @@ button {
   overflow-wrap: anywhere;
   font-size: 13px;
   line-height: 1.45;
+}
+
+.metric-detail {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
 }
 
 .row time {
@@ -346,6 +368,24 @@ button {
   border-color: rgb(255 119 119 / 45%);
 }
 
+@media (max-width: 1400px) {
+  .container-row {
+    grid-template-columns:
+      minmax(220px, 1.2fr)
+      110px
+      minmax(125px, 0.8fr)
+      minmax(100px, 0.6fr)
+      minmax(145px, 0.9fr)
+      minmax(120px, 0.7fr)
+      minmax(120px, 0.7fr)
+      78px;
+  }
+
+  .container-row .metric:nth-of-type(7) {
+    display: none;
+  }
+}
+
 @media (max-width: 1180px) {
   .row {
     grid-template-columns: minmax(250px, 1.4fr) 110px minmax(140px, 0.7fr) minmax(180px, 0.9fr) 80px;
@@ -353,6 +393,24 @@ button {
 
   .row .metric:nth-of-type(3) {
     display: none;
+  }
+
+  .container-row {
+    grid-template-columns:
+      minmax(220px, 1.2fr)
+      110px
+      minmax(130px, 0.8fr)
+      minmax(145px, 0.9fr)
+      78px;
+  }
+
+  .container-row .metric {
+    display: none;
+  }
+
+  .container-row .metric:nth-of-type(2),
+  .container-row .metric:nth-of-type(4) {
+    display: block;
   }
 }
 
@@ -390,6 +448,18 @@ button {
   .row .metric:nth-of-type(3),
   .row time {
     display: none;
+  }
+
+  .container-row {
+    grid-template-columns: minmax(210px, 1fr) 110px minmax(145px, 0.8fr);
+  }
+
+  .container-row .metric {
+    display: none;
+  }
+
+  .container-row .metric:nth-of-type(4) {
+    display: block;
   }
 }
 
@@ -439,11 +509,13 @@ button {
     margin: 28px 0;
   }
 
-  .row {
+  .row,
+  .container-row {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .row .metric,
+  .container-row .metric,
   .row time {
     display: none;
   }
