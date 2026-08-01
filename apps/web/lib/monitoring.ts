@@ -58,6 +58,14 @@ type ContainerSampleRow = {
   restart_count: number;
   oom_killed: boolean;
   exit_code: number | null;
+  cpu_percent: number | null;
+  memory_usage_bytes: number | null;
+  memory_limit_bytes: number | null;
+  network_rx_bytes: number | null;
+  network_tx_bytes: number | null;
+  block_read_bytes: number | null;
+  block_write_bytes: number | null;
+  pids: number | null;
   received_at: string;
 };
 
@@ -102,6 +110,14 @@ export type ContainerOverview = {
   restartCount: number;
   oomKilled: boolean;
   exitCode: number | null;
+  cpuPercent: number | null;
+  memoryUsageBytes: number | null;
+  memoryLimitBytes: number | null;
+  networkRxBytes: number | null;
+  networkTxBytes: number | null;
+  blockReadBytes: number | null;
+  blockWriteBytes: number | null;
+  pids: number | null;
   receivedAt: string;
   ageSeconds: number;
   expectedState: ContainerExpectedState | null;
@@ -263,7 +279,7 @@ export async function getMonitoringSnapshot(): Promise<MonitoringSnapshot> {
         `/rest/v1/agent_heartbeats?select=host_id,agent_version,received_at,sent_at,cpu_count,memory_total_bytes,memory_available_bytes,disk_total_bytes,disk_available_bytes,load_average_1,load_average_5,load_average_15,uptime_seconds&order=received_at.desc&limit=${HEARTBEAT_FETCH_LIMIT}`,
       ),
       fetchSupabase<ContainerSampleRow[]>(
-        `/rest/v1/container_samples?select=host_id,container_name,state,health,restart_count,oom_killed,exit_code,received_at&order=received_at.desc&limit=${CONTAINER_FETCH_LIMIT}`,
+        `/rest/v1/container_samples?select=host_id,container_name,state,health,restart_count,oom_killed,exit_code,cpu_percent,memory_usage_bytes,memory_limit_bytes,network_rx_bytes,network_tx_bytes,block_read_bytes,block_write_bytes,pids,received_at&order=received_at.desc&limit=${CONTAINER_FETCH_LIMIT}`,
       ),
       fetchSupabase<ContainerExpectationRow[]>(
         "/rest/v1/container_expectations?select=host_id,container_name,expected_state,maintenance_mode,maintenance_reason,maintenance_until",
@@ -339,6 +355,14 @@ export async function getMonitoringSnapshot(): Promise<MonitoringSnapshot> {
           restartCount: container.restart_count,
           oomKilled: container.oom_killed,
           exitCode: container.exit_code,
+          cpuPercent: container.cpu_percent,
+          memoryUsageBytes: container.memory_usage_bytes,
+          memoryLimitBytes: container.memory_limit_bytes,
+          networkRxBytes: container.network_rx_bytes,
+          networkTxBytes: container.network_tx_bytes,
+          blockReadBytes: container.block_read_bytes,
+          blockWriteBytes: container.block_write_bytes,
+          pids: container.pids,
           receivedAt: container.received_at,
           ageSeconds: age,
           expectedState: expectation?.expected_state ?? null,
