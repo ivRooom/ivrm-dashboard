@@ -33,14 +33,16 @@ export default async function HistoryPage() {
   }
 
   const cpuSeries = history.map((item) => ({
-    name: item.containerName,
+    id: `${item.hostId}:${item.containerName}`,
+    label: `${item.containerName} / ${item.hostDisplayName}`,
     points: item.points.map((point) => ({
       timestamp: point.timestamp,
       value: point.cpuPercent,
     })),
   }));
   const memorySeries = history.map((item) => ({
-    name: item.containerName,
+    id: `${item.hostId}:${item.containerName}`,
+    label: `${item.containerName} / ${item.hostDisplayName}`,
     points: item.points.map((point) => ({
       timestamp: point.timestamp,
       value: point.memoryPercent,
