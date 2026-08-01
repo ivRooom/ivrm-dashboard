@@ -7,12 +7,14 @@ export type ContainerMetricHistoryPoint = {
 
 export type ContainerMetricHistorySeries = {
   hostId: string;
+  hostDisplayName: string;
   containerName: string;
   points: ContainerMetricHistoryPoint[];
 };
 
 type ContainerMetricHistoryRow = {
   host_id: string;
+  host_display_name: string;
   container_name: string;
   bucket_at: string;
   cpu_percent: number | null;
@@ -49,6 +51,9 @@ export async function getContainerMetricHistory(
   ) {
     throw new Error("履歴の集約粒度が不正です");
   }
+  if (Math.ceil((hours * 3_600) / bucketSeconds) > 2_000) {
+    throw new Error("履歴の取得バケット数が上限を超えています");
+  }
 
   const { url, serviceRoleKey } = supabaseConfiguration();
   const response = await fetch(
@@ -80,6 +85,7 @@ export async function getContainerMetricHistory(
     const key = `${row.host_id}:${row.container_name}`;
     const series = seriesByKey.get(key) ?? {
       hostId: row.host_id,
+      hostDisplayName: row.host_display_name,
       containerName: row.container_name,
       points: [],
     };
@@ -102,6 +108,9 @@ export async function getContainerMetricHistory(
       ),
     }))
     .sort((left, right) =>
-      left.containerName.localeCompare(right.containerName, "ja"),
+      `${left.hostDisplayName}:${left.containerName}`.localeCompare(
+        `${right.hostDisplayName}:${right.containerName}`,
+        "ja",
+      ),
     );
 }
