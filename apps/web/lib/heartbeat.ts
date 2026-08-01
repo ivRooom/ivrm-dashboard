@@ -6,6 +6,8 @@ import {
 
 const MAX_CLOCK_SKEW_SECONDS = 300;
 const MAX_CONTAINERS = 20;
+const MAX_CPU_PERCENT = 100_000;
+const MAX_PIDS = 2_147_483_647;
 export const MAX_HEARTBEAT_BODY_BYTES = 32 * 1024;
 
 const containerStates = new Set([
@@ -35,6 +37,14 @@ export type ContainerHeartbeat = {
   restartCount: number;
   oomKilled: boolean;
   exitCode: number | null;
+  cpuPercent: number | null;
+  memoryUsageBytes: number | null;
+  memoryLimitBytes: number | null;
+  networkRxBytes: number | null;
+  networkTxBytes: number | null;
+  blockReadBytes: number | null;
+  blockWriteBytes: number | null;
+  pids: number | null;
 };
 
 export type HeartbeatPayload = {
@@ -108,23 +118,121 @@ function isFiniteNonNegative(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
-function isContainerHeartbeat(value: unknown): value is ContainerHeartbeat {
-  if (!isRecord(value)) {
-    return false;
+function normalizeResourceMetrics(
+  value: Record<string, unknown>,
+): Pick<
+  ContainerHeartbeat,
+  | "cpuPercent"
+  | "memoryUsageBytes"
+  | "memoryLimitBytes"
+  | "networkRxBytes"
+  | "networkTxBytes"
+  | "blockReadBytes"
+  | "blockWriteBytes"
+  | "pids"
+> | null {
+  const cpuPercent = value.cpuPercent ?? null;
+  const memoryUsageBytes = value.memoryUsageBytes ?? null;
+  const memoryLimitBytes = value.memoryLimitBytes ?? null;
+  const networkRxBytes = value.networkRxBytes ?? null;
+  const networkTxBytes = value.networkTxBytes ?? null;
+  const blockReadBytes = value.blockReadBytes ?? null;
+  const blockWriteBytes = value.blockWriteBytes ?? null;
+  const pids = value.pids ?? null;
+
+  const values = [
+    cpuPercent,
+    memoryUsageBytes,
+    memoryLimitBytes,
+    networkRxBytes,
+    networkTxBytes,
+    blockReadBytes,
+    blockWriteBytes,
+    pids,
+  ];
+  const presentCount = values.filter((metric) => metric !== null).length;
+  if (presentCount !== 0 && presentCount !== values.length) {
+    return null;
+  }
+  if (presentCount === 0) {
+    return {
+      cpuPercent: null,
+      memoryUsageBytes: null,
+      memoryLimitBytes: null,
+      networkRxBytes: null,
+      networkTxBytes: null,
+      blockReadBytes: null,
+      blockWriteBytes: null,
+      pids: null,
+    };
   }
 
-  return (
-    typeof value.name === "string" &&
-    /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(value.name) &&
-    typeof value.state === "string" &&
-    containerStates.has(value.state) &&
-    typeof value.health === "string" &&
-    containerHealthStates.has(value.health) &&
-    Number.isInteger(value.restartCount) &&
-    Number(value.restartCount) >= 0 &&
-    typeof value.oomKilled === "boolean" &&
-    (value.exitCode === null || Number.isInteger(value.exitCode))
-  );
+  if (
+    !isFiniteNonNegative(cpuPercent) ||
+    cpuPercent > MAX_CPU_PERCENT ||
+    !Number.isSafeInteger(memoryUsageBytes) ||
+    Number(memoryUsageBytes) < 0 ||
+    !Number.isSafeInteger(memoryLimitBytes) ||
+    Number(memoryLimitBytes) < 0 ||
+    Number(memoryUsageBytes) > Number(memoryLimitBytes) ||
+    !Number.isSafeInteger(networkRxBytes) ||
+    Number(networkRxBytes) < 0 ||
+    !Number.isSafeInteger(networkTxBytes) ||
+    Number(networkTxBytes) < 0 ||
+    !Number.isSafeInteger(blockReadBytes) ||
+    Number(blockReadBytes) < 0 ||
+    !Number.isSafeInteger(blockWriteBytes) ||
+    Number(blockWriteBytes) < 0 ||
+    !Number.isSafeInteger(pids) ||
+    Number(pids) < 0 ||
+    Number(pids) > MAX_PIDS
+  ) {
+    return null;
+  }
+
+  return {
+    cpuPercent,
+    memoryUsageBytes: Number(memoryUsageBytes),
+    memoryLimitBytes: Number(memoryLimitBytes),
+    networkRxBytes: Number(networkRxBytes),
+    networkTxBytes: Number(networkTxBytes),
+    blockReadBytes: Number(blockReadBytes),
+    blockWriteBytes: Number(blockWriteBytes),
+    pids: Number(pids),
+  };
+}
+
+function normalizeContainerHeartbeat(value: unknown): ContainerHeartbeat | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const resources = normalizeResourceMetrics(value);
+  if (
+    resources === null ||
+    typeof value.name !== "string" ||
+    !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(value.name) ||
+    typeof value.state !== "string" ||
+    !containerStates.has(value.state) ||
+    typeof value.health !== "string" ||
+    !containerHealthStates.has(value.health) ||
+    !Number.isInteger(value.restartCount) ||
+    Number(value.restartCount) < 0 ||
+    typeof value.oomKilled !== "boolean" ||
+    (value.exitCode !== null && !Number.isInteger(value.exitCode))
+  ) {
+    return null;
+  }
+
+  return {
+    name: value.name,
+    state: value.state,
+    health: value.health,
+    restartCount: Number(value.restartCount),
+    oomKilled: value.oomKilled,
+    exitCode: value.exitCode === null ? null : Number(value.exitCode),
+    ...resources,
+  };
 }
 
 function normalizeContainers(value: unknown): ContainerHeartbeat[] | null {
@@ -137,8 +245,9 @@ function normalizeContainers(value: unknown): ContainerHeartbeat[] | null {
 
   const seen = new Set<string>();
   const containers: ContainerHeartbeat[] = [];
-  for (const container of value) {
-    if (!isContainerHeartbeat(container) || seen.has(container.name)) {
+  for (const valueItem of value) {
+    const container = normalizeContainerHeartbeat(valueItem);
+    if (!container || seen.has(container.name)) {
       return null;
     }
     seen.add(container.name);
