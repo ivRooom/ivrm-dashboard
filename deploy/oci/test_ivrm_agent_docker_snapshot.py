@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import unittest
 from pathlib import Path
+from unittest import mock
 
 MODULE_PATH = Path(__file__).with_name("ivrm-agent-docker-snapshot.py")
 SPEC = importlib.util.spec_from_file_location("ivrm_agent_docker_snapshot", MODULE_PATH)
@@ -44,6 +46,15 @@ class ParseDockerStatsTest(unittest.TestCase):
     def test_rejects_partial_size_pair(self) -> None:
         with self.assertRaises(ValueError):
             collector.parse_size_pair("128MiB")
+
+    def test_translates_stats_timeout_to_runtime_error(self) -> None:
+        with mock.patch.object(
+            collector.subprocess,
+            "run",
+            side_effect=subprocess.TimeoutExpired(["docker", "stats"], 12),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "タイムアウト"):
+                collector.collect_stats("/usr/bin/docker", "mc-main")
 
 
 if __name__ == "__main__":
