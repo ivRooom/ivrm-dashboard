@@ -60,7 +60,7 @@ begin
     count(*) as sample_count
   from public.container_samples as samples
   join public.hosts as hosts on hosts.id = samples.host_id
-  where samples.received_at >= clock_timestamp() - make_interval(hours => p_hours)
+  where samples.received_at >= statement_timestamp() - make_interval(hours => p_hours)
     and hosts.enabled
     and (
       samples.cpu_percent is not null
