@@ -173,6 +173,40 @@ func TestValidateMinecraftEndpointRejectsInvalidPlayers(t *testing.T) {
 	}
 }
 
+func TestValidateSnapshotMinecraftDropsOnlyInvalidProbe(t *testing.T) {
+	t.Parallel()
+
+	latency := 10
+	version := "26.1.2"
+	online := 11
+	maximum := 10
+	snapshot := dockerSnapshot{
+		Containers: []containerMetrics{
+			{Name: "mc-main", State: "running", Health: "healthy"},
+		},
+		Minecraft: &minecraftProbe{
+			PublicEndpoint: minecraftEndpoint{
+				Reachable: true,
+				LatencyMs: &latency,
+				Version:   &version,
+				Online:    &online,
+				Max:       &maximum,
+			},
+			Backend: minecraftEndpoint{Reachable: false},
+		},
+	}
+
+	if err := validateSnapshotMinecraft(&snapshot); err == nil {
+		t.Fatal("不正なMinecraft Probeを検出できませんでした")
+	}
+	if snapshot.Minecraft != nil {
+		t.Fatal("不正なMinecraft Probeが残っています")
+	}
+	if len(snapshot.Containers) != 1 || snapshot.Containers[0].Name != "mc-main" {
+		t.Fatalf("Docker状態まで破棄されました: %#v", snapshot.Containers)
+	}
+}
+
 func TestValidateContainerResourceMetricsAcceptsCompleteValues(t *testing.T) {
 	t.Parallel()
 
