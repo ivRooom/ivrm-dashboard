@@ -1,31 +1,36 @@
-# OCI Docker監視の配置・更新
+# OCI Docker・Minecraft監視の配置と更新
 
-Docker Socketを非特権の`ivrm-agent`へ渡さず、rootで動く短時間のsystemd oneshotが許可済みコンテナだけを調査します。収集結果は機密情報を除いたJSONとして`/run/ivrm-agent/docker-state.json`へ書き出し、Go Agentはそのファイルだけを読み取ります。
+Docker Socketを非特権の`ivrm-agent`へ渡さず、rootで動く短時間のsystemd oneshotが許可済みコンテナと固定されたMinecraft接続先だけを調査します。収集結果は機密情報を除いたJSONとして`/run/ivrm-agent/docker-state.json`へ書き出し、Go Agentはそのファイルだけを読み取ります。
 
 ## 構成
 
 ```text
 root / systemd timer（10秒）
-  ├─ docker inspect（許可済み3コンテナのみ）
-  └─ docker stats --no-stream（稼働中のみ）
+  ├─ docker inspect（許可済み4コンテナのみ）
+  ├─ docker stats --no-stream（稼働中のみ）
+  ├─ 127.0.0.1:25565 Minecraft Ping
+  └─ mc-main内部IP:25565 Minecraft Ping
        └─ /run/ivrm-agent/docker-state.json
             └─ ivrm-agent（非特権）
                  └─ HTTPS Heartbeat
 ```
 
-Agentを`docker`グループへ追加しません。Docker Socket、環境変数、Mount、IP、ログ本文、Secretは外部へ送信しません。
+Agentを`docker`グループへ追加しません。Docker Socket、環境変数、Mount、内部IP、ログ本文、Secretは外部へ送信しません。Minecraft Probeの接続先・コンテナ名・ネットワーク・ポートはコード内の許可リストへ固定し、環境変数から任意接続先を指定できない設計です。
 
 ## 収集対象
 
 `/etc/ivrm-agent/docker.env`で次のコンテナだけを許可します。
 
 ```env
-IVRM_DOCKER_CONTAINERS=mc-main,mc-resource,mc-resource-router
+IVRM_DOCKER_CONTAINERS=mc-main,ivrm-velocity,mc-resource,mc-resource-router
 IVRM_DOCKER_SNAPSHOT_PATH=/run/ivrm-agent/docker-state.json
 IVRM_DOCKER_BINARY=/usr/bin/docker
+IVRM_MINECRAFT_PROBE_ENABLED=true
 ```
 
 Collectorは次の値だけをJSONへ保存します。
+
+### Docker
 
 - State、Health、RestartCount、OOMKilled、ExitCode
 - CPU使用率
@@ -34,7 +39,15 @@ Collectorは次の値だけをJSONへ保存します。
 - Block Read / Write累計
 - PIDs
 
-停止中・未作成のコンテナではリソース値を`null`にします。`docker stats`だけが失敗した場合も状態情報は保存します。
+### Minecraft
+
+- 公開`127.0.0.1:25565`の到達性・レイテンシ・Version・Online・Max
+- Velocityから利用する`mc-main:25565`相当の内部到達性
+- `ivrm-velocity`の`25565/tcp`公開設定
+- `mc-main`の`25565/tcp`直接公開設定
+- `mc-main`の`24454/udp`Voice Chat公開設定
+
+内部IP、プレイヤーIP、RCON、forwarding secret、PCF secretは収集しません。停止中・未作成のコンテナではリソース値を`null`にします。`docker stats`またはMinecraft Pingだけが失敗しても、取得できた状態情報を保存します。
 
 ## 初回配置
 
@@ -63,8 +76,6 @@ sudo install -o root -g root -m 600 \
   /etc/ivrm-agent/docker.env
 ```
 
-実際のコンテナ名が異なる場合は、root権限で`/etc/ivrm-agent/docker.env`だけを修正します。
-
 Runtimeディレクトリを作成します。
 
 ```bash
@@ -91,7 +102,7 @@ sudo chown root:ivrm-agent /etc/ivrm-agent/agent.env
 sudo chmod 640 /etc/ivrm-agent/agent.env
 ```
 
-## Agent `0.4.0`への更新
+## Agent `0.5.0`への更新
 
 PRのマージ後、`main`を取得したディレクトリで実行します。
 
@@ -104,7 +115,6 @@ git clone --depth 1 https://github.com/ivRooom/ivrm-dashboard.git
 cd ivrm-dashboard
 
 git rev-parse --short HEAD
-
 python3 -m unittest deploy/oci/test_ivrm_agent_docker_snapshot.py
 
 cd apps/agent
@@ -115,37 +125,47 @@ go build -trimpath -ldflags='-s -w' \
 cd ../..
 ```
 
-CollectorとAgentを置き換えます。既存の環境ファイルとSecretは変更しません。
+Collector、systemd unit、設定例、Agentを置き換えます。既存のAgent Secretは変更しません。
 
 ```bash
 sudo install -o root -g root -m 755 \
   deploy/oci/ivrm-agent-docker-snapshot.py \
   /usr/local/libexec/ivrm-agent-docker-snapshot
 
+sudo install -o root -g root -m 644 \
+  deploy/oci/ivrm-agent-docker-snapshot.service \
+  /etc/systemd/system/ivrm-agent-docker-snapshot.service
+
 sudo install -o root -g root -m 755 \
   /tmp/ivrm-agent \
   /usr/local/bin/ivrm-agent
 ```
 
+`/etc/ivrm-agent/docker.env`はSecretを含まないため、次の固定値へ更新します。
+
+```bash
+sudo tee /etc/ivrm-agent/docker.env >/dev/null <<'EOF'
+IVRM_DOCKER_CONTAINERS=mc-main,ivrm-velocity,mc-resource,mc-resource-router
+IVRM_DOCKER_SNAPSHOT_PATH=/run/ivrm-agent/docker-state.json
+IVRM_DOCKER_BINARY=/usr/bin/docker
+IVRM_MINECRAFT_PROBE_ENABLED=true
+EOF
+sudo chown root:root /etc/ivrm-agent/docker.env
+sudo chmod 600 /etc/ivrm-agent/docker.env
+```
+
 Collectorを先に実行し、JSONを検証します。
 
 ```bash
+sudo systemctl daemon-reload
+sudo systemd-analyze verify \
+  /etc/systemd/system/ivrm-agent-docker-snapshot.service \
+  /etc/systemd/system/ivrm-agent-docker-snapshot.timer
 sudo systemctl start ivrm-agent-docker-snapshot.service
 sudo python3 -m json.tool /run/ivrm-agent/docker-state.json
 ```
 
-稼働中コンテナには次のキーが数値で入り、停止中コンテナでは`null`になります。
-
-```text
-cpuPercent
-memoryUsageBytes
-memoryLimitBytes
-networkRxBytes
-networkTxBytes
-blockReadBytes
-blockWriteBytes
-pids
-```
+正常時は`containers`が4件になり、`minecraft`に公開側・バックエンド側の到達性とポート公開状態が入ります。内部IPやSecretがJSONに含まれてはいけません。
 
 Agentを再起動します。
 
@@ -173,34 +193,29 @@ sudo journalctl -u ivrm-agent -n 20 --no-pager -l
 成功時は次の形式になります。
 
 ```text
-"msg":"IVRM Agentを開始します","version":"0.4.0"
-"msg":"Heartbeatを送信しました","containers":3
+"msg":"IVRM Agentを開始します","version":"0.5.0"
+"msg":"Heartbeatを送信しました","containers":4,"minecraft":true
 ```
 
-スナップショットに機密情報が含まれていないことも確認します。
+公開設定も確認します。
 
 ```bash
-sudo python3 - <<'PY'
-import json
-from pathlib import Path
-
-snapshot = json.loads(Path("/run/ivrm-agent/docker-state.json").read_text())
-print("generatedAt:", snapshot.get("generatedAt"))
-for item in snapshot.get("containers", []):
-    print(
-        item.get("name"),
-        item.get("state"),
-        item.get("cpuPercent"),
-        item.get("memoryUsageBytes"),
-        item.get("pids"),
-    )
-PY
+sudo docker port ivrm-velocity 25565/tcp
+sudo docker port mc-main 25565/tcp
+sudo docker port mc-main 24454/udp
 ```
+
+期待結果:
+
+- `ivrm-velocity 25565/tcp`: ホスト`25565`へ公開
+- `mc-main 25565/tcp`: 公開なし
+- `mc-main 24454/udp`: ホスト`24454`へ公開
 
 ## 障害時の挙動
 
 - Docker停止・権限エラー・`docker inspect`の不正応答時は新しいスナップショットを作成しません。
 - `docker stats`のみ失敗した場合、対象コンテナのリソース値を`null`にして状態情報を保存します。
-- スナップショットが45秒より古い場合、Agentはコンテナ配列を送信せずHost Heartbeatだけを継続します。
+- 公開Pingまたは内部Pingが失敗した場合、対象Probeを`reachable=false`としてDocker監視とHost Heartbeatを継続します。
+- スナップショットが45秒より古い場合、AgentはDocker・Minecraft情報を送信せずHost Heartbeatだけを継続します。
 - 指定コンテナが存在しない場合は`not_found`として保存します。
-- Docker監視の障害でMinecraftコンテナを停止・起動・再起動する処理はありません。
+- 監視障害でMinecraftコンテナを停止・起動・再起動する処理はありません。

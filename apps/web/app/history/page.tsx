@@ -65,6 +65,7 @@ export default async function HistoryPage() {
         </a>
         <nav aria-label="メインナビゲーション">
           <a href="/#top">概要</a>
+          <a href="/minecraft">Minecraft</a>
           <a href="/#hosts">ホスト</a>
           <a href="/#containers">コンテナ</a>
           <a aria-current="page" href="/history">

@@ -1,0 +1,261 @@
+.minecraftContent {
+  max-width: 1540px;
+}
+
+.secondaryLink {
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.secondaryLink:hover {
+  border-color: #3c4453;
+  background: var(--panel-2);
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(150px, 0.7fr));
+  gap: 12px;
+  margin: 38px 0 22px;
+}
+
+.hero > article,
+.card,
+.securityCard {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--panel);
+}
+
+.overall {
+  min-height: 148px;
+}
+
+.overallTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.overall h2 {
+  margin-top: 24px;
+  font-size: 29px;
+}
+
+.overall p,
+.hero span,
+.hero small,
+.card p,
+.securityCard p {
+  color: var(--muted);
+}
+
+.hero span,
+.hero small {
+  display: block;
+  font-size: 11px;
+}
+
+.hero strong {
+  display: block;
+  margin: 18px 0 8px;
+  font-size: 23px;
+}
+
+.badge {
+  width: max-content;
+  padding: 6px 9px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.operational {
+  background: rgb(120 231 154 / 13%);
+  color: var(--ok);
+}
+
+.degraded {
+  background: rgb(243 199 104 / 13%);
+  color: var(--warn);
+}
+
+.partialOutage,
+.majorOutage {
+  background: rgb(255 119 119 / 13%);
+  color: var(--bad);
+}
+
+.maintenance {
+  background: rgb(199 167 255 / 13%);
+  color: var(--maintenance);
+}
+
+.unknown {
+  background: rgb(146 153 168 / 13%);
+  color: var(--muted);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.cardHeader h3 {
+  font-size: 17px;
+}
+
+.cardHeader p {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.details > div {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-2);
+}
+
+.details span,
+.details strong {
+  display: block;
+}
+
+.details span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.details strong {
+  margin-top: 7px;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.securityCard {
+  grid-column: 1 / -1;
+}
+
+.securityGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.securityGrid > div {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-2);
+}
+
+.securityGrid span,
+.securityGrid strong {
+  display: block;
+}
+
+.securityGrid span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.securityGrid strong {
+  margin-top: 7px;
+  font-size: 13px;
+}
+
+.good {
+  color: var(--ok);
+}
+
+.bad {
+  color: var(--bad);
+}
+
+.note {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.note p {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+@media (max-width: 1180px) {
+  .hero {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .overall {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 900px) {
+  .hero,
+  .grid,
+  .securityGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .securityCard {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 620px) {
+  .hero {
+    margin-top: 28px;
+  }
+
+  .overallTop,
+  .cardHeader {
+    display: block;
+  }
+
+  .badge {
+    margin-top: 12px;
+  }
+
+  .details {
+    grid-template-columns: 1fr;
+  }
+
+  .secondaryLink {
+    display: inline-block;
+    margin-top: 16px;
+  }
+}

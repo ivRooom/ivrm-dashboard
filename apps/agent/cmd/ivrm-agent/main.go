@@ -24,13 +24,15 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 )
 
 const (
-	agentVersion              = "0.4.0"
+	agentVersion              = "0.5.0"
 	defaultDockerSnapshotPath = "/run/ivrm-agent/docker-state.json"
 	maxDockerSnapshotAge      = 45 * time.Second
 	maxContainersPerSnapshot  = 20
+	maxMinecraftPlayers       = 1_000_000
 	maxSafeInteger      uint64 = 9_007_199_254_740_991
 )
 
@@ -93,9 +95,26 @@ type containerMetrics struct {
 	PIDs               *int     `json:"pids"`
 }
 
+type minecraftEndpoint struct {
+	Reachable bool    `json:"reachable"`
+	LatencyMs *int    `json:"latencyMs"`
+	Version   *string `json:"version"`
+	Online    *int    `json:"online"`
+	Max       *int    `json:"max"`
+}
+
+type minecraftProbe struct {
+	PublicEndpoint          minecraftEndpoint `json:"publicEndpoint"`
+	Backend                 minecraftEndpoint `json:"backend"`
+	ProxyPortPublished     bool              `json:"proxyPortPublished"`
+	BackendPortPublished   bool              `json:"backendPortPublished"`
+	VoiceChatPortPublished bool              `json:"voiceChatPortPublished"`
+}
+
 type dockerSnapshot struct {
 	GeneratedAt time.Time          `json:"generatedAt"`
 	Containers  []containerMetrics `json:"containers"`
+	Minecraft   *minecraftProbe    `json:"minecraft,omitempty"`
 }
 
 type payload struct {
@@ -104,6 +123,7 @@ type payload struct {
 	SentAt       time.Time          `json:"sentAt"`
 	Host         hostMetrics        `json:"host"`
 	Containers   []containerMetrics `json:"containers"`
+	Minecraft    *minecraftProbe    `json:"minecraft,omitempty"`
 }
 
 func main() {
@@ -187,10 +207,12 @@ func runOnce(ctx context.Context, logger *slog.Logger, cfg config) {
 	}
 
 	now := time.Now().UTC()
-	containers, err := readContainerSnapshot(cfg.dockerSnapshotPath, now)
+	snapshot, err := readDockerSnapshot(cfg.dockerSnapshotPath, now)
 	if err != nil {
 		logger.Warn("Docker状態スナップショットを利用できません", "error", err)
-		containers = []containerMetrics{}
+		snapshot = dockerSnapshot{Containers: []containerMetrics{}}
+	} else if err := validateSnapshotMinecraft(&snapshot); err != nil {
+		logger.Warn("Minecraft Probeを利用できません", "error", err)
 	}
 
 	body, err := json.Marshal(payload{
@@ -198,7 +220,8 @@ func runOnce(ctx context.Context, logger *slog.Logger, cfg config) {
 		AgentVersion: agentVersion,
 		SentAt:       now,
 		Host:         metrics,
-		Containers:   containers,
+		Containers:   snapshot.Containers,
+		Minecraft:    snapshot.Minecraft,
 	})
 	if err != nil {
 		logger.Error("JSON変換に失敗しました", "error", err)
@@ -235,76 +258,114 @@ func runOnce(ctx context.Context, logger *slog.Logger, cfg config) {
 		logger.Warn("Heartbeat APIがエラーを返しました", "status", response.StatusCode)
 		return
 	}
-	logger.Info("Heartbeatを送信しました", "containers", len(containers))
+	logger.Info(
+		"Heartbeatを送信しました",
+		"containers",
+		len(snapshot.Containers),
+		"minecraft",
+		snapshot.Minecraft != nil,
+	)
 }
 
-func readContainerSnapshot(path string, now time.Time) ([]containerMetrics, error) {
+func readDockerSnapshot(path string, now time.Time) (dockerSnapshot, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return []containerMetrics{}, nil
+			return dockerSnapshot{Containers: []containerMetrics{}}, nil
 		}
-		return nil, err
+		return dockerSnapshot{}, err
 	}
 	defer file.Close()
 
-	decoder := json.NewDecoder(io.LimitReader(file, 128*1024))
+	decoder := json.NewDecoder(io.LimitReader(file, 256*1024))
 	decoder.DisallowUnknownFields()
 
 	var snapshot dockerSnapshot
 	if err := decoder.Decode(&snapshot); err != nil {
-		return nil, fmt.Errorf("DockerスナップショットのJSONが不正です: %w", err)
+		return dockerSnapshot{}, fmt.Errorf("DockerスナップショットのJSONが不正です: %w", err)
 	}
 	if snapshot.GeneratedAt.IsZero() {
-		return nil, errors.New("Dockerスナップショットの生成時刻がありません")
+		return dockerSnapshot{}, errors.New("Dockerスナップショットの生成時刻がありません")
 	}
 	age := now.Sub(snapshot.GeneratedAt)
 	if age < -5*time.Second {
-		return nil, errors.New("Dockerスナップショットの生成時刻が未来です")
+		return dockerSnapshot{}, errors.New("Dockerスナップショットの生成時刻が未来です")
 	}
 	if age > maxDockerSnapshotAge {
-		return nil, fmt.Errorf("Dockerスナップショットが古すぎます: %s", age.Round(time.Second))
+		return dockerSnapshot{}, fmt.Errorf("Dockerスナップショットが古すぎます: %s", age.Round(time.Second))
 	}
 	if len(snapshot.Containers) > maxContainersPerSnapshot {
-		return nil, fmt.Errorf("Dockerコンテナ数が上限を超えています: %d", len(snapshot.Containers))
+		return dockerSnapshot{}, fmt.Errorf("Dockerコンテナ数が上限を超えています: %d", len(snapshot.Containers))
 	}
 
 	seen := make(map[string]struct{}, len(snapshot.Containers))
 	for index, container := range snapshot.Containers {
 		if !containerNamePattern.MatchString(container.Name) {
-			return nil, fmt.Errorf("Dockerコンテナ名が不正です: index=%d", index)
+			return dockerSnapshot{}, fmt.Errorf("Dockerコンテナ名が不正です: index=%d", index)
 		}
 		if _, ok := seen[container.Name]; ok {
-			return nil, fmt.Errorf("Dockerコンテナ名が重複しています: %s", container.Name)
+			return dockerSnapshot{}, fmt.Errorf("Dockerコンテナ名が重複しています: %s", container.Name)
 		}
 		seen[container.Name] = struct{}{}
 		if _, ok := validContainerStates[container.State]; !ok {
-			return nil, fmt.Errorf("Dockerコンテナ状態が不正です: %s", container.State)
+			return dockerSnapshot{}, fmt.Errorf("Dockerコンテナ状態が不正です: %s", container.State)
 		}
 		if _, ok := validContainerHealth[container.Health]; !ok {
-			return nil, fmt.Errorf("Docker Healthが不正です: %s", container.Health)
+			return dockerSnapshot{}, fmt.Errorf("Docker Healthが不正です: %s", container.Health)
 		}
 		if container.RestartCount < 0 {
-			return nil, fmt.Errorf("Docker再起動回数が不正です: %d", container.RestartCount)
+			return dockerSnapshot{}, fmt.Errorf("Docker再起動回数が不正です: %d", container.RestartCount)
 		}
 		if err := validateContainerResourceMetrics(container); err != nil {
-			return nil, fmt.Errorf("Dockerリソース値が不正です: %s: %w", container.Name, err)
+			return dockerSnapshot{}, fmt.Errorf("Dockerリソース値が不正です: %s: %w", container.Name, err)
 		}
 	}
 
-	return snapshot.Containers, nil
+	return snapshot, nil
+}
+
+func readContainerSnapshot(path string, now time.Time) ([]containerMetrics, error) {
+	snapshot, err := readDockerSnapshot(path, now)
+	return snapshot.Containers, err
+}
+
+func validateSnapshotMinecraft(snapshot *dockerSnapshot) error {
+	if snapshot.Minecraft == nil {
+		return nil
+	}
+	if err := validateMinecraftProbe(*snapshot.Minecraft); err != nil {
+		snapshot.Minecraft = nil
+		return err
+	}
+	return nil
 }
 
 func validateContainerResourceMetrics(container containerMetrics) error {
 	metricsCount := 0
-	if container.CPUPercent != nil { metricsCount++ }
-	if container.MemoryUsageBytes != nil { metricsCount++ }
-	if container.MemoryLimitBytes != nil { metricsCount++ }
-	if container.NetworkRxBytes != nil { metricsCount++ }
-	if container.NetworkTxBytes != nil { metricsCount++ }
-	if container.BlockReadBytes != nil { metricsCount++ }
-	if container.BlockWriteBytes != nil { metricsCount++ }
-	if container.PIDs != nil { metricsCount++ }
+	if container.CPUPercent != nil {
+		metricsCount++
+	}
+	if container.MemoryUsageBytes != nil {
+		metricsCount++
+	}
+	if container.MemoryLimitBytes != nil {
+		metricsCount++
+	}
+	if container.NetworkRxBytes != nil {
+		metricsCount++
+	}
+	if container.NetworkTxBytes != nil {
+		metricsCount++
+	}
+	if container.BlockReadBytes != nil {
+		metricsCount++
+	}
+	if container.BlockWriteBytes != nil {
+		metricsCount++
+	}
+	if container.PIDs != nil {
+		metricsCount++
+	}
 
 	if metricsCount != 0 && metricsCount != 8 {
 		return errors.New("リソース値は全項目を設定するか全項目をnullにしてください")
@@ -334,6 +395,53 @@ func validateContainerResourceMetrics(container containerMetrics) error {
 	}
 	if *container.PIDs < 0 {
 		return errors.New("PIDsが負数です")
+	}
+	return nil
+}
+
+func validateMinecraftProbe(probe minecraftProbe) error {
+	if err := validateMinecraftEndpoint(probe.PublicEndpoint); err != nil {
+		return fmt.Errorf("公開側: %w", err)
+	}
+	if err := validateMinecraftEndpoint(probe.Backend); err != nil {
+		return fmt.Errorf("バックエンド側: %w", err)
+	}
+	return nil
+}
+
+func validateMinecraftEndpoint(endpoint minecraftEndpoint) error {
+	presentCount := 0
+	if endpoint.LatencyMs != nil {
+		presentCount++
+	}
+	if endpoint.Version != nil {
+		presentCount++
+	}
+	if endpoint.Online != nil {
+		presentCount++
+	}
+	if endpoint.Max != nil {
+		presentCount++
+	}
+
+	if !endpoint.Reachable {
+		if presentCount != 0 {
+			return errors.New("到達不能時の詳細値はnullにしてください")
+		}
+		return nil
+	}
+	if presentCount != 4 {
+		return errors.New("到達可能時の詳細値が不足しています")
+	}
+	if *endpoint.LatencyMs < 0 || *endpoint.LatencyMs > 60_000 {
+		return errors.New("レイテンシが許容範囲外です")
+	}
+	version := strings.TrimSpace(*endpoint.Version)
+	if version == "" || utf8.RuneCountInString(version) > 128 {
+		return errors.New("Versionが不正です")
+	}
+	if *endpoint.Online < 0 || *endpoint.Max < 1 || *endpoint.Max > maxMinecraftPlayers || *endpoint.Online > *endpoint.Max {
+		return errors.New("プレイヤー数が許容範囲外です")
 	}
 	return nil
 }

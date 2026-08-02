@@ -1,5 +1,5 @@
 [Unit]
-Description=IVRM Docker State Snapshot
+Description=IVRM Docker and Minecraft State Snapshot
 Requires=docker.service
 After=docker.service
 
@@ -21,6 +21,8 @@ ProtectControlGroups=true
 RestrictSUIDSGID=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
-RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=CAP_CHOWN
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 ReadWritePaths=/run/ivrm-agent
 UMask=0027
