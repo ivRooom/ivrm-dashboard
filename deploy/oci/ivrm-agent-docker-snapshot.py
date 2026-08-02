@@ -327,12 +327,12 @@ def parse_status_response(value: Any) -> tuple[str, int, int]:
         raise RuntimeError("Minecraft応答に必要な情報がありません")
 
     version = version_data.get("name")
+    normalized_version = version.strip() if isinstance(version, str) else ""
     online = players_data.get("online")
     maximum = players_data.get("max")
     if (
-        not isinstance(version, str)
-        or not version.strip()
-        or len(version) > 128
+        not normalized_version
+        or len(normalized_version) > 128
         or not isinstance(online, int)
         or isinstance(online, bool)
         or not isinstance(maximum, int)
@@ -343,7 +343,7 @@ def parse_status_response(value: Any) -> tuple[str, int, int]:
         or maximum > MAX_MINECRAFT_PLAYERS
     ):
         raise RuntimeError("Minecraft応答値が許容範囲外です")
-    return version.strip(), online, maximum
+    return normalized_version, online, maximum
 
 
 def minecraft_status(
