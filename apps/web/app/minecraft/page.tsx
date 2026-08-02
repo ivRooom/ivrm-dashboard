@@ -94,10 +94,12 @@ function formatContainerCPU(container: ContainerOverview | null): string {
 }
 
 function formatPlayers(overview: MinecraftOverview | null): string {
-  if (overview?.players.online === null || overview?.players.max === null) {
+  const online = overview?.players.online;
+  const maximum = overview?.players.max;
+  if (online === null || online === undefined || maximum === null || maximum === undefined) {
     return "— / —";
   }
-  return `${overview.players.online} / ${overview.players.max}`;
+  return `${online} / ${maximum}`;
 }
 
 function formatLatency(value: number | null | undefined): string {
