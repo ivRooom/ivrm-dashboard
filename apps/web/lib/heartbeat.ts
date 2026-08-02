@@ -137,6 +137,10 @@ function isFiniteNonNegative(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
+function unicodeLength(value: string): number {
+  return Array.from(value).length;
+}
+
 function normalizeResourceMetrics(
   value: Record<string, unknown>,
 ): Pick<
@@ -305,13 +309,16 @@ function normalizeMinecraftEndpoint(
     };
   }
 
+  if (typeof version !== "string") {
+    return null;
+  }
+  const normalizedVersion = version.trim();
   if (
     !Number.isInteger(latencyMs) ||
     Number(latencyMs) < 0 ||
     Number(latencyMs) > MAX_MINECRAFT_LATENCY_MS ||
-    typeof version !== "string" ||
-    version.trim().length < 1 ||
-    version.length > 128 ||
+    normalizedVersion.length < 1 ||
+    unicodeLength(normalizedVersion) > 128 ||
     !Number.isInteger(online) ||
     Number(online) < 0 ||
     !Number.isInteger(maximum) ||
@@ -325,7 +332,7 @@ function normalizeMinecraftEndpoint(
   return {
     reachable: true,
     latencyMs: Number(latencyMs),
-    version: version.trim(),
+    version: normalizedVersion,
     online: Number(online),
     max: Number(maximum),
   };
@@ -368,7 +375,9 @@ function parseHeartbeatValue(value: unknown): HeartbeatPayload | null {
   const host = value.host;
   const containers = normalizeContainers(value.containers);
   const minecraft = normalizeMinecraft(value.minecraft);
-  if (containers === null || (value.minecraft !== undefined && minecraft === null)) {
+  const minecraftProvided =
+    value.minecraft !== undefined && value.minecraft !== null;
+  if (containers === null || (minecraftProvided && minecraft === null)) {
     return null;
   }
 
