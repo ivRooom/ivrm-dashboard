@@ -107,7 +107,7 @@ class MinecraftProbeTest(unittest.TestCase):
         document = {
             "NetworkSettings": {
                 "Networks": {
-                    "minecraft-main_default": {"IPAddress": "203.0.113.10"}
+                    "minecraft-main_default": {"IPAddress": "8.8.8.8"}
                 }
             }
         }
