@@ -97,7 +97,10 @@ class MinecraftProbeTest(unittest.TestCase):
         document = {
             "NetworkSettings": {
                 "Networks": {
-                    "minecraft-main_default": {"IPAddress": "172.30.0.4"}
+                    "minecraft-main_default": {
+                        "IPAddress": "172.30.0.4",
+                        "NetworkID": "fixed-network-id",
+                    }
                 }
             }
         }
@@ -107,11 +110,57 @@ class MinecraftProbeTest(unittest.TestCase):
         document = {
             "NetworkSettings": {
                 "Networks": {
-                    "minecraft-main_default": {"IPAddress": "8.8.8.8"}
+                    "minecraft-main_default": {
+                        "IPAddress": "8.8.8.8",
+                        "NetworkID": "fixed-network-id",
+                    }
                 }
             }
         }
         self.assertIsNone(collector.backend_ip(document))
+
+    def test_backend_probe_requires_same_network_id(self) -> None:
+        proxy = {
+            "HostConfig": {"PortBindings": {}},
+            "NetworkSettings": {
+                "Ports": {},
+                "Networks": {
+                    "minecraft-main_default": {
+                        "IPAddress": "172.30.0.2",
+                        "NetworkID": "proxy-network",
+                    }
+                },
+            },
+        }
+        backend = {
+            "HostConfig": {"PortBindings": {}},
+            "NetworkSettings": {
+                "Ports": {},
+                "Networks": {
+                    "minecraft-main_default": {
+                        "IPAddress": "172.30.0.4",
+                        "NetworkID": "backend-network",
+                    }
+                },
+            },
+        }
+        public_result = {
+            "reachable": True,
+            "latencyMs": 1,
+            "version": "Velocity",
+            "online": 0,
+            "max": 10,
+        }
+        with mock.patch.object(
+            collector,
+            "minecraft_status",
+            return_value=public_result,
+        ) as status:
+            result = collector.collect_minecraft_probe(
+                {"ivrm-velocity": proxy, "mc-main": backend}
+            )
+        self.assertEqual(status.call_count, 1)
+        self.assertFalse(result["backend"]["reachable"])
 
     def test_probe_requires_fixed_containers(self) -> None:
         environment = {
