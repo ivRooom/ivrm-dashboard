@@ -42,7 +42,10 @@ MINECRAFT_PUBLIC_CONNECT_HOST = "127.0.0.1"
 MINECRAFT_PUBLIC_HANDSHAKE_HOST = "mc.ivrm.jp"
 MINECRAFT_BACKEND_HANDSHAKE_HOST = "mc-main"
 MINECRAFT_PORT = 25565
-VOICE_CHAT_PORT = 24454
+RFC1918_NETWORKS = tuple(
+    ipaddress.ip_network(cidr)
+    for cidr in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+)
 SIZE_MULTIPLIERS = {
     "B": 1,
     "kB": 1_000,
@@ -81,8 +84,7 @@ def required_container_names() -> list[str]:
         raise RuntimeError(f"監視コンテナ数は{MAX_CONTAINERS}件以下にしてください")
     if len(names) != len(set(names)):
         raise RuntimeError("監視コンテナ名が重複しています")
-    invalid = [name for name in names if not CONTAINER_NAME_PATTERN.fullmatch(name)]
-    if invalid:
+    if any(not CONTAINER_NAME_PATTERN.fullmatch(name) for name in names):
         raise RuntimeError("不正なコンテナ名があります")
 
     if parse_boolean(os.environ.get("IVRM_MINECRAFT_PROBE_ENABLED")):
@@ -111,13 +113,11 @@ def parse_size(value: str) -> int:
     match = SIZE_PATTERN.fullmatch(value.strip())
     if not match:
         raise ValueError(f"サイズ形式が不正です: {value!r}")
-
     number_text, unit = match.groups()
     try:
         result = int(Decimal(number_text) * SIZE_MULTIPLIERS[unit])
     except (InvalidOperation, KeyError) as exc:
         raise ValueError(f"サイズ形式が不正です: {value!r}") from exc
-
     if result < 0 or result > MAX_SAFE_INTEGER:
         raise ValueError(f"サイズが許容範囲外です: {value!r}")
     return result
@@ -165,14 +165,12 @@ def collect_stats(docker_binary: str, name: str) -> dict[str, Any]:
         )
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"docker statsがタイムアウトしました: {name}") from exc
-
     if completed.returncode != 0:
         raise RuntimeError(f"docker statsに失敗しました: {name}")
 
     lines = [line for line in completed.stdout.splitlines() if line.strip()]
     if len(lines) != 1:
         raise RuntimeError(f"docker statsの応答件数が不正です: {name}")
-
     try:
         stats = json.loads(lines[0])
         memory_usage, memory_limit = parse_size_pair(stats["MemUsage"])
@@ -182,7 +180,6 @@ def collect_stats(docker_binary: str, name: str) -> dict[str, Any]:
         pids = parse_pids(stats["PIDs"])
     except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
         raise RuntimeError(f"docker statsの応答形式が不正です: {name}") from exc
-
     if memory_usage > memory_limit:
         raise RuntimeError(f"docker statsのメモリ値が不正です: {name}")
 
@@ -207,13 +204,11 @@ def inspect_document(docker_binary: str, name: str) -> dict[str, Any] | None:
         timeout=8,
         env={"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
     )
-
     if completed.returncode != 0:
         error_text = completed.stderr.lower()
         if "no such object" in error_text or "no such container" in error_text:
             return None
         raise RuntimeError(f"docker inspectに失敗しました: {name}")
-
     try:
         documents = json.loads(completed.stdout)
         document = documents[0]
@@ -243,7 +238,6 @@ def container_metrics(
     state_data = document["State"]
     raw_state = state_data.get("Status")
     state = raw_state if raw_state in VALID_STATES else "unknown"
-
     health_data = state_data.get("Health")
     if isinstance(health_data, dict):
         raw_health = health_data.get("Status")
@@ -258,7 +252,6 @@ def container_metrics(
         or restart_count < 0
     ):
         restart_count = 0
-
     oom_killed = state_data.get("OOMKilled") is True
     exit_code = state_data.get("ExitCode")
     if not isinstance(exit_code, int) or isinstance(exit_code, bool):
@@ -423,7 +416,9 @@ def is_port_published(document: dict[str, Any] | None, key: str) -> bool:
     return False
 
 
-def backend_ip(document: dict[str, Any] | None) -> str | None:
+def fixed_network_attachment(
+    document: dict[str, Any] | None,
+) -> tuple[str, str] | None:
     if document is None:
         return None
     network_settings = document.get("NetworkSettings")
@@ -435,16 +430,23 @@ def backend_ip(document: dict[str, Any] | None) -> str | None:
     network = networks.get(MINECRAFT_NETWORK)
     if not isinstance(network, dict):
         return None
+
     raw_ip = network.get("IPAddress")
-    if not isinstance(raw_ip, str) or not raw_ip:
+    network_id = network.get("NetworkID")
+    if not isinstance(raw_ip, str) or not isinstance(network_id, str) or not network_id:
         return None
     try:
         address = ipaddress.ip_address(raw_ip)
     except ValueError:
         return None
-    if not address.is_private:
+    if address.version != 4 or not any(address in subnet for subnet in RFC1918_NETWORKS):
         return None
-    return str(address)
+    return str(address), network_id
+
+
+def backend_ip(document: dict[str, Any] | None) -> str | None:
+    attachment = fixed_network_attachment(document)
+    return attachment[0] if attachment else None
 
 
 def collect_minecraft_probe(
@@ -452,7 +454,15 @@ def collect_minecraft_probe(
 ) -> dict[str, Any]:
     proxy_document = documents.get(MINECRAFT_PROXY_CONTAINER)
     backend_document = documents.get(MINECRAFT_BACKEND_CONTAINER)
-    internal_ip = backend_ip(backend_document)
+    proxy_attachment = fixed_network_attachment(proxy_document)
+    backend_attachment = fixed_network_attachment(backend_document)
+    internal_ip = (
+        backend_attachment[0]
+        if proxy_attachment
+        and backend_attachment
+        and proxy_attachment[1] == backend_attachment[1]
+        else None
+    )
 
     public_status = minecraft_status(
         MINECRAFT_PUBLIC_CONNECT_HOST,
