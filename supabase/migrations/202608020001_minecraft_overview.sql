@@ -20,8 +20,11 @@ create table if not exists public.minecraft_samples (
   constraint minecraft_samples_public_values_check check (
     (
       public_reachable
-      and public_latency_ms between 0 and 60000
+      and public_latency_ms is not null
       and public_version is not null
+      and public_online is not null
+      and public_max is not null
+      and public_latency_ms between 0 and 60000
       and char_length(public_version) between 1 and 128
       and public_online between 0 and 1000000
       and public_max between 1 and 1000000
@@ -38,8 +41,11 @@ create table if not exists public.minecraft_samples (
   constraint minecraft_samples_backend_values_check check (
     (
       backend_reachable
-      and backend_latency_ms between 0 and 60000
+      and backend_latency_ms is not null
       and backend_version is not null
+      and backend_online is not null
+      and backend_max is not null
+      and backend_latency_ms between 0 and 60000
       and char_length(backend_version) between 1 and 128
       and backend_online between 0 and 1000000
       and backend_max between 1 and 1000000
@@ -241,12 +247,12 @@ begin
     v_received_at,
     (p_minecraft->'publicEndpoint'->>'reachable')::boolean,
     case when p_minecraft->'publicEndpoint'->'latencyMs' = 'null'::jsonb then null else (p_minecraft->'publicEndpoint'->>'latencyMs')::integer end,
-    nullif(p_minecraft->'publicEndpoint'->>'version', ''),
+    nullif(btrim(p_minecraft->'publicEndpoint'->>'version'), ''),
     case when p_minecraft->'publicEndpoint'->'online' = 'null'::jsonb then null else (p_minecraft->'publicEndpoint'->>'online')::integer end,
     case when p_minecraft->'publicEndpoint'->'max' = 'null'::jsonb then null else (p_minecraft->'publicEndpoint'->>'max')::integer end,
     (p_minecraft->'backend'->>'reachable')::boolean,
     case when p_minecraft->'backend'->'latencyMs' = 'null'::jsonb then null else (p_minecraft->'backend'->>'latencyMs')::integer end,
-    nullif(p_minecraft->'backend'->>'version', ''),
+    nullif(btrim(p_minecraft->'backend'->>'version'), ''),
     case when p_minecraft->'backend'->'online' = 'null'::jsonb then null else (p_minecraft->'backend'->>'online')::integer end,
     case when p_minecraft->'backend'->'max' = 'null'::jsonb then null else (p_minecraft->'backend'->>'max')::integer end,
     (p_minecraft->>'proxyPortPublished')::boolean,
