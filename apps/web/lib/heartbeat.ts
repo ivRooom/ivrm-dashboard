@@ -8,6 +8,8 @@ const MAX_CLOCK_SKEW_SECONDS = 300;
 const MAX_CONTAINERS = 20;
 const MAX_CPU_PERCENT = 100_000;
 const MAX_PIDS = 2_147_483_647;
+const MAX_MINECRAFT_PLAYERS = 1_000_000;
+const MAX_MINECRAFT_LATENCY_MS = 60_000;
 export const MAX_HEARTBEAT_BODY_BYTES = 32 * 1024;
 
 const containerStates = new Set([
@@ -47,6 +49,22 @@ export type ContainerHeartbeat = {
   pids: number | null;
 };
 
+export type MinecraftEndpointHeartbeat = {
+  reachable: boolean;
+  latencyMs: number | null;
+  version: string | null;
+  online: number | null;
+  max: number | null;
+};
+
+export type MinecraftHeartbeat = {
+  publicEndpoint: MinecraftEndpointHeartbeat;
+  backend: MinecraftEndpointHeartbeat;
+  proxyPortPublished: boolean;
+  backendPortPublished: boolean;
+  voiceChatPortPublished: boolean;
+};
+
 export type HeartbeatPayload = {
   serverId: string;
   agentVersion: string;
@@ -63,6 +81,7 @@ export type HeartbeatPayload = {
     uptimeSeconds: number;
   };
   containers: ContainerHeartbeat[];
+  minecraft: MinecraftHeartbeat | null;
 };
 
 type PersistResult =
@@ -256,6 +275,91 @@ function normalizeContainers(value: unknown): ContainerHeartbeat[] | null {
   return containers;
 }
 
+function normalizeMinecraftEndpoint(
+  value: unknown,
+): MinecraftEndpointHeartbeat | null {
+  if (!isRecord(value) || typeof value.reachable !== "boolean") {
+    return null;
+  }
+
+  const latencyMs = value.latencyMs ?? null;
+  const version = value.version ?? null;
+  const online = value.online ?? null;
+  const maximum = value.max ?? null;
+
+  if (!value.reachable) {
+    if (
+      latencyMs !== null ||
+      version !== null ||
+      online !== null ||
+      maximum !== null
+    ) {
+      return null;
+    }
+    return {
+      reachable: false,
+      latencyMs: null,
+      version: null,
+      online: null,
+      max: null,
+    };
+  }
+
+  if (
+    !Number.isInteger(latencyMs) ||
+    Number(latencyMs) < 0 ||
+    Number(latencyMs) > MAX_MINECRAFT_LATENCY_MS ||
+    typeof version !== "string" ||
+    version.trim().length < 1 ||
+    version.length > 128 ||
+    !Number.isInteger(online) ||
+    Number(online) < 0 ||
+    !Number.isInteger(maximum) ||
+    Number(maximum) < 1 ||
+    Number(maximum) > MAX_MINECRAFT_PLAYERS ||
+    Number(online) > Number(maximum)
+  ) {
+    return null;
+  }
+
+  return {
+    reachable: true,
+    latencyMs: Number(latencyMs),
+    version: version.trim(),
+    online: Number(online),
+    max: Number(maximum),
+  };
+}
+
+function normalizeMinecraft(value: unknown): MinecraftHeartbeat | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const publicEndpoint = normalizeMinecraftEndpoint(value.publicEndpoint);
+  const backend = normalizeMinecraftEndpoint(value.backend);
+  if (
+    !publicEndpoint ||
+    !backend ||
+    typeof value.proxyPortPublished !== "boolean" ||
+    typeof value.backendPortPublished !== "boolean" ||
+    typeof value.voiceChatPortPublished !== "boolean"
+  ) {
+    return null;
+  }
+
+  return {
+    publicEndpoint,
+    backend,
+    proxyPortPublished: value.proxyPortPublished,
+    backendPortPublished: value.backendPortPublished,
+    voiceChatPortPublished: value.voiceChatPortPublished,
+  };
+}
+
 function parseHeartbeatValue(value: unknown): HeartbeatPayload | null {
   if (!isRecord(value) || !isRecord(value.host)) {
     return null;
@@ -263,7 +367,8 @@ function parseHeartbeatValue(value: unknown): HeartbeatPayload | null {
 
   const host = value.host;
   const containers = normalizeContainers(value.containers);
-  if (containers === null) {
+  const minecraft = normalizeMinecraft(value.minecraft);
+  if (containers === null || (value.minecraft !== undefined && minecraft === null)) {
     return null;
   }
 
@@ -306,6 +411,7 @@ function parseHeartbeatValue(value: unknown): HeartbeatPayload | null {
       uptimeSeconds: host.uptimeSeconds,
     },
     containers,
+    minecraft,
   };
 }
 
@@ -419,7 +525,7 @@ export async function persistHeartbeat(
   bodySha256: string,
 ): Promise<void> {
   const { url, serviceRoleKey } = getSupabaseConfiguration();
-  const response = await fetch(`${url}/rest/v1/rpc/insert_agent_heartbeat`, {
+  const response = await fetch(`${url}/rest/v1/rpc/insert_agent_heartbeat_v2`, {
     method: "POST",
     headers: supabaseHeaders(serviceRoleKey),
     body: JSON.stringify({
@@ -438,6 +544,7 @@ export async function persistHeartbeat(
       p_load_average_15: payload.host.loadAverage15,
       p_uptime_seconds: payload.host.uptimeSeconds,
       p_containers: payload.containers,
+      p_minecraft: payload.minecraft,
     }),
     cache: "no-store",
   });
