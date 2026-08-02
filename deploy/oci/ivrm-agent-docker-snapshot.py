@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-"""許可済みDockerコンテナの状態と限定メトリクスをJSONへ書き出す。"""
+"""許可済みDockerコンテナとMinecraft疎通情報を限定JSONへ書き出す。"""
 
 from __future__ import annotations
 
 import grp
+import ipaddress
 import json
 import os
 import re
+import socket
+import struct
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -29,6 +33,16 @@ VALID_STATES = {
 VALID_HEALTH = {"starting", "healthy", "unhealthy"}
 MAX_CONTAINERS = 20
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
+MAX_MINECRAFT_PACKET_BYTES = 2 * 1024 * 1024
+MAX_MINECRAFT_PLAYERS = 1_000_000
+MINECRAFT_PROXY_CONTAINER = "ivrm-velocity"
+MINECRAFT_BACKEND_CONTAINER = "mc-main"
+MINECRAFT_NETWORK = "minecraft-main_default"
+MINECRAFT_PUBLIC_CONNECT_HOST = "127.0.0.1"
+MINECRAFT_PUBLIC_HANDSHAKE_HOST = "mc.ivrm.jp"
+MINECRAFT_BACKEND_HANDSHAKE_HOST = "mc-main"
+MINECRAFT_PORT = 25565
+VOICE_CHAT_PORT = 24454
 SIZE_MULTIPLIERS = {
     "B": 1,
     "kB": 1_000,
@@ -47,6 +61,17 @@ SIZE_MULTIPLIERS = {
 }
 
 
+def parse_boolean(value: str | None, default: bool = False) -> bool:
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise RuntimeError("真偽値の設定が不正です")
+
+
 def required_container_names() -> list[str]:
     raw = os.environ.get("IVRM_DOCKER_CONTAINERS", "")
     names = [name.strip() for name in raw.split(",") if name.strip()]
@@ -59,6 +84,13 @@ def required_container_names() -> list[str]:
     invalid = [name for name in names if not CONTAINER_NAME_PATTERN.fullmatch(name)]
     if invalid:
         raise RuntimeError("不正なコンテナ名があります")
+
+    if parse_boolean(os.environ.get("IVRM_MINECRAFT_PROBE_ENABLED")):
+        required = {MINECRAFT_PROXY_CONTAINER, MINECRAFT_BACKEND_CONTAINER}
+        if not required.issubset(names):
+            raise RuntimeError(
+                "Minecraft Probeにはivrm-velocityとmc-mainの監視登録が必要です"
+            )
     return names
 
 
@@ -166,7 +198,7 @@ def collect_stats(docker_binary: str, name: str) -> dict[str, Any]:
     }
 
 
-def inspect_container(docker_binary: str, name: str) -> dict[str, Any]:
+def inspect_document(docker_binary: str, name: str) -> dict[str, Any] | None:
     completed = subprocess.run(
         [docker_binary, "inspect", name],
         check=False,
@@ -179,24 +211,36 @@ def inspect_container(docker_binary: str, name: str) -> dict[str, Any]:
     if completed.returncode != 0:
         error_text = completed.stderr.lower()
         if "no such object" in error_text or "no such container" in error_text:
-            return {
-                "name": name,
-                "state": "not_found",
-                "health": "unknown",
-                "restartCount": 0,
-                "oomKilled": False,
-                "exitCode": None,
-                **empty_resource_metrics(),
-            }
+            return None
         raise RuntimeError(f"docker inspectに失敗しました: {name}")
 
     try:
         documents = json.loads(completed.stdout)
         document = documents[0]
-        state_data = document["State"]
+        if not isinstance(document, dict) or not isinstance(document["State"], dict):
+            raise TypeError
     except (json.JSONDecodeError, IndexError, KeyError, TypeError) as exc:
         raise RuntimeError(f"docker inspectの応答形式が不正です: {name}") from exc
+    return document
 
+
+def container_metrics(
+    docker_binary: str,
+    name: str,
+    document: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if document is None:
+        return {
+            "name": name,
+            "state": "not_found",
+            "health": "unknown",
+            "restartCount": 0,
+            "oomKilled": False,
+            "exitCode": None,
+            **empty_resource_metrics(),
+        }
+
+    state_data = document["State"]
     raw_state = state_data.get("Status")
     state = raw_state if raw_state in VALID_STATES else "unknown"
 
@@ -238,14 +282,217 @@ def inspect_container(docker_binary: str, name: str) -> dict[str, Any]:
     }
 
 
-def write_snapshot(output_path: Path, containers: list[dict[str, Any]]) -> None:
+def encode_varint(value: int) -> bytes:
+    if value < 0 or value > 2_147_483_647:
+        raise ValueError("VarIntが許容範囲外です")
+    encoded = bytearray()
+    while True:
+        current = value & 0x7F
+        value >>= 7
+        if value:
+            current |= 0x80
+        encoded.append(current)
+        if not value:
+            return bytes(encoded)
+
+
+def read_exact(connection: socket.socket, length: int) -> bytes:
+    if length < 0 or length > MAX_MINECRAFT_PACKET_BYTES:
+        raise RuntimeError("Minecraftパケット長が不正です")
+    buffer = bytearray()
+    while len(buffer) < length:
+        chunk = connection.recv(length - len(buffer))
+        if not chunk:
+            raise RuntimeError("Minecraft応答が途中で終了しました")
+        buffer.extend(chunk)
+    return bytes(buffer)
+
+
+def read_varint(connection: socket.socket) -> int:
+    result = 0
+    for index in range(5):
+        current = read_exact(connection, 1)[0]
+        result |= (current & 0x7F) << (7 * index)
+        if current & 0x80 == 0:
+            return result
+    raise RuntimeError("Minecraft VarIntが長すぎます")
+
+
+def encode_string(value: str) -> bytes:
+    encoded = value.encode("utf-8")
+    if len(encoded) > 255:
+        raise ValueError("Minecraft接続先名が長すぎます")
+    return encode_varint(len(encoded)) + encoded
+
+
+def parse_status_response(value: Any) -> tuple[str, int, int]:
+    if not isinstance(value, dict):
+        raise RuntimeError("Minecraft応答JSONが不正です")
+    version_data = value.get("version")
+    players_data = value.get("players")
+    if not isinstance(version_data, dict) or not isinstance(players_data, dict):
+        raise RuntimeError("Minecraft応答に必要な情報がありません")
+
+    version = version_data.get("name")
+    online = players_data.get("online")
+    maximum = players_data.get("max")
+    if (
+        not isinstance(version, str)
+        or not version.strip()
+        or len(version) > 128
+        or not isinstance(online, int)
+        or isinstance(online, bool)
+        or not isinstance(maximum, int)
+        or isinstance(maximum, bool)
+        or online < 0
+        or maximum < 1
+        or online > maximum
+        or maximum > MAX_MINECRAFT_PLAYERS
+    ):
+        raise RuntimeError("Minecraft応答値が許容範囲外です")
+    return version.strip(), online, maximum
+
+
+def minecraft_status(
+    connect_host: str,
+    handshake_host: str,
+    port: int = MINECRAFT_PORT,
+    timeout: float = 3.0,
+) -> dict[str, Any]:
+    started = time.monotonic()
+    try:
+        handshake = (
+            encode_varint(0)
+            + encode_varint(47)
+            + encode_string(handshake_host)
+            + struct.pack(">H", port)
+            + encode_varint(1)
+        )
+        with socket.create_connection((connect_host, port), timeout=timeout) as connection:
+            connection.settimeout(timeout)
+            connection.sendall(encode_varint(len(handshake)) + handshake)
+            connection.sendall(b"\x01\x00")
+
+            packet_length = read_varint(connection)
+            if packet_length < 2 or packet_length > MAX_MINECRAFT_PACKET_BYTES:
+                raise RuntimeError("Minecraft応答パケット長が不正です")
+            packet_id = read_varint(connection)
+            if packet_id != 0:
+                raise RuntimeError("Minecraft応答パケットIDが不正です")
+            json_length = read_varint(connection)
+            if json_length < 2 or json_length > MAX_MINECRAFT_PACKET_BYTES:
+                raise RuntimeError("Minecraft応答JSON長が不正です")
+            document = json.loads(read_exact(connection, json_length).decode("utf-8"))
+
+        version, online, maximum = parse_status_response(document)
+        latency_ms = max(0, min(60_000, round((time.monotonic() - started) * 1_000)))
+        return {
+            "reachable": True,
+            "latencyMs": latency_ms,
+            "version": version,
+            "online": online,
+            "max": maximum,
+        }
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, RuntimeError, ValueError) as exc:
+        print(
+            f"WARNING: Minecraft Pingに失敗しました: {handshake_host}: {exc}",
+            file=sys.stderr,
+        )
+        return {
+            "reachable": False,
+            "latencyMs": None,
+            "version": None,
+            "online": None,
+            "max": None,
+        }
+
+
+def is_port_published(document: dict[str, Any] | None, key: str) -> bool:
+    if document is None:
+        return False
+    host_config = document.get("HostConfig")
+    network_settings = document.get("NetworkSettings")
+    if isinstance(host_config, dict):
+        bindings = host_config.get("PortBindings")
+        if isinstance(bindings, dict) and bindings.get(key):
+            return True
+    if isinstance(network_settings, dict):
+        ports = network_settings.get("Ports")
+        if isinstance(ports, dict) and ports.get(key):
+            return True
+    return False
+
+
+def backend_ip(document: dict[str, Any] | None) -> str | None:
+    if document is None:
+        return None
+    network_settings = document.get("NetworkSettings")
+    if not isinstance(network_settings, dict):
+        return None
+    networks = network_settings.get("Networks")
+    if not isinstance(networks, dict):
+        return None
+    network = networks.get(MINECRAFT_NETWORK)
+    if not isinstance(network, dict):
+        return None
+    raw_ip = network.get("IPAddress")
+    if not isinstance(raw_ip, str) or not raw_ip:
+        return None
+    try:
+        address = ipaddress.ip_address(raw_ip)
+    except ValueError:
+        return None
+    if not address.is_private:
+        return None
+    return str(address)
+
+
+def collect_minecraft_probe(
+    documents: dict[str, dict[str, Any] | None],
+) -> dict[str, Any]:
+    proxy_document = documents.get(MINECRAFT_PROXY_CONTAINER)
+    backend_document = documents.get(MINECRAFT_BACKEND_CONTAINER)
+    internal_ip = backend_ip(backend_document)
+
+    public_status = minecraft_status(
+        MINECRAFT_PUBLIC_CONNECT_HOST,
+        MINECRAFT_PUBLIC_HANDSHAKE_HOST,
+    )
+    backend_status = (
+        minecraft_status(internal_ip, MINECRAFT_BACKEND_HANDSHAKE_HOST)
+        if internal_ip
+        else {
+            "reachable": False,
+            "latencyMs": None,
+            "version": None,
+            "online": None,
+            "max": None,
+        }
+    )
+
+    return {
+        "publicEndpoint": public_status,
+        "backend": backend_status,
+        "proxyPortPublished": is_port_published(proxy_document, "25565/tcp"),
+        "backendPortPublished": is_port_published(backend_document, "25565/tcp"),
+        "voiceChatPortPublished": is_port_published(backend_document, "24454/udp"),
+    }
+
+
+def write_snapshot(
+    output_path: Path,
+    containers: list[dict[str, Any]],
+    minecraft: dict[str, Any] | None,
+) -> None:
     output_path.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
-    payload = {
+    payload: dict[str, Any] = {
         "generatedAt": datetime.now(timezone.utc)
         .isoformat(timespec="milliseconds")
         .replace("+00:00", "Z"),
         "containers": containers,
     }
+    if minecraft is not None:
+        payload["minecraft"] = minecraft
 
     group_id = grp.getgrnam("ivrm-agent").gr_gid
     descriptor, temporary_name = tempfile.mkstemp(
@@ -279,10 +526,17 @@ def main() -> None:
     if not output_path.is_absolute():
         raise RuntimeError("IVRM_DOCKER_SNAPSHOT_PATHは絶対パスにしてください")
 
+    names = required_container_names()
+    documents = {name: inspect_document(docker_binary, name) for name in names}
     containers = [
-        inspect_container(docker_binary, name) for name in required_container_names()
+        container_metrics(docker_binary, name, documents[name]) for name in names
     ]
-    write_snapshot(output_path, containers)
+    minecraft = (
+        collect_minecraft_probe(documents)
+        if parse_boolean(os.environ.get("IVRM_MINECRAFT_PROBE_ENABLED"))
+        else None
+    )
+    write_snapshot(output_path, containers, minecraft)
 
 
 if __name__ == "__main__":
