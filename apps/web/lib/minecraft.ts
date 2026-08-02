@@ -133,17 +133,17 @@ function containerIsUnavailable(container: ContainerOverview | null): boolean {
   );
 }
 
-function determineStatus(
+export function determineMinecraftStatus(
   sample: MinecraftSampleRow | null,
   ageSeconds: number | null,
   velocity: ContainerOverview | null,
   backend: ContainerOverview | null,
 ): MinecraftOverallStatus {
-  if (!sample || ageSeconds === null || ageSeconds > STALE_SECONDS) {
-    return "unknown";
-  }
   if (velocity?.maintenanceActive || backend?.maintenanceActive) {
     return "maintenance";
+  }
+  if (!sample || ageSeconds === null || ageSeconds > STALE_SECONDS) {
+    return "unknown";
   }
   if (
     containerIsUnavailable(velocity) ||
@@ -211,7 +211,7 @@ export async function getMinecraftOverview(): Promise<MinecraftOverview> {
     : endpoint(false, null, null, null, null);
 
   return {
-    status: determineStatus(sample, ageSeconds, velocity, backend),
+    status: determineMinecraftStatus(sample, ageSeconds, velocity, backend),
     checkedAt: sample?.received_at ?? null,
     ageSeconds,
     publicEndpoint: {
