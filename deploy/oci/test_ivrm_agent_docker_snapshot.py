@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import unittest
 from pathlib import Path
@@ -55,6 +56,82 @@ class ParseDockerStatsTest(unittest.TestCase):
         ):
             with self.assertRaisesRegex(RuntimeError, "タイムアウト"):
                 collector.collect_stats("/usr/bin/docker", "mc-main")
+
+
+class MinecraftProbeTest(unittest.TestCase):
+    def test_encodes_varint(self) -> None:
+        self.assertEqual(collector.encode_varint(0), b"\x00")
+        self.assertEqual(collector.encode_varint(25565), b"\xdd\xc7\x01")
+
+    def test_parses_status_response(self) -> None:
+        self.assertEqual(
+            collector.parse_status_response(
+                {
+                    "version": {"name": "Velocity 1.7.2-26.2"},
+                    "players": {"online": 3, "max": 10},
+                }
+            ),
+            ("Velocity 1.7.2-26.2", 3, 10),
+        )
+
+    def test_rejects_invalid_player_count(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "許容範囲外"):
+            collector.parse_status_response(
+                {
+                    "version": {"name": "26.1.2"},
+                    "players": {"online": 11, "max": 10},
+                }
+            )
+
+    def test_detects_published_port(self) -> None:
+        document = {
+            "HostConfig": {
+                "PortBindings": {"25565/tcp": [{"HostPort": "25565"}]}
+            },
+            "NetworkSettings": {"Ports": {}},
+        }
+        self.assertTrue(collector.is_port_published(document, "25565/tcp"))
+        self.assertFalse(collector.is_port_published(document, "24454/udp"))
+
+    def test_reads_private_backend_ip(self) -> None:
+        document = {
+            "NetworkSettings": {
+                "Networks": {
+                    "minecraft-main_default": {"IPAddress": "172.30.0.4"}
+                }
+            }
+        }
+        self.assertEqual(collector.backend_ip(document), "172.30.0.4")
+
+    def test_rejects_public_backend_ip(self) -> None:
+        document = {
+            "NetworkSettings": {
+                "Networks": {
+                    "minecraft-main_default": {"IPAddress": "203.0.113.10"}
+                }
+            }
+        }
+        self.assertIsNone(collector.backend_ip(document))
+
+    def test_probe_requires_fixed_containers(self) -> None:
+        environment = {
+            "IVRM_DOCKER_CONTAINERS": "mc-main,mc-resource-router",
+            "IVRM_MINECRAFT_PROBE_ENABLED": "true",
+        }
+        with mock.patch.dict(os.environ, environment, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "ivrm-velocity"):
+                collector.required_container_names()
+
+    def test_probe_accepts_fixed_containers(self) -> None:
+        environment = {
+            "IVRM_DOCKER_CONTAINERS": "mc-main,ivrm-velocity",
+            "IVRM_MINECRAFT_PROBE_ENABLED": "true",
+        }
+        with mock.patch.dict(os.environ, environment, clear=True):
+            self.assertEqual(
+                collector.required_container_names(),
+                ["mc-main", "ivrm-velocity"],
+            )
 
 
 if __name__ == "__main__":
