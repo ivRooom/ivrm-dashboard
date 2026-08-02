@@ -96,7 +96,12 @@ function formatContainerCPU(container: ContainerOverview | null): string {
 function formatPlayers(overview: MinecraftOverview | null): string {
   const online = overview?.players.online;
   const maximum = overview?.players.max;
-  if (online === null || online === undefined || maximum === null || maximum === undefined) {
+  if (
+    online === null ||
+    online === undefined ||
+    maximum === null ||
+    maximum === undefined
+  ) {
     return "— / —";
   }
   return `${online} / ${maximum}`;
@@ -108,6 +113,23 @@ function formatLatency(value: number | null | undefined): string {
 
 function reachability(value: boolean | undefined): string {
   return value ? "応答あり" : "応答なし";
+}
+
+function isStableContainer(container: ContainerOverview | null): boolean {
+  return (
+    container !== null &&
+    ["online", "standby", "maintenance"].includes(container.status)
+  );
+}
+
+function stableContainerLabel(container: ContainerOverview | null): string {
+  if (container?.status === "maintenance") {
+    return "メンテナンス";
+  }
+  if (container?.status === "standby") {
+    return "待機中";
+  }
+  return isStableContainer(container) ? "正常" : "要確認";
 }
 
 export default async function MinecraftPage() {
@@ -124,6 +146,9 @@ export default async function MinecraftPage() {
   const status = overview?.status ?? "unknown";
   const velocity = overview?.velocity ?? null;
   const backend = overview?.backend ?? null;
+  const velocityStable = isStableContainer(velocity);
+  const backendStable = isStableContainer(backend);
+  const backendReachable = overview?.backendProbe.reachable === true;
 
   return (
     <main className="shell">
@@ -245,9 +270,9 @@ export default async function MinecraftPage() {
                     <p>Mojang認証と正規UUID・接続元情報の転送を担当します。</p>
                   </div>
                   <b
-                    className={`${styles.badge} ${velocity?.status === "online" ? styles.operational : styles.majorOutage}`}
+                    className={`${styles.badge} ${velocityStable ? styles.operational : styles.majorOutage}`}
                   >
-                    {velocity?.status === "online" ? "正常" : "要確認"}
+                    {stableContainerLabel(velocity)}
                   </b>
                 </div>
                 <div className={styles.details}>
@@ -285,9 +310,13 @@ export default async function MinecraftPage() {
                     <p>Docker内部ネットワークからのみVelocityが接続します。</p>
                   </div>
                   <b
-                    className={`${styles.badge} ${overview?.backendProbe.reachable && backend?.status === "online" ? styles.operational : styles.partialOutage}`}
+                    className={`${styles.badge} ${backendReachable && backendStable ? styles.operational : styles.partialOutage}`}
                   >
-                    {overview?.backendProbe.reachable ? "内部疎通あり" : "内部疎通なし"}
+                    {!backendReachable
+                      ? "内部疎通なし"
+                      : backendStable
+                        ? stableContainerLabel(backend)
+                        : "状態要確認"}
                   </b>
                 </div>
                 <div className={styles.details}>
