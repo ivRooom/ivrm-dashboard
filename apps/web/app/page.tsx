@@ -14,6 +14,7 @@ export const dynamic = "force-dynamic";
 
 const navigation = [
   { label: "概要", href: "#top" },
+  { label: "Minecraft", href: "/minecraft" },
   { label: "ホスト", href: "#hosts" },
   { label: "コンテナ", href: "#containers" },
   { label: "履歴グラフ", href: "/history" },
