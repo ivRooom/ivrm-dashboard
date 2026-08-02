@@ -92,6 +92,87 @@ func TestReadContainerSnapshot(t *testing.T) {
 	}
 }
 
+func TestReadDockerSnapshotAcceptsMinecraftProbe(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 2, 0, 0, 30, 0, time.UTC)
+	latency := 42
+	version := "Velocity 1.7.2-26.2"
+	online := 0
+	maximum := 10
+	path := writeSnapshot(t, dockerSnapshot{
+		GeneratedAt: now.Add(-5 * time.Second),
+		Containers:  []containerMetrics{},
+		Minecraft: &minecraftProbe{
+			PublicEndpoint: minecraftEndpoint{
+				Reachable: true,
+				LatencyMs: &latency,
+				Version:   &version,
+				Online:    &online,
+				Max:       &maximum,
+			},
+			Backend: minecraftEndpoint{
+				Reachable: true,
+				LatencyMs: &latency,
+				Version:   &version,
+				Online:    &online,
+				Max:       &maximum,
+			},
+			ProxyPortPublished:     true,
+			BackendPortPublished:   false,
+			VoiceChatPortPublished: true,
+		},
+	})
+
+	snapshot, err := readDockerSnapshot(path, now)
+	if err != nil {
+		t.Fatalf("Minecraft Probeを読み取れません: %v", err)
+	}
+	if snapshot.Minecraft == nil || !snapshot.Minecraft.PublicEndpoint.Reachable {
+		t.Fatalf("Minecraft Probeが欠落しました: %#v", snapshot.Minecraft)
+	}
+}
+
+func TestValidateMinecraftEndpointAcceptsUnreachable(t *testing.T) {
+	t.Parallel()
+
+	if err := validateMinecraftEndpoint(minecraftEndpoint{Reachable: false}); err != nil {
+		t.Fatalf("到達不能のProbeを拒否しました: %v", err)
+	}
+}
+
+func TestValidateMinecraftEndpointRejectsPartialReachable(t *testing.T) {
+	t.Parallel()
+
+	latency := 10
+	err := validateMinecraftEndpoint(minecraftEndpoint{
+		Reachable: true,
+		LatencyMs: &latency,
+	})
+	if err == nil {
+		t.Fatal("不完全な到達可能Probeを拒否できませんでした")
+	}
+}
+
+func TestValidateMinecraftEndpointRejectsInvalidPlayers(t *testing.T) {
+	t.Parallel()
+
+	latency := 10
+	version := "26.1.2"
+	online := 11
+	maximum := 10
+	err := validateMinecraftEndpoint(minecraftEndpoint{
+		Reachable: true,
+		LatencyMs: &latency,
+		Version:   &version,
+		Online:    &online,
+		Max:       &maximum,
+	})
+	if err == nil {
+		t.Fatal("不正なプレイヤー数を拒否できませんでした")
+	}
+}
+
 func TestValidateContainerResourceMetricsAcceptsCompleteValues(t *testing.T) {
 	t.Parallel()
 
