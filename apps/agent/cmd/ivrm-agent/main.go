@@ -24,6 +24,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -104,7 +105,7 @@ type minecraftEndpoint struct {
 
 type minecraftProbe struct {
 	PublicEndpoint          minecraftEndpoint `json:"publicEndpoint"`
-	Backend                minecraftEndpoint `json:"backend"`
+	Backend                 minecraftEndpoint `json:"backend"`
 	ProxyPortPublished     bool              `json:"proxyPortPublished"`
 	BackendPortPublished   bool              `json:"backendPortPublished"`
 	VoiceChatPortPublished bool              `json:"voiceChatPortPublished"`
@@ -210,6 +211,8 @@ func runOnce(ctx context.Context, logger *slog.Logger, cfg config) {
 	if err != nil {
 		logger.Warn("Docker状態スナップショットを利用できません", "error", err)
 		snapshot = dockerSnapshot{Containers: []containerMetrics{}}
+	} else if err := validateSnapshotMinecraft(&snapshot); err != nil {
+		logger.Warn("Minecraft Probeを利用できません", "error", err)
 	}
 
 	body, err := json.Marshal(payload{
@@ -317,11 +320,6 @@ func readDockerSnapshot(path string, now time.Time) (dockerSnapshot, error) {
 			return dockerSnapshot{}, fmt.Errorf("Dockerリソース値が不正です: %s: %w", container.Name, err)
 		}
 	}
-	if snapshot.Minecraft != nil {
-		if err := validateMinecraftProbe(*snapshot.Minecraft); err != nil {
-			return dockerSnapshot{}, fmt.Errorf("Minecraft Probeが不正です: %w", err)
-		}
-	}
 
 	return snapshot, nil
 }
@@ -329,6 +327,17 @@ func readDockerSnapshot(path string, now time.Time) (dockerSnapshot, error) {
 func readContainerSnapshot(path string, now time.Time) ([]containerMetrics, error) {
 	snapshot, err := readDockerSnapshot(path, now)
 	return snapshot.Containers, err
+}
+
+func validateSnapshotMinecraft(snapshot *dockerSnapshot) error {
+	if snapshot.Minecraft == nil {
+		return nil
+	}
+	if err := validateMinecraftProbe(*snapshot.Minecraft); err != nil {
+		snapshot.Minecraft = nil
+		return err
+	}
+	return nil
 }
 
 func validateContainerResourceMetrics(container containerMetrics) error {
@@ -428,7 +437,7 @@ func validateMinecraftEndpoint(endpoint minecraftEndpoint) error {
 		return errors.New("レイテンシが許容範囲外です")
 	}
 	version := strings.TrimSpace(*endpoint.Version)
-	if version == "" || len(version) > 128 {
+	if version == "" || utf8.RuneCountInString(version) > 128 {
 		return errors.New("Versionが不正です")
 	}
 	if *endpoint.Online < 0 || *endpoint.Max < 1 || *endpoint.Max > maxMinecraftPlayers || *endpoint.Online > *endpoint.Max {
