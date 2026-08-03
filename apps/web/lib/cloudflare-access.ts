@@ -156,9 +156,13 @@ function parsePayload(value: unknown): JwtPayload {
   };
 }
 
-async function getSigningKeys(teamDomain: string): Promise<AccessJwk[]> {
+async function getSigningKeys(
+  teamDomain: string,
+  forceRefresh = false,
+): Promise<AccessJwk[]> {
   const now = Date.now();
   if (
+    !forceRefresh &&
     jwksCache &&
     jwksCache.teamDomain === teamDomain &&
     jwksCache.expiresAt > now
@@ -234,10 +238,13 @@ export async function verifyCloudflareAccessJwt(
     throw new Error("Access JWT署名が不正です");
   }
 
-  const keys = await getSigningKeys(configuration.teamDomain);
-  const signingKey = keys.find((key) => key.kid === header.kid);
+  let keys = await getSigningKeys(configuration.teamDomain);
+  let signingKey = keys.find((key) => key.kid === header.kid);
   if (!signingKey) {
-    jwksCache = null;
+    keys = await getSigningKeys(configuration.teamDomain, true);
+    signingKey = keys.find((key) => key.kid === header.kid);
+  }
+  if (!signingKey) {
     throw new Error("Access JWT署名鍵が見つかりません");
   }
   const publicKey = await crypto.subtle.importKey(
