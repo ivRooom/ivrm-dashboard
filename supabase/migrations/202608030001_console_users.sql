@@ -42,8 +42,9 @@ alter table public.console_users force row level security;
 revoke all on table public.console_users from public;
 revoke all on table public.console_users from anon;
 revoke all on table public.console_users from authenticated;
+revoke all on table public.console_users from service_role;
 
-grant all on table public.console_users to service_role;
+grant select, insert, update on table public.console_users to service_role;
 
 comment on table public.console_users is
   'Cloudflare Access identityとWebコンソールRBACを管理する。Minecraft LuckPermsとは別管理。';
