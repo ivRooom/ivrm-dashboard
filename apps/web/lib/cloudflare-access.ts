@@ -44,14 +44,19 @@ type JwtPayload = {
   type?: string;
 };
 
+type AccessJwk = JsonWebKey & {
+  kid?: string;
+  use?: string;
+};
+
 type JwksResponse = {
-  keys: JsonWebKey[];
+  keys: AccessJwk[];
 };
 
 type JwksCache = {
   teamDomain: string;
   expiresAt: number;
-  keys: JsonWebKey[];
+  keys: AccessJwk[];
 };
 
 const CLOCK_SKEW_SECONDS = 60;
@@ -151,7 +156,7 @@ function parsePayload(value: unknown): JwtPayload {
   };
 }
 
-async function getSigningKeys(teamDomain: string): Promise<JsonWebKey[]> {
+async function getSigningKeys(teamDomain: string): Promise<AccessJwk[]> {
   const now = Date.now();
   if (
     jwksCache &&
