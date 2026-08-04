@@ -131,7 +131,7 @@ export default async function OperationsPage() {
                 style={{
                   ...cardStyle,
                   display: "grid",
-                  gridTemplateColumns: "minmax(210px, 1fr) minmax(260px, 2fr)",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
                   gap: 20,
                   alignItems: "start",
                 }}
@@ -163,7 +163,7 @@ export default async function OperationsPage() {
                   <dl
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "150px 1fr",
+                      gridTemplateColumns: "minmax(110px, 150px) 1fr",
                       gap: "8px 16px",
                       margin: 0,
                     }}
@@ -237,4 +237,5 @@ const termStyle = {
 const descriptionStyle = {
   margin: 0,
   color: "#dbeafe",
+  overflowWrap: "anywhere",
 } as const;
