@@ -42,6 +42,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     });
     return response;
   } catch {
-    return NextResponse.redirect(new URL("/login?error=configuration", request.url));
+    return NextResponse.redirect(new URL("/login?error=configuration_error", request.url));
   }
 }
