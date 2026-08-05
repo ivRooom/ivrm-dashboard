@@ -322,22 +322,29 @@ export async function exchangeDiscordAuthorizationCode(
     "utf8",
   ).toString("base64");
 
-  const response = await fetch(`${DISCORD_API_BASE}/oauth2/token`, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${basic}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
-    },
-    body,
-    cache: "no-store",
-    signal: AbortSignal.timeout(10_000),
-  });
+  try {
+    const response = await fetch(`${DISCORD_API_BASE}/oauth2/token`, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${basic}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
+      body,
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
 
-  if (!response.ok) {
+    if (!response.ok) {
+      throw new DiscordAuthError("oauth_exchange_failed");
+    }
+    return parseDiscordTokenResponse((await response.json()) as unknown);
+  } catch (error) {
+    if (error instanceof DiscordAuthError) {
+      throw error;
+    }
     throw new DiscordAuthError("oauth_exchange_failed");
   }
-  return parseDiscordTokenResponse((await response.json()) as unknown);
 }
 
 function parseDiscordUser(value: unknown): Omit<DiscordIdentity, "roleIds" | "pending"> {
@@ -384,16 +391,23 @@ async function fetchDiscordJson(
   path: string,
   accessToken: string,
 ): Promise<{ status: number; body: unknown }> {
-  const response = await fetch(`${DISCORD_API_BASE}${path}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: "application/json",
-    },
-    cache: "no-store",
-    signal: AbortSignal.timeout(10_000),
-  });
-  const body = response.status === 204 ? null : ((await response.json().catch(() => null)) as unknown);
-  return { status: response.status, body };
+  try {
+    const response = await fetch(`${DISCORD_API_BASE}${path}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+      },
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
+    const body =
+      response.status === 204
+        ? null
+        : ((await response.json().catch(() => null)) as unknown);
+    return { status: response.status, body };
+  } catch {
+    throw new DiscordAuthError("discord_identity_invalid");
+  }
 }
 
 export async function fetchDiscordIdentity(
