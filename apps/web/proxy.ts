@@ -108,20 +108,18 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     return accessError(request, 503, "access_not_configured");
   }
 
-  if (discordMode !== "disabled") {
-    if (publicRoute) {
-      return continueRequest(requestHeaders, "disabled", "disabled");
-    }
+  if (discordMode !== "disabled" && publicRoute) {
+    return continueRequest(requestHeaders, "disabled", "disabled");
+  }
 
+  if (discordMode === "enforce") {
     const hasSessionCookie = Boolean(
       request.cookies.get(DISCORD_SESSION_COOKIE)?.value,
     );
     if (hasSessionCookie) {
       return continueRequest(requestHeaders, "disabled", "disabled");
     }
-    if (discordMode === "enforce") {
-      return discordAuthenticationRequired(request);
-    }
+    return discordAuthenticationRequired(request);
   }
 
   let mode: "disabled" | "report" | "enforce";
