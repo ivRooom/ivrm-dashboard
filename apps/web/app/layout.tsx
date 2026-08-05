@@ -11,6 +11,18 @@ export const metadata: Metadata = {
   description: "IVRMのサービスとインフラを監視する統合運用コンソール",
 };
 
+const navigationLinkStyle = {
+  border: "1px solid rgba(148, 163, 184, 0.35)",
+  borderRadius: 999,
+  background: "rgba(7, 17, 31, 0.9)",
+  color: "#dbeafe",
+  padding: "7px 12px",
+  fontSize: 12,
+  fontWeight: 700,
+  textDecoration: "none",
+  backdropFilter: "blur(10px)",
+} as const;
+
 export default async function RootLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
@@ -20,26 +32,26 @@ export default async function RootLayout({
   return (
     <html lang="ja">
       <body>
-        <a
-          href="/security"
+        <nav
+          aria-label="管理コンソール"
           style={{
             position: "fixed",
             zIndex: 1000,
             top: 12,
             right: 12,
-            border: "1px solid rgba(148, 163, 184, 0.35)",
-            borderRadius: 999,
-            background: "rgba(7, 17, 31, 0.9)",
-            color: "#dbeafe",
-            padding: "7px 12px",
-            fontSize: 12,
-            fontWeight: 700,
-            textDecoration: "none",
-            backdropFilter: "blur(10px)",
+            display: "flex",
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
+            gap: 8,
           }}
         >
-          認証・権限
-        </a>
+          <a href="/operations" style={navigationLinkStyle}>
+            操作基盤
+          </a>
+          <a href="/security" style={navigationLinkStyle}>
+            認証・権限
+          </a>
+        </nav>
         {allowed ? (
           children
         ) : (
