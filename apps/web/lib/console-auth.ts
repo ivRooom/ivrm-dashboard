@@ -1,12 +1,21 @@
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import {
   ACCESS_HEADERS,
   getAccessMode,
   type AccessMode,
   type AccessState,
 } from "./cloudflare-access";
+import {
+  DISCORD_PUBLIC_ROUTE_HEADER,
+  DISCORD_SESSION_COOKIE,
+  discordAvatarUrl,
+  getDiscordAuthMode,
+  resolveDiscordConsoleSession,
+  type DiscordAuthMode,
+} from "./discord-auth";
 
 export type ConsoleRole = "viewer" | "operator" | "administrator" | "owner";
+export type ConsoleAuthProvider = "discord" | "cloudflare_access" | "none";
 
 export type ConsoleSessionStatus =
   | "disabled"
@@ -20,10 +29,17 @@ export type ConsoleSessionStatus =
 export type ConsoleSession = {
   mode: AccessMode;
   accessState: AccessState;
+  discordMode: DiscordAuthMode;
+  authProvider: ConsoleAuthProvider;
   status: ConsoleSessionStatus;
   email: string | null;
   displayName: string | null;
   role: ConsoleRole | null;
+  discordUserId: string | null;
+  discordUsername: string | null;
+  discordAvatarUrl: string | null;
+  matchedDiscordRoleIds: string[];
+  sessionExpiresAt: string | null;
 };
 
 type HeaderReader = {
@@ -79,6 +95,23 @@ function supabaseConfiguration(): { url: string; serviceRoleKey: string } {
   return {
     url: requireEnvironment("SUPABASE_URL").replace(/\/$/, ""),
     serviceRoleKey: requireEnvironment("SUPABASE_SERVICE_ROLE_KEY"),
+  };
+}
+
+function emptyDiscordFields(): Pick<
+  ConsoleSession,
+  | "discordUserId"
+  | "discordUsername"
+  | "discordAvatarUrl"
+  | "matchedDiscordRoleIds"
+  | "sessionExpiresAt"
+> {
+  return {
+    discordUserId: null,
+    discordUsername: null,
+    discordAvatarUrl: null,
+    matchedDiscordRoleIds: [],
+    sessionExpiresAt: null,
   };
 }
 
@@ -140,9 +173,18 @@ async function findConsoleUser(subject: string): Promise<ConsoleUserRow | null> 
   return user;
 }
 
+function safeDiscordMode(): DiscordAuthMode {
+  try {
+    return getDiscordAuthMode();
+  } catch {
+    return "enforce";
+  }
+}
+
 export async function getConsoleSessionFromHeaders(
   headerReader: HeaderReader,
 ): Promise<ConsoleSession> {
+  const discordMode = safeDiscordMode();
   let mode: AccessMode;
   try {
     const headerMode = headerReader.get(ACCESS_HEADERS.mode);
@@ -154,10 +196,13 @@ export async function getConsoleSessionFromHeaders(
     return {
       mode: "enforce",
       accessState: "config_missing",
+      discordMode,
+      authProvider: "none",
       status: "error",
       email: null,
       displayName: null,
       role: null,
+      ...emptyDiscordFields(),
     };
   }
 
@@ -171,10 +216,13 @@ export async function getConsoleSessionFromHeaders(
     return {
       mode,
       accessState,
+      discordMode,
+      authProvider: "none",
       status: "disabled",
       email: null,
       displayName: null,
       role: null,
+      ...emptyDiscordFields(),
     };
   }
 
@@ -184,10 +232,13 @@ export async function getConsoleSessionFromHeaders(
     return {
       mode,
       accessState,
+      discordMode,
+      authProvider: "none",
       status: "unauthenticated",
       email: null,
       displayName: null,
       role: null,
+      ...emptyDiscordFields(),
     };
   }
 
@@ -197,54 +248,134 @@ export async function getConsoleSessionFromHeaders(
       return {
         mode,
         accessState,
+        discordMode,
+        authProvider: "cloudflare_access",
         status: "unregistered",
         email,
         displayName: null,
         role: null,
+        ...emptyDiscordFields(),
       };
     }
     if (user.email !== email || user.access_subject !== subject) {
       return {
         mode,
         accessState,
+        discordMode,
+        authProvider: "cloudflare_access",
         status: "identity_mismatch",
         email,
         displayName: null,
         role: null,
+        ...emptyDiscordFields(),
       };
     }
     if (!user.is_active) {
       return {
         mode,
         accessState,
+        discordMode,
+        authProvider: "cloudflare_access",
         status: "inactive",
         email,
         displayName: user.display_name,
         role: null,
+        ...emptyDiscordFields(),
       };
     }
     return {
       mode,
       accessState,
+      discordMode,
+      authProvider: "cloudflare_access",
       status: "authenticated",
       email,
       displayName: user.display_name,
       role: user.role,
+      ...emptyDiscordFields(),
     };
   } catch {
     return {
       mode,
       accessState,
+      discordMode,
+      authProvider: "cloudflare_access",
       status: "error",
       email,
       displayName: null,
       role: null,
+      ...emptyDiscordFields(),
     };
   }
 }
 
 export async function getConsoleSession(): Promise<ConsoleSession> {
-  return getConsoleSessionFromHeaders(await headers());
+  const [headerStore, cookieStore] = await Promise.all([headers(), cookies()]);
+  const discordMode = safeDiscordMode();
+
+  if (discordMode !== "disabled") {
+    const sessionToken = cookieStore.get(DISCORD_SESSION_COOKIE)?.value || null;
+    if (sessionToken) {
+      try {
+        const discordSession = await resolveDiscordConsoleSession(sessionToken);
+        if (discordSession) {
+          return {
+            mode: "disabled",
+            accessState: "disabled",
+            discordMode,
+            authProvider: "discord",
+            status: "authenticated",
+            email: null,
+            displayName:
+              discordSession.discordGlobalName || discordSession.discordUsername,
+            role: discordSession.consoleRole,
+            discordUserId: discordSession.discordUserId,
+            discordUsername: discordSession.discordUsername,
+            discordAvatarUrl: discordAvatarUrl(
+              discordSession.discordUserId,
+              discordSession.discordAvatarHash,
+            ),
+            matchedDiscordRoleIds: discordSession.matchedRoleIds,
+            sessionExpiresAt: discordSession.expiresAt,
+          };
+        }
+      } catch {
+        if (discordMode === "enforce") {
+          return {
+            mode: "disabled",
+            accessState: "disabled",
+            discordMode,
+            authProvider: "discord",
+            status: "error",
+            email: null,
+            displayName: null,
+            role: null,
+            ...emptyDiscordFields(),
+          };
+        }
+      }
+    }
+
+    if (discordMode === "enforce") {
+      return {
+        mode: "disabled",
+        accessState: "disabled",
+        discordMode,
+        authProvider: "none",
+        status: "unauthenticated",
+        email: null,
+        displayName: null,
+        role: null,
+        ...emptyDiscordFields(),
+      };
+    }
+  }
+
+  return getConsoleSessionFromHeaders(headerStore);
+}
+
+export async function isPublicConsoleRoute(): Promise<boolean> {
+  return (await headers()).get(DISCORD_PUBLIC_ROUTE_HEADER) === "1";
 }
 
 export function hasConsoleRole(
@@ -259,6 +390,9 @@ export function hasConsoleRole(
 }
 
 export function canReadConsoleDuringRollout(session: ConsoleSession): boolean {
+  if (session.discordMode === "enforce") {
+    return hasConsoleRole(session, "viewer");
+  }
   if (session.mode !== "enforce") {
     return true;
   }
