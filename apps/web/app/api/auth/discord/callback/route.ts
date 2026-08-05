@@ -14,6 +14,7 @@ import {
   resolveDiscordConsoleRole,
   revokeDiscordAccessToken,
   sanitizeReturnPath,
+  type DiscordAuthConfiguration,
   type DiscordLoginFailureReason,
 } from "../../../../../lib/discord-auth";
 
@@ -69,6 +70,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   let discordUserId: string | null = null;
   let guildId: string | null = null;
   let accessToken: string | null = null;
+  let configuration: DiscordAuthConfiguration | null = null;
 
   if (oauthError) {
     await recordDiscordLoginDenied({
@@ -106,7 +108,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const configuration = getDiscordAuthConfiguration();
+    configuration = getDiscordAuthConfiguration();
     if (!configuration) {
       throw new DiscordAuthError("configuration_error");
     }
@@ -156,15 +158,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     });
     return loginErrorResponse(request, reason);
   } finally {
-    if (accessToken) {
-      try {
-        const configuration = getDiscordAuthConfiguration();
-        if (configuration) {
-          await revokeDiscordAccessToken(accessToken, configuration);
-        }
-      } catch {
-        // OAuth Tokenは保存せず、Discord側の有効期限に委ねる。
-      }
+    if (accessToken && configuration) {
+      await revokeDiscordAccessToken(accessToken, configuration).catch(() => undefined);
     }
   }
 }
