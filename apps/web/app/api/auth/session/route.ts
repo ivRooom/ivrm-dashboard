@@ -7,12 +7,23 @@ export async function GET() {
   const session = await getConsoleSession();
   return NextResponse.json(
     {
-      mode: session.mode,
-      accessState: session.accessState,
+      authProvider: session.authProvider,
       status: session.status,
-      email: session.email,
-      displayName: session.displayName,
       role: session.role,
+      displayName: session.displayName,
+      email: session.email,
+      discord: {
+        mode: session.discordMode,
+        userId: session.discordUserId,
+        username: session.discordUsername,
+        avatarUrl: session.discordAvatarUrl,
+        matchedRoleCount: session.matchedDiscordRoleIds.length,
+        sessionExpiresAt: session.sessionExpiresAt,
+      },
+      cloudflareAccess: {
+        mode: session.mode,
+        state: session.accessState,
+      },
     },
     {
       headers: {
