@@ -3,12 +3,13 @@ import { getConsoleSession } from "../../lib/console-auth";
 import {
   getDiscordAuthConfiguration,
   getDiscordAuthMode,
+  sanitizeReturnPath,
   type DiscordLoginFailureReason,
 } from "../../lib/discord-auth";
 
 export const dynamic = "force-dynamic";
 
-const errorMessages: Record<DiscordLoginFailureReason | "auth_disabled", string> = {
+const errorMessages: Record<DiscordLoginFailureReason | "auth_disabled" | "unauthenticated", string> = {
   oauth_denied: "Discordでの認証がキャンセルされました。",
   oauth_state_invalid: "ログイン要求を確認できませんでした。最初からやり直してください。",
   oauth_code_missing: "Discordから認証コードを受け取れませんでした。",
@@ -20,6 +21,7 @@ const errorMessages: Record<DiscordLoginFailureReason | "auth_disabled", string>
   session_create_failed: "ログインセッションを作成できませんでした。",
   configuration_error: "管理コンソールのDiscord認証設定を確認してください。",
   auth_disabled: "Discord認証はまだ有効化されていません。",
+  unauthenticated: "Discordでログインしてください。",
 };
 
 type LoginPageProps = {
@@ -34,12 +36,15 @@ function firstValue(value: string | string[] | undefined): string | null {
 }
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
-  const session = await getConsoleSession();
+  const [session, params] = await Promise.all([
+    getConsoleSession(),
+    searchParams,
+  ]);
+  const returnPath = sanitizeReturnPath(firstValue(params.returnTo));
   if (session.status === "authenticated") {
-    redirect("/");
+    redirect(returnPath);
   }
 
-  const params = await searchParams;
   const errorCode = firstValue(params.error);
   const loggedOut = firstValue(params.loggedOut) === "1";
   let mode: "disabled" | "report" | "enforce" = "enforce";
@@ -58,6 +63,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       : errorCode
         ? "ログイン処理に失敗しました。"
         : null;
+  const loginHref = `/api/auth/discord/start?returnTo=${encodeURIComponent(returnPath)}`;
 
   return (
     <main
@@ -128,7 +134,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
         {configured ? (
           <a
-            href="/api/auth/discord/start?returnTo=/"
+            href={loginHref}
             style={{
               display: "flex",
               alignItems: "center",
