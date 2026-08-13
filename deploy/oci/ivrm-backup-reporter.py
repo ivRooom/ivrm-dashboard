@@ -6,12 +6,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import secrets
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -60,9 +62,28 @@ def build_body(server_id: str, input_value: dict[str, Any], reported_at: str | N
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 
 
-def send_report(endpoint: str, server_id: str, secret: str, body: bytes) -> int:
-    if not endpoint.startswith("https://") and not endpoint.startswith("http://127.0.0.1") and not endpoint.startswith("http://localhost"):
+def validate_endpoint(endpoint: str) -> None:
+    parsed = urllib.parse.urlparse(endpoint)
+    if parsed.username is not None or parsed.password is not None or not parsed.hostname:
+        raise ValueError("Backup Endpointが不正です")
+    if parsed.scheme == "https":
+        return
+    if parsed.scheme != "http":
         raise ValueError("Backup EndpointはHTTPSを使用してください")
+
+    hostname = parsed.hostname
+    if hostname == "localhost":
+        return
+    try:
+        if ipaddress.ip_address(hostname).is_loopback:
+            return
+    except ValueError:
+        pass
+    raise ValueError("HTTPはlocalhostまたはloopback IPでのみ使用できます")
+
+
+def send_report(endpoint: str, server_id: str, secret: str, body: bytes) -> int:
+    validate_endpoint(endpoint)
     if len(secret) < 32:
         raise ValueError("IVRM_AGENT_TOKENは32文字以上が必要です")
 
