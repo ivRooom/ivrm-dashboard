@@ -1,18 +1,8 @@
 import type { ReliabilitySnapshot } from "../../lib/reliability";
 import styles from "./reliability.module.css";
 
-function date(timestamp: string | null): string {
-  if (!timestamp || !Number.isFinite(Date.parse(timestamp))) return "なし";
-  return new Intl.DateTimeFormat("ja-JP", {
-    dateStyle: "short",
-    timeStyle: "short",
-    timeZone: "Asia/Tokyo",
-  }).format(new Date(timestamp));
-}
-
-function count(value: number | null): string {
-  return value === null ? "不明" : String(value);
-}
+const count = (value: number | null) => value === null ? "不明" : String(value);
+const date = (value: string | null) => !value || !Number.isFinite(Date.parse(value)) ? "なし" : new Intl.DateTimeFormat("ja-JP", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Tokyo" }).format(new Date(value));
 
 export function ReliabilityNotificationPanel({ data }: { data: ReliabilitySnapshot }) {
   const notification = data.notifications;
@@ -29,12 +19,11 @@ export function ReliabilityNotificationPanel({ data }: { data: ReliabilitySnapsh
         <div><span>FAILED</span><strong>{count(notification.failedCount)}</strong></div>
         <div><span>SENT 24H</span><strong>{count(notification.sent24hCount)}</strong></div>
         <div><span>SUPPRESSED</span><strong>{count(notification.suppressedCount)}</strong></div>
+        <div><span>ACTIVE SUPPRESSIONS</span><strong>{count(notification.activeSuppressionCount)}</strong></div>
         <div><span>LAST DELIVERY</span><strong>{date(notification.lastDeliveryAt)}</strong></div>
         <div><span>DISPATCHER SUCCESS</span><strong>{date(notification.dispatcherLastSuccessAt)}</strong></div>
       </div>
-      {notification.lastErrorCode ? (
-        <div className={styles.coverage}>最新配送エラー: {notification.lastErrorCode}</div>
-      ) : null}
+      {notification.lastErrorCode ? <div className={styles.coverage}>最新配送エラー: {notification.lastErrorCode}</div> : null}
     </section>
   );
 }
