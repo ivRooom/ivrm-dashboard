@@ -104,6 +104,9 @@ export default async function RootLayout({
           <a href="/incidents" style={navigationLinkStyle}>
             インシデント
           </a>
+          <a href="/backups" style={navigationLinkStyle}>
+            バックアップ
+          </a>
           <a href="/events" style={navigationLinkStyle}>
             イベント
           </a>
