@@ -100,7 +100,6 @@ type OpenEpisode = {
 };
 
 const INCIDENT_RANGES = new Set<IncidentRange>(["24h", "7d", "30d"]);
-const ACTIVE_HOST_STATUSES = new Set(["stale", "offline"] as const);
 const ACTIVE_CONTAINER_STATUSES = new Set(["error", "stale", "offline"] as const);
 const SIGNAL_TYPES = new Map<MonitoringEventType, SignalName>([
   ["state_changed", "state"],
@@ -411,7 +410,7 @@ function deriveActiveHostIncidents(
   const active: ActiveIncident[] = [];
 
   for (const host of snapshot.hosts) {
-    if (!ACTIVE_HOST_STATUSES.has(host.status as "stale" | "offline")) continue;
+    if (host.status !== "stale" && host.status !== "offline") continue;
 
     const events = groupedEvents.get(entityKey(host.id)) ?? [];
     const latestEvent = events.at(-1) ?? null;
