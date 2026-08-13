@@ -6,6 +6,7 @@ import {
 } from "../../../components/metric-line-chart";
 import {
   getHostMonitoringEvents,
+  isValidHostServerId,
   type HostMonitoringEvent,
 } from "../../../lib/host-monitoring-events";
 import {
@@ -26,7 +27,6 @@ import styles from "../hosts.module.css";
 
 export const dynamic = "force-dynamic";
 
-const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
 const statusLabels = { online: "稼働中", stale: "更新遅延", offline: "受信停止" } as const;
 const containerStatusLabels = {
   online: "稼働中",
@@ -175,7 +175,7 @@ function singleSeries(history: HostMetricHistorySeries | null, id: string, label
 export default async function HostDetailPage({ params, searchParams }: PageProps) {
   const [route, query] = await Promise.all([params, searchParams]);
   const serverId = route.serverId;
-  if (!IDENTIFIER_PATTERN.test(serverId)) notFound();
+  if (!isValidHostServerId(serverId)) notFound();
 
   const range = parseHistoryRange(firstValue(query.range));
   const rangeConfig = HISTORY_RANGE_CONFIG[range];
@@ -219,7 +219,7 @@ export default async function HostDetailPage({ params, searchParams }: PageProps
   }
 
   const points = history?.points ?? [];
-  const endAt = generatedAt;
+  const endAt = new Date().toISOString();
   const startAt = new Date(Date.parse(endAt) - rangeConfig.hours * 3_600_000).toISOString();
   const markers = hostMarkers(events);
   const source = history?.dataSource ?? (range === "7d" || range === "30d" ? "rollup_5m" : "raw");
