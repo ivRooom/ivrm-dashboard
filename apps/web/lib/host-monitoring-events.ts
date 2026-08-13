@@ -33,7 +33,9 @@ type HostMonitoringEventRow = {
   numeric_value: unknown;
 };
 
-const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
+const SERVER_ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
+const IPV4_LITERAL_PATTERN = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
+const PAGE_SIZE = 500;
 const EVENT_TYPES = new Set<HostMonitoringEventType>([
   "host_reboot_detected",
   "agent_version_changed",
@@ -54,6 +56,10 @@ function supabaseConfiguration(): { url: string; serviceRoleKey: string } {
     url: requireEnvironment("SUPABASE_URL").replace(/\/$/, ""),
     serviceRoleKey: requireEnvironment("SUPABASE_SERVICE_ROLE_KEY"),
   };
+}
+
+export function isValidHostServerId(value: string): boolean {
+  return SERVER_ID_PATTERN.test(value) && !IPV4_LITERAL_PATTERN.test(value);
 }
 
 function stringValue(value: unknown, maximumLength = 128): string | null {
@@ -79,7 +85,7 @@ function timestamp(value: unknown): string | null {
 function parseRow(row: HostMonitoringEventRow): HostMonitoringEvent | null {
   const id = safeInteger(row.event_id);
   const hostId = stringValue(row.host_id, 64);
-  const serverId = stringValue(row.server_id);
+  const serverId = stringValue(row.server_id, 64);
   const hostDisplayName = stringValue(row.host_display_name, 256);
   const occurredAt = timestamp(row.occurred_at);
   const eventType = stringValue(row.event_type) as HostMonitoringEventType | null;
@@ -89,6 +95,7 @@ function parseRow(row: HostMonitoringEventRow): HostMonitoringEvent | null {
     id === null ||
     !hostId ||
     !serverId ||
+    !isValidHostServerId(serverId) ||
     !hostDisplayName ||
     !occurredAt ||
     !eventType ||
@@ -113,17 +120,14 @@ function parseRow(row: HostMonitoringEventRow): HostMonitoringEvent | null {
   };
 }
 
-export async function getHostMonitoringEvents(
+async function fetchEventPage(
   range: HistoryRange,
-  serverId?: string | null,
+  serverId: string | null,
+  beforeAt: string | null,
+  beforeId: number | null,
 ): Promise<HostMonitoringEvent[]> {
-  const safeServerId = serverId?.trim() || null;
-  if (safeServerId && !IDENTIFIER_PATTERN.test(safeServerId)) {
-    throw new Error("Host識別子が不正です");
-  }
-
   const { url, serviceRoleKey } = supabaseConfiguration();
-  const response = await fetch(`${url}/rest/v1/rpc/get_host_monitoring_events_v1`, {
+  const response = await fetch(`${url}/rest/v1/rpc/get_host_monitoring_events_v2`, {
     method: "POST",
     headers: {
       apikey: serviceRoleKey,
@@ -133,19 +137,58 @@ export async function getHostMonitoringEvents(
     },
     body: JSON.stringify({
       p_range: range,
-      p_server_id: safeServerId,
+      p_server_id: serverId,
+      p_before_at: beforeAt,
+      p_before_id: beforeId,
+      p_limit: PAGE_SIZE,
     }),
     cache: "no-store",
     signal: AbortSignal.timeout(10_000),
   });
 
   if (!response.ok) {
-    throw new Error(`get_host_monitoring_events_v1が${response.status}を返しました`);
+    throw new Error(`get_host_monitoring_events_v2が${response.status}を返しました`);
   }
 
-  const rows = (await response.json()) as HostMonitoringEventRow[];
-  return rows
-    .map(parseRow)
-    .filter((event): event is HostMonitoringEvent => event !== null)
-    .sort((left, right) => Date.parse(right.occurredAt) - Date.parse(left.occurredAt));
+  const payload: unknown = await response.json();
+  if (!Array.isArray(payload)) {
+    throw new Error("get_host_monitoring_events_v2が配列以外を返しました");
+  }
+
+  const events = payload.map((row) => parseRow(row as HostMonitoringEventRow));
+  if (events.some((event) => event === null)) {
+    throw new Error("get_host_monitoring_events_v2のレスポンス形式が不正です");
+  }
+  return events as HostMonitoringEvent[];
+}
+
+export async function getHostMonitoringEvents(
+  range: HistoryRange,
+  serverId?: string | null,
+): Promise<HostMonitoringEvent[]> {
+  const safeServerId = serverId?.trim() || null;
+  if (safeServerId && !isValidHostServerId(safeServerId)) {
+    throw new Error("Host識別子が不正です");
+  }
+
+  const events: HostMonitoringEvent[] = [];
+  let beforeAt: string | null = null;
+  let beforeId: number | null = null;
+
+  while (true) {
+    const page = await fetchEventPage(range, safeServerId, beforeAt, beforeId);
+    events.push(...page);
+    if (page.length < PAGE_SIZE) {
+      break;
+    }
+
+    const last = page.at(-1);
+    if (!last) {
+      break;
+    }
+    beforeAt = last.occurredAt;
+    beforeId = last.id;
+  }
+
+  return events;
 }
