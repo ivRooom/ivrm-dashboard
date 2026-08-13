@@ -4,6 +4,7 @@ import {
   parseHistoryRange,
   type HistoryRange,
 } from "../../lib/history";
+import { isValidHostServerId } from "../../lib/host-monitoring-events";
 import {
   getMonitoringEvents,
   parseMonitoringEventSeverity,
@@ -17,7 +18,7 @@ import styles from "./events.module.css";
 
 export const dynamic = "force-dynamic";
 
-const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
+const CONTAINER_IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
 
 const eventTypeLabels: Record<MonitoringEventType, string> = {
   state_changed: "State変化",
@@ -83,7 +84,7 @@ function parseTarget(value: string | null): EventTarget | null {
   }
   const serverId = value.slice(0, separator);
   const containerName = value.slice(separator + 1);
-  if (!IDENTIFIER_PATTERN.test(serverId) || !IDENTIFIER_PATTERN.test(containerName)) {
+  if (!isValidHostServerId(serverId) || !CONTAINER_IDENTIFIER_PATTERN.test(containerName)) {
     return null;
   }
   return { serverId, containerName };
@@ -199,7 +200,9 @@ export default async function EventsPage({ searchParams }: PageProps) {
         <nav aria-label="メインナビゲーション">
           <a href="/#top">概要</a>
           <a href="/minecraft">Minecraft</a>
+          <a href="/hosts">ホスト</a>
           <a href="/containers">コンテナ</a>
+          <a href={`/incidents?range=${range}`}>インシデント</a>
           <a href={`/history?range=${range}`}>履歴グラフ</a>
           <a aria-current="page" href={`/events?range=${range}`}>
             イベント
@@ -216,11 +219,14 @@ export default async function EventsPage({ searchParams }: PageProps) {
       <section className={`content ${styles.eventsContent}`}>
         <header>
           <div>
-            <p className={styles.eyebrow}>INCIDENT TIMELINE</p>
+            <p className={styles.eyebrow}>STRUCTURED EVENT TIMELINE</p>
             <h1>監視イベント</h1>
-            <p>再起動、State / Health変化、OOM、復旧を時系列で追跡します。</p>
+            <p>再起動、State / Health変化、OOM、復旧を生の構造化イベントとして時系列で追跡します。</p>
           </div>
           <div className={styles.headerActions}>
+            <a className={styles.secondaryLink} href={`/incidents?range=${range}`}>
+              Incident Center
+            </a>
             <a className={styles.secondaryLink} href="/containers">
               コンテナ一覧
             </a>
@@ -234,7 +240,7 @@ export default async function EventsPage({ searchParams }: PageProps) {
           <article>
             <span>イベント</span>
             <strong>{eventError ? "—" : events.length}</strong>
-            <small>最大500件 / {rangeConfig.label}</small>
+            <small>Keyset Pagination / {rangeConfig.label}</small>
           </article>
           <article>
             <span>重大</span>
@@ -349,7 +355,7 @@ export default async function EventsPage({ searchParams }: PageProps) {
         <section className={styles.notice}>
           <strong>構造化イベントのみ保存</strong>
           <p>
-            イベントにはState、Health、RestartCount、ExitCode、OOM、Maintenanceの差分だけを保存します。ログ本文、IP、Token、Secret、Docker操作コマンドは保存しません。
+            イベントにはState、Health、RestartCount、ExitCode、OOM、Maintenanceの差分だけを保存します。ログ本文、IP、Token、Secret、Docker操作コマンドは保存しません。Incident Centerはこの構造化イベントと現在Snapshotだけを使って障害を要約します。
           </p>
         </section>
       </section>
