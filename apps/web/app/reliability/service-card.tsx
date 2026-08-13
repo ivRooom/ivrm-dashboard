@@ -38,46 +38,28 @@ function date(timestamp: string | null): string {
   }).format(new Date(timestamp));
 }
 
-type Props = {
-  service: ReliabilityService;
-  range: ReliabilityRange;
-};
+type Props = { service: ReliabilityService; range: ReliabilityRange };
 
 export function ReliabilityServiceCard({ service, range }: Props) {
   const notification = service.id === "notifications";
   return (
     <article className={styles.serviceCard}>
       <div className={styles.serviceHead}>
-        <div>
-          <span>{service.id.toUpperCase()}</span>
-          <h3>{service.label}</h3>
-          <p>{service.description}</p>
-        </div>
-        <strong className={`${styles.badge} ${styles[service.health]}`}>
-          {healthLabels[service.health]}
-        </strong>
+        <div><span>{service.id.toUpperCase()}</span><h3>{service.label}</h3><p>{service.description}</p></div>
+        <strong className={`${styles.badge} ${styles[service.health]}`}>{healthLabels[service.health]}</strong>
       </div>
-
       <div className={styles.serviceMetrics}>
         <div><span>INCIDENT-FREE</span><strong>{ratio(service.incidentFreeRatio, service.exactCoverage)}</strong></div>
         <div><span>KNOWN DOWNTIME</span><strong>{duration(service.knownDowntimeSeconds)}</strong></div>
         <div><span>{notification ? "ACTIVE SIGNALS" : "ACTIVE"}</span><strong>{service.activeIncidentCount}</strong></div>
         <div><span>{notification ? "SENT 24H" : "RECOVERED"}</span><strong>{service.recoveredIncidentCount}</strong></div>
+        <div><span>AFFECTED</span><strong>{service.affectedEntityCount}</strong></div>
         <div><span>MEDIAN RECOVERY</span><strong>{duration(service.medianRecoverySeconds)}</strong></div>
         <div><span>LONGEST RECOVERY</span><strong>{duration(service.longestRecoverySeconds)}</strong></div>
         <div><span>{notification ? "LAST DELIVERY" : "LAST RECOVERY"}</span><strong>{date(service.latestRecoveredAt)}</strong></div>
       </div>
-
-      {!service.exactCoverage && service.incidentFreeRatio !== null ? (
-        <div className={styles.coverage}>
-          開始時刻を確定できないActive Incidentがあるため、Incident-free比率は上限値です。
-        </div>
-      ) : null}
-
-      <div className={styles.serviceActions}>
-        <a href={service.detailHref}>詳細を見る</a>
-        <a href={`/incidents?range=${range}`}>Incident Center</a>
-      </div>
+      {!service.exactCoverage && service.incidentFreeRatio !== null ? <div className={styles.coverage}>開始時刻を確定できないActive Incidentがあるため、Incident-free比率は上限値です。</div> : null}
+      <div className={styles.serviceActions}><a href={service.detailHref}>詳細を見る</a><a href={`/incidents?range=${range}`}>Incident Center</a></div>
     </article>
   );
 }
