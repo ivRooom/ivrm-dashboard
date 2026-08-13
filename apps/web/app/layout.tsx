@@ -62,8 +62,6 @@ export default async function RootLayout({
     redirect("/login?error=unauthenticated");
   }
 
-  const sessionName = session.displayName || session.discordUsername;
-
   return (
     <html lang="ja">
       <body>
@@ -102,7 +100,7 @@ export default async function RootLayout({
                   style={{ borderRadius: 999, objectFit: "cover" }}
                 />
               ) : null}
-              <span>{sessionName}</span>
+              <span>{session.displayName || session.discordUsername}</span>
               {session.role ? (
                 <small style={{ color: "#93c5fd" }}>{roleLabels[session.role]}</small>
               ) : null}
@@ -137,7 +135,7 @@ export default async function RootLayout({
                   <img src={session.discordAvatarUrl} alt="" width={34} height={34} />
                 ) : null}
                 <div>
-                  <strong>{sessionName}</strong>
+                  <strong>{session.displayName || session.discordUsername}</strong>
                   {session.role ? <small>{roleLabels[session.role]}</small> : null}
                 </div>
               </div>
