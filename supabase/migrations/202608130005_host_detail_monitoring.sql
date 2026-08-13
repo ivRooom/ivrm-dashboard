@@ -1,3 +1,9 @@
+alter table public.hosts drop constraint if exists hosts_server_id_format_check;
+alter table public.hosts add constraint hosts_server_id_format_check check (
+  server_id ~ '^[A-Za-z0-9._-]{1,64}$'
+  and server_id !~ '^([0-9]{1,3}\.){3}[0-9]{1,3}$'
+);
+
 create table if not exists public.host_monitoring_events (
   id bigint generated always as identity primary key,
   event_key text not null unique,
@@ -131,7 +137,8 @@ with ordered as (
     null::text,null::text,
     greatest(0,floor(extract(epoch from (received_at-prev_received_at)))::bigint),id
   from ordered
-  where prev_id is not null and extract(epoch from (received_at-prev_received_at)) > 180
+  where prev_id is not null
+    and floor(extract(epoch from (received_at-prev_received_at)))::bigint > 180
 
   union all
 
@@ -148,9 +155,12 @@ select event_key,host_id,occurred_at,event_type,severity,from_value,to_value,num
 from event_rows
 on conflict (event_key) do nothing;
 
-create or replace function public.get_host_monitoring_events_v1(
+create or replace function public.get_host_monitoring_events_v2(
   p_range text,
-  p_server_id text default null
+  p_server_id text default null,
+  p_before_at timestamptz default null,
+  p_before_id bigint default null,
+  p_limit integer default 500
 )
 returns table (
   event_id bigint,
@@ -170,6 +180,7 @@ set search_path = pg_catalog, public
 as $$
 declare
   v_interval interval;
+  v_limit integer;
 begin
   v_interval := case p_range
     when '1h' then interval '1 hour'
@@ -182,9 +193,16 @@ begin
   if v_interval is null then raise exception 'invalid range'; end if;
 
   if p_server_id is not null and (
-    char_length(p_server_id) < 1 or char_length(p_server_id) > 128
-    or p_server_id !~ '^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$'
+    char_length(p_server_id) < 1 or char_length(p_server_id) > 64
+    or p_server_id !~ '^[A-Za-z0-9._-]{1,64}$'
+    or p_server_id ~ '^([0-9]{1,3}\.){3}[0-9]{1,3}$'
   ) then raise exception 'invalid server id'; end if;
+
+  if (p_before_at is null) <> (p_before_id is null) then
+    raise exception 'invalid cursor';
+  end if;
+
+  v_limit := least(greatest(coalesce(p_limit,500),1),500);
 
   return query
   select events.id,events.host_id,hosts.server_id,hosts.display_name,
@@ -194,12 +212,16 @@ begin
   join public.hosts as hosts on hosts.id=events.host_id
   where events.occurred_at >= clock_timestamp()-v_interval
     and (p_server_id is null or hosts.server_id=p_server_id)
+    and (
+      p_before_at is null
+      or (events.occurred_at,events.id) < (p_before_at,p_before_id)
+    )
   order by events.occurred_at desc,events.id desc
-  limit 500;
+  limit v_limit;
 end;
 $$;
 
-revoke all on function public.get_host_monitoring_events_v1(text,text)
+revoke all on function public.get_host_monitoring_events_v2(text,text,timestamptz,bigint,integer)
   from public, anon, authenticated;
-grant execute on function public.get_host_monitoring_events_v1(text,text)
+grant execute on function public.get_host_monitoring_events_v2(text,text,timestamptz,bigint,integer)
   to service_role;
