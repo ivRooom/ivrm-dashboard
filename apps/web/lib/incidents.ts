@@ -257,8 +257,16 @@ function mergeUniqueEvents(
 
 function deriveOpenSignals(events: MonitoringEvent[]): Map<SignalName, OpenSignal> {
   const signals = new Map<SignalName, OpenSignal>();
+  let expectedState: MonitoringEvent["expectedState"] | undefined;
+  let hasExpectedState = false;
 
   for (const event of events) {
+    if (hasExpectedState && event.expectedState !== expectedState) {
+      signals.clear();
+    }
+    expectedState = event.expectedState;
+    hasExpectedState = true;
+
     const signal = signalName(event);
     if (!signal) continue;
 
@@ -378,11 +386,15 @@ function deriveActiveContainerIncidents(
 
     if (currentStateIsIncident(container)) {
       const stateSignal = signals.get("state");
-      if (stateSignal) candidates.push(stateSignal);
+      if (stateSignal?.startEvent.expectedState === container.expectedState) {
+        candidates.push(stateSignal);
+      }
     }
     if (currentHealthIsIncident(container)) {
       const healthSignal = signals.get("health");
-      if (healthSignal) candidates.push(healthSignal);
+      if (healthSignal?.startEvent.expectedState === container.expectedState) {
+        candidates.push(healthSignal);
+      }
     }
     if (container.oomKilled) {
       const oomEvent = [...events]
@@ -498,8 +510,17 @@ function deriveRecoveredContainerIncidents(
   for (const entityEvents of grouped.values()) {
     const activeSignals = new Set<SignalName>();
     let episode: OpenEpisode | null = null;
+    let expectedState: MonitoringEvent["expectedState"] | undefined;
+    let hasExpectedState = false;
 
     for (const event of entityEvents) {
+      if (hasExpectedState && event.expectedState !== expectedState) {
+        activeSignals.clear();
+        episode = null;
+      }
+      expectedState = event.expectedState;
+      hasExpectedState = true;
+
       const signal = signalName(event);
       if (!signal) continue;
       const startSeverity = incidentSeverity(event.severity);
