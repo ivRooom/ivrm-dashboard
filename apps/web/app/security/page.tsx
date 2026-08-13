@@ -77,6 +77,8 @@ function formatDateTime(value: string | null): string {
 
 export default async function SecurityPage() {
   const session = await getConsoleSession();
+  const canAdministerDiscordSecurity =
+    session.authProvider === "discord" && hasConsoleRole(session, "administrator");
 
   return (
     <main
@@ -163,6 +165,32 @@ export default async function SecurityPage() {
           </p>
         </section>
 
+        {canAdministerDiscordSecurity ? (
+          <section style={{ ...cardStyle, marginTop: 20 }}>
+            <h2 style={{ marginTop: 0 }}>セキュリティ管理</h2>
+            <p style={{ color: "#b8c7dc", lineHeight: 1.8 }}>
+              Discord Sessionで認証済みのAdministrator／Ownerだけが利用できます。Session Token、Cookie、Hash、Discord Role ID一覧は表示しません。
+            </p>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                gap: 14,
+                marginTop: 18,
+              }}
+            >
+              <a href="/security/sessions" style={toolLinkStyle}>
+                <strong>Discord Session管理</strong>
+                <span style={smallStyle}>有効Sessionの確認・強制失効・期限状態</span>
+              </a>
+              <a href="/security/audit" style={toolLinkStyle}>
+                <strong>Discord認証監査</strong>
+                <span style={smallStyle}>ログイン成功・拒否・Logout・管理失効</span>
+              </a>
+            </div>
+          </section>
+        ) : null}
+
         <section style={{ ...cardStyle, marginTop: 20 }}>
           <h2 style={{ marginTop: 0 }}>ロール階層</h2>
           <div style={{ display: "grid", gap: 12 }}>
@@ -230,4 +258,16 @@ const smallStyle = {
   color: "#8294ad",
   marginTop: 10,
   lineHeight: 1.5,
+} as const;
+
+const toolLinkStyle = {
+  display: "grid",
+  alignContent: "start",
+  minHeight: 96,
+  border: "1px solid rgba(96,165,250,.35)",
+  borderRadius: 14,
+  padding: 16,
+  background: "rgba(30,64,175,.14)",
+  color: "#dbeafe",
+  textDecoration: "none",
 } as const;
