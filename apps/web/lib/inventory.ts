@@ -162,7 +162,7 @@ function knownTotal(values: Array<number | null>): { total: number | null; compl
 
 export async function getInfrastructureInventory(view: InventoryView): Promise<InfrastructureInventory> {
   const monitoringPromise = getMonitoringSnapshot();
-  const minecraftPromise = getMinecraftOverview()
+  const minecraftPromise = getMinecraftOverview(monitoringPromise)
     .then((value) => ({ ok: true as const, value }))
     .catch((error: unknown) => {
       console.error("Infrastructure InventoryのMinecraft情報取得に失敗しました", error);
