@@ -43,12 +43,17 @@ function ratio(value: number, exact: boolean): string {
   return exact ? text : `≤ ${text}`;
 }
 
+function indicatorClass(loadError: boolean, health: ReliabilityHealth | undefined): string {
+  if (loadError || !health || health === "critical" || health === "unknown") return "error";
+  if (health === "degraded" || health === "disabled") return "stale";
+  return "online";
+}
+
 export default async function ReliabilityPage({ searchParams }: PageProps) {
   const query = await searchParams;
   const range = parseIncidentRange(first(query.range));
   let data = null;
   let loadError = false;
-
   try {
     data = await getReliabilitySnapshot(range);
   } catch (error) {
@@ -69,7 +74,7 @@ export default async function ReliabilityPage({ searchParams }: PageProps) {
           <a href={`/history?range=${range}`}>履歴グラフ</a>
         </nav>
         <div className="agent">
-          <i className={loadError ? "error" : data?.overall.health === "critical" ? "error" : data?.overall.health === "degraded" ? "stale" : "online"} />
+          <i className={indicatorClass(loadError, data?.overall.health)} />
           Reliability Center<br />
           <small>{loadError ? "取得エラー" : data ? healthLabels[data.overall.health] : "Loading"}</small>
         </div>
@@ -87,7 +92,6 @@ export default async function ReliabilityPage({ searchParams }: PageProps) {
             <a href="/notifications">Notification Center</a>
           </div>
         </header>
-
         <nav className={styles.periods} aria-label="信頼性集計期間">
           {(Object.keys(INCIDENT_RANGE_CONFIG) as IncidentRange[]).map((candidate) => (
             <a key={candidate} aria-current={candidate === range ? "page" : undefined} href={`/reliability?range=${candidate}`}>
@@ -111,18 +115,14 @@ export default async function ReliabilityPage({ searchParams }: PageProps) {
               <article className={styles.metric}><span>ACTIVE</span><strong>{data.overall.activeIncidentCount}</strong><small>重大 {data.overall.activeCriticalCount}</small></article>
               <article className={styles.metric}><span>MEDIAN RECOVERY</span><strong>{duration(data.overall.medianRecoverySeconds)}</strong><small>Recovered {data.overall.recoveredIncidentCount}</small></article>
             </section>
-
             {!data.backupDataAvailable || !data.notificationDataAvailable ? (
               <div className={styles.coverage}>一部データソースを取得できないため、取得できたサービスだけで継続表示しています。</div>
             ) : null}
-
             <section>
               <div className={styles.sectionTitle}><div><span>SERVICE SCORECARDS</span><h2>サービス別信頼性</h2></div><p>SLO値は未設定のため仮定せず、実Incidentだけを集計します。</p></div>
               <div className={styles.serviceGrid}>{data.services.map((service) => <ReliabilityServiceCard key={service.id} service={service} />)}</div>
             </section>
-
             <ReliabilityNotificationPanel data={data} />
-
             <section className={styles.notice}><strong>Incident-free ratioについて</strong><p>Recovery済みIncidentと開始時刻を証明できるActive IncidentだけをDowntimeへ含めます。複数障害の重複時間は1回だけ数えます。開始時刻不明のActive障害がある場合は実際の比率が表示値以下となるため「≤」で示します。</p></section>
           </>
         )}
