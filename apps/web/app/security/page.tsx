@@ -2,6 +2,7 @@ import {
   getConsoleSession,
   hasConsoleRole,
   type ConsoleRole,
+  type ConsoleSession,
   type ConsoleSessionStatus,
 } from "../../lib/console-auth";
 
@@ -24,6 +25,12 @@ const roleLabels: Record<ConsoleRole, string> = {
   owner: "所有者",
 };
 
+const providerLabels = {
+  discord: "Discord OAuth2",
+  cloudflare_access: "Cloudflare Access",
+  none: "未認証",
+} as const;
+
 const permissions = [
   { role: "viewer" as const, description: "監視情報・プレイヤー情報の閲覧" },
   { role: "operator" as const, description: "ホワイトリスト、member付与、安全な再起動" },
@@ -31,23 +38,41 @@ const permissions = [
   { role: "owner" as const, description: "admin・owner付与、復元など最重要操作" },
 ];
 
-function statusMessage(status: ConsoleSessionStatus): string {
-  switch (status) {
+function statusMessage(session: ConsoleSession): string {
+  if (session.authProvider === "discord" && session.status === "authenticated") {
+    return "Discordサーバーへの参加と専用ロールを確認し、短期Sessionを発行しています。Discord OAuth Tokenは保存していません。";
+  }
+  switch (session.status) {
     case "disabled":
-      return "現在は段階導入前です。監視画面は従来どおり閲覧できますが、書き込み操作は追加しません。";
+      return "認証は段階導入前です。Discord認証をreportで検証してからenforceへ切り替えます。";
     case "unauthenticated":
-      return "Cloudflare Access JWTを確認できていません。Access ApplicationとPolicyを確認してください。";
+      return "Discordでログインし、管理コンソール専用ロールを保持していることを確認してください。";
     case "unregistered":
-      return "Access認証は成功していますが、console_usersへ利用者が登録されていません。";
+      return "Cloudflare Access認証は成功していますが、従来のconsole_usersへ利用者が登録されていません。";
     case "inactive":
       return "利用者は登録されていますが、Webコンソール利用が無効化されています。";
     case "identity_mismatch":
-      return "Access subjectと登録メールの組み合わせが一致しません。管理者による確認が必要です。";
+      return "登録済みIdentityと認証情報が一致しません。管理者による確認が必要です。";
     case "authenticated":
-      return "Cloudflare AccessとWebコンソールRBACの両方を確認できました。";
+      return "認証とWebコンソールRBACの両方を確認できました。";
     case "error":
-      return "認証設定または利用者情報を確認できませんでした。SecretやJWTは表示していません。";
+      return "認証設定またはSessionを確認できませんでした。Secret、Token、Cookie値は表示していません。";
   }
+}
+
+function formatDateTime(value: string | null): string {
+  if (!value) {
+    return "—";
+  }
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    return "—";
+  }
+  return new Intl.DateTimeFormat("ja-JP", {
+    dateStyle: "medium",
+    timeStyle: "medium",
+    timeZone: "Asia/Tokyo",
+  }).format(date);
 }
 
 export default async function SecurityPage() {
@@ -59,7 +84,7 @@ export default async function SecurityPage() {
         minHeight: "100vh",
         background: "#07111f",
         color: "#e8eef7",
-        padding: "48px 24px 80px",
+        padding: "72px 24px 80px",
         fontFamily: "system-ui, sans-serif",
       }}
     >
@@ -75,23 +100,26 @@ export default async function SecurityPage() {
             認証・権限
           </h1>
           <p style={{ color: "#b8c7dc", lineHeight: 1.8 }}>
-            Cloudflare Accessの検証結果と、Minecraft LuckPermsとは独立したWebコンソールロールを確認します。
+            DiscordのGuild・専用ロールと、Minecraft LuckPermsとは独立したWebコンソールロールを確認します。
           </p>
         </header>
 
         <section
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
             gap: 16,
           }}
         >
           <article style={cardStyle}>
-            <span style={labelStyle}>導入モード</span>
-            <strong style={valueStyle}>{session.mode}</strong>
-            <small style={smallStyle}>
-              disabled → report → enforceの順に切り替えます
-            </small>
+            <span style={labelStyle}>認証元</span>
+            <strong style={valueStyle}>{providerLabels[session.authProvider]}</strong>
+            <small style={smallStyle}>最終認可はServer側Session照合</small>
+          </article>
+          <article style={cardStyle}>
+            <span style={labelStyle}>Discordモード</span>
+            <strong style={valueStyle}>{session.discordMode}</strong>
+            <small style={smallStyle}>disabled → report → enforce</small>
           </article>
           <article style={cardStyle}>
             <span style={labelStyle}>認証状態</span>
@@ -103,23 +131,35 @@ export default async function SecurityPage() {
             <strong style={valueStyle}>
               {session.role ? roleLabels[session.role] : "未割当"}
             </strong>
-            <small style={smallStyle}>LuckPermsグループとは別管理です</small>
+            <small style={smallStyle}>LuckPermsとは別管理</small>
           </article>
           <article style={cardStyle}>
-            <span style={labelStyle}>利用者</span>
+            <span style={labelStyle}>Discordユーザー</span>
             <strong style={{ ...valueStyle, fontSize: 17 }}>
-              {session.displayName || session.email || "未確認"}
+              {session.displayName || session.discordUsername || "未確認"}
             </strong>
             <small style={smallStyle}>
-              {session.displayName && session.email ? session.email : "生JWTは保存・表示しません"}
+              {session.discordUserId ? `ID: ${session.discordUserId}` : "—"}
             </small>
+          </article>
+          <article style={cardStyle}>
+            <span style={labelStyle}>一致ロール</span>
+            <strong style={valueStyle}>{session.matchedDiscordRoleIds.length}</strong>
+            <small style={smallStyle}>Role ID自体は表示しません</small>
+          </article>
+          <article style={cardStyle}>
+            <span style={labelStyle}>Session期限</span>
+            <strong style={{ ...valueStyle, fontSize: 16 }}>
+              {formatDateTime(session.sessionExpiresAt)}
+            </strong>
+            <small style={smallStyle}>期限後は再ログインが必要</small>
           </article>
         </section>
 
         <section style={{ ...cardStyle, marginTop: 20 }}>
           <h2 style={{ marginTop: 0 }}>{statusLabels[session.status]}</h2>
           <p style={{ color: "#b8c7dc", lineHeight: 1.8 }}>
-            {statusMessage(session.status)}
+            {statusMessage(session)}
           </p>
         </section>
 
@@ -149,15 +189,15 @@ export default async function SecurityPage() {
         </section>
 
         <section style={{ ...cardStyle, marginTop: 20 }}>
-          <h2 style={{ marginTop: 0 }}>段階的な有効化</h2>
-          <ol style={{ color: "#b8c7dc", lineHeight: 2 }}>
-            <li>Cloudflare Access Applicationと許可Policyを作成</li>
-            <li>Team DomainとApplication AudienceをVercelへ設定</li>
-            <li>IVRM_ACCESS_MODEをreportへ変更してJWT検証を確認</li>
-            <li>検証済みsubとメールをconsole_usersへ登録</li>
-            <li>初期ownerの表示を確認してenforceへ変更</li>
-            <li>直接Vercel URLでも未認証アクセスが拒否されることを確認</li>
-          </ol>
+          <h2 style={{ marginTop: 0 }}>Discord認証の安全設計</h2>
+          <ul style={{ color: "#b8c7dc", lineHeight: 2 }}>
+            <li>対象GuildのMember情報から専用Role IDを確認します。</li>
+            <li>Membership Screening未完了ユーザーは拒否します。</li>
+            <li>複数のRoleが一致した場合は最上位のWebロールを採用します。</li>
+            <li>Discord OAuth TokenはRole確認後に保存せず、失効を試みます。</li>
+            <li>Session CookieはSecure・HttpOnly・SameSite=Laxです。</li>
+            <li>DBにはSession TokenのSHA-256 Hashだけを保存します。</li>
+          </ul>
         </section>
       </section>
     </main>

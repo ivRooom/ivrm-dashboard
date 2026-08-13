@@ -6,12 +6,30 @@ import {
   verifyCloudflareAccessJwt,
   type AccessState,
 } from "./lib/cloudflare-access";
+import {
+  DISCORD_PUBLIC_ROUTE_HEADER,
+  DISCORD_SESSION_COOKIE,
+  getDiscordAuthMode,
+  type DiscordAuthMode,
+} from "./lib/discord-auth";
+
+const PUBLIC_DISCORD_PATHS = new Set([
+  "/login",
+  "/api/auth/discord/start",
+  "/api/auth/discord/callback",
+  "/api/auth/logout",
+]);
+
+function isDiscordPublicRoute(pathname: string): boolean {
+  return PUBLIC_DISCORD_PATHS.has(pathname);
+}
 
 function cleanRequestHeaders(request: NextRequest): Headers {
   const headers = new Headers(request.headers);
   for (const header of Object.values(ACCESS_HEADERS)) {
     headers.delete(header);
   }
+  headers.delete(DISCORD_PUBLIC_ROUTE_HEADER);
   return headers;
 }
 
@@ -49,8 +67,61 @@ function accessError(
   );
 }
 
+function discordAuthenticationRequired(request: NextRequest): NextResponse {
+  const headers = {
+    "Cache-Control": "private, no-store, max-age=0",
+    "X-Content-Type-Options": "nosniff",
+  };
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    return NextResponse.json(
+      { error: "discord_authentication_required" },
+      { status: 401, headers },
+    );
+  }
+
+  const returnTo = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+  const loginUrl = new URL("/login", request.url);
+  loginUrl.searchParams.set("returnTo", returnTo);
+  return NextResponse.redirect(loginUrl, { headers });
+}
+
+function discordModeOrError(): DiscordAuthMode | null {
+  try {
+    return getDiscordAuthMode();
+  } catch {
+    return null;
+  }
+}
+
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const requestHeaders = cleanRequestHeaders(request);
+  const publicRoute = isDiscordPublicRoute(request.nextUrl.pathname);
+  if (publicRoute) {
+    requestHeaders.set(DISCORD_PUBLIC_ROUTE_HEADER, "1");
+  }
+
+  const discordMode = discordModeOrError();
+  if (!discordMode) {
+    if (publicRoute) {
+      return continueRequest(requestHeaders, "disabled", "disabled");
+    }
+    return accessError(request, 503, "access_not_configured");
+  }
+
+  if (discordMode !== "disabled" && publicRoute) {
+    return continueRequest(requestHeaders, "disabled", "disabled");
+  }
+
+  if (discordMode === "enforce") {
+    const hasSessionCookie = Boolean(
+      request.cookies.get(DISCORD_SESSION_COOKIE)?.value,
+    );
+    if (hasSessionCookie) {
+      return continueRequest(requestHeaders, "disabled", "disabled");
+    }
+    return discordAuthenticationRequired(request);
+  }
+
   let mode: "disabled" | "report" | "enforce";
   try {
     mode = getAccessMode();

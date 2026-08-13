@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import {
   canReadConsoleDuringRollout,
   getConsoleSession,
+  isPublicConsoleRoute,
 } from "../lib/console-auth";
 import "./globals.css";
 
@@ -23,11 +25,32 @@ const navigationLinkStyle = {
   backdropFilter: "blur(10px)",
 } as const;
 
+const roleLabels = {
+  viewer: "閲覧者",
+  operator: "運用担当",
+  administrator: "管理者",
+  owner: "所有者",
+} as const;
+
 export default async function RootLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
-  const session = await getConsoleSession();
-  const allowed = canReadConsoleDuringRollout(session);
+  const [session, publicRoute] = await Promise.all([
+    getConsoleSession(),
+    isPublicConsoleRoute(),
+  ]);
+
+  if (publicRoute) {
+    return (
+      <html lang="ja">
+        <body>{children}</body>
+      </html>
+    );
+  }
+
+  if (!canReadConsoleDuringRollout(session)) {
+    redirect("/login?error=unauthenticated");
+  }
 
   return (
     <html lang="ja">
@@ -42,41 +65,58 @@ export default async function RootLayout({
             display: "flex",
             flexWrap: "wrap",
             justifyContent: "flex-end",
+            alignItems: "center",
             gap: 8,
+            maxWidth: "calc(100vw - 24px)",
           }}
         >
+          {session.authProvider === "discord" ? (
+            <span
+              style={{
+                ...navigationLinkStyle,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                fontWeight: 600,
+              }}
+            >
+              {session.discordAvatarUrl ? (
+                <img
+                  src={session.discordAvatarUrl}
+                  alt=""
+                  width={22}
+                  height={22}
+                  style={{ borderRadius: 999, objectFit: "cover" }}
+                />
+              ) : null}
+              <span>{session.displayName || session.discordUsername}</span>
+              {session.role ? (
+                <small style={{ color: "#93c5fd" }}>{roleLabels[session.role]}</small>
+              ) : null}
+            </span>
+          ) : null}
           <a href="/operations" style={navigationLinkStyle}>
             操作基盤
           </a>
           <a href="/security" style={navigationLinkStyle}>
             認証・権限
           </a>
+          {session.authProvider === "discord" ? (
+            <form action="/api/auth/logout" method="post" style={{ margin: 0 }}>
+              <button
+                type="submit"
+                style={{
+                  ...navigationLinkStyle,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                ログアウト
+              </button>
+            </form>
+          ) : null}
         </nav>
-        {allowed ? (
-          children
-        ) : (
-          <main
-            style={{
-              minHeight: "100vh",
-              display: "grid",
-              placeItems: "center",
-              padding: 24,
-              background: "#07111f",
-              color: "#e8eef7",
-              fontFamily: "system-ui, sans-serif",
-            }}
-          >
-            <section style={{ maxWidth: 620 }}>
-              <p style={{ color: "#8ba4c7", letterSpacing: ".12em" }}>
-                IVRM CONSOLE
-              </p>
-              <h1>この管理コンソールを利用できません</h1>
-              <p style={{ color: "#b8c7dc", lineHeight: 1.8 }}>
-                Cloudflare Accessの認証、利用者登録、またはWebコンソールロールを確認してください。
-              </p>
-            </section>
-          </main>
-        )}
+        {children}
       </body>
     </html>
   );
