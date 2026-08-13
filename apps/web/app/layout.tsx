@@ -95,6 +95,9 @@ export default async function RootLayout({
               ) : null}
             </span>
           ) : null}
+          <a href="/containers" style={navigationLinkStyle}>
+            コンテナ
+          </a>
           <a href="/operations" style={navigationLinkStyle}>
             操作基盤
           </a>
