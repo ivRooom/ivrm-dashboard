@@ -182,7 +182,14 @@ export async function getInfrastructureInventory(view: InventoryView): Promise<I
   });
   const allContainers = allHosts.flatMap((host) => host.containers);
   const hosts = view === "attention"
-    ? allHosts.filter((host) => host.needsAttention).map((host) => ({ ...host, containers: host.containers.filter((container) => container.needsAttention) }))
+    ? allHosts.filter((host) => host.needsAttention).map((host) => {
+        const containers = host.containers.filter((container) => container.needsAttention);
+        return {
+          ...host,
+          containers,
+          managedContainerCount: containers.filter((container) => container.managed).length,
+        };
+      })
     : allHosts;
 
   return {
