@@ -83,6 +83,31 @@ container_metric_rollups_5m
 
 Migration適用時に既存データを最大45日分Backfillする。
 
+### 有効Sample件数
+
+平均値が`null`になり得るメトリクスは、5分Bucketの総Sample数だけではなく、メトリクスごとの有効Sample件数も保存する。
+
+例:
+
+```text
+cpu_sample_count
+memory_sample_count
+network_rx_sample_count
+network_tx_sample_count
+block_read_sample_count
+block_write_sample_count
+```
+
+7日 / 30日の再集約では、5分平均を総Sample数で一律に重み付けしない。
+
+```text
+Σ(5分平均 × そのメトリクスの有効Sample件数)
+──────────────────────────────────────────
+Σ(そのメトリクスの有効Sample件数)
+```
+
+これにより、Counter resetや停止コンテナなどで一部Sampleだけが`null`だったBucketを過大評価しない。
+
 ## 増分更新
 
 Supabase `pg_cron`で5分ごとに直近20分を再集約する。
@@ -115,15 +140,24 @@ Cron:
 
 取得・更新はSecurity Definer RPCに限定する。
 
-公開するRPC:
+Webバックエンドから利用するRPC:
 
 ```text
-get_host_metric_history_v2
-get_container_metric_history_v2
-refresh_observability_rollups
+get_host_metric_history_v3
+get_container_metric_history_v3
+refresh_observability_rollups_v2
 ```
 
 実行権限は`service_role`だけに付与する。
+
+以下は内部Helperまたは旧実装としてService Roleから直接実行できない。
+
+```text
+refresh_observability_rollup_counts
+refresh_observability_rollups
+get_host_metric_history_v2
+get_container_metric_history_v2
+```
 
 履歴へ以下は含めない。
 
@@ -148,7 +182,7 @@ refresh_observability_rollups
 ### Cron
 
 ```sql
-select jobid, jobname, schedule, active
+select jobid, jobname, schedule, active, command
 from cron.job
 where jobname = 'ivrm-observability-rollup-5m';
 ```
@@ -165,11 +199,11 @@ from public.container_metric_rollups_5m;
 
 ### 手動再集約
 
-必要な期間だけService Role相当の管理経路から実行する。
+必要な期間だけService Role相当の管理経路から正式入口を実行する。
 
 ```sql
 select *
-from public.refresh_observability_rollups(
+from public.refresh_observability_rollups_v2(
   statement_timestamp() - interval '1 hour',
   statement_timestamp()
 );
