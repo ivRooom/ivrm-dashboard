@@ -1,6 +1,7 @@
 import {
   getMonitoringSnapshot,
   type ContainerOverview,
+  type MonitoringSnapshot,
 } from "./monitoring";
 
 export type MinecraftOverallStatus =
@@ -114,13 +115,7 @@ function endpoint(
   online: number | null,
   maximum: number | null,
 ): MinecraftEndpointOverview {
-  return {
-    reachable,
-    latencyMs,
-    version,
-    online,
-    max: maximum,
-  };
+  return { reachable, latencyMs, version, online, max: maximum };
 }
 
 function containerIsUnavailable(container: ContainerOverview | null): boolean {
@@ -139,75 +134,45 @@ export function determineMinecraftStatus(
   velocity: ContainerOverview | null,
   backend: ContainerOverview | null,
 ): MinecraftOverallStatus {
-  if (velocity?.maintenanceActive || backend?.maintenanceActive) {
-    return "maintenance";
-  }
-  if (!sample || ageSeconds === null || ageSeconds > STALE_SECONDS) {
-    return "unknown";
-  }
+  if (velocity?.maintenanceActive || backend?.maintenanceActive) return "maintenance";
+  if (!sample || ageSeconds === null || ageSeconds > STALE_SECONDS) return "unknown";
   if (
     containerIsUnavailable(velocity) ||
     containerIsUnavailable(backend) ||
     !sample.proxy_port_published ||
     !sample.public_reachable
-  ) {
-    return "major_outage";
-  }
-  if (!sample.backend_reachable) {
-    return "partial_outage";
-  }
+  ) return "major_outage";
+  if (!sample.backend_reachable) return "partial_outage";
   if (
     velocity?.status === "stale" ||
     backend?.status === "stale" ||
     !sample.voice_chat_port_published ||
     sample.backend_port_published
-  ) {
-    return "degraded";
-  }
+  ) return "degraded";
   return "operational";
 }
 
-export async function getMinecraftOverview(): Promise<MinecraftOverview> {
+export async function getMinecraftOverview(
+  monitoringPromise: Promise<MonitoringSnapshot> = getMonitoringSnapshot(),
+): Promise<MinecraftOverview> {
   const [monitoring, sample] = await Promise.all([
-    getMonitoringSnapshot(),
+    monitoringPromise,
     getLatestMinecraftSample(),
   ]);
-  const targetHost = monitoring.hosts.find(
-    (host) => host.serverId === TARGET_SERVER_ID,
-  );
-  const targetContainers = monitoring.containers.filter(
-    (container) => container.hostId === targetHost?.id,
-  );
-  const velocity =
-    targetContainers.find((container) => container.name === "ivrm-velocity") ??
-    null;
-  const backend =
-    targetContainers.find((container) => container.name === "mc-main") ?? null;
+  const targetHost = monitoring.hosts.find((host) => host.serverId === TARGET_SERVER_ID);
+  const targetContainers = monitoring.containers.filter((container) => container.hostId === targetHost?.id);
+  const velocity = targetContainers.find((container) => container.name === "ivrm-velocity") ?? null;
+  const backend = targetContainers.find((container) => container.name === "mc-main") ?? null;
 
   const receivedAtMilliseconds = sample ? Date.parse(sample.received_at) : Number.NaN;
   const ageSeconds = Number.isFinite(receivedAtMilliseconds)
-    ? Math.max(
-        0,
-        Math.floor((Date.parse(monitoring.generatedAt) - receivedAtMilliseconds) / 1_000),
-      )
+    ? Math.max(0, Math.floor((Date.parse(monitoring.generatedAt) - receivedAtMilliseconds) / 1_000))
     : null;
   const publicEndpoint = sample
-    ? endpoint(
-        sample.public_reachable,
-        sample.public_latency_ms,
-        sample.public_version,
-        sample.public_online,
-        sample.public_max,
-      )
+    ? endpoint(sample.public_reachable, sample.public_latency_ms, sample.public_version, sample.public_online, sample.public_max)
     : endpoint(false, null, null, null, null);
   const backendProbe = sample
-    ? endpoint(
-        sample.backend_reachable,
-        sample.backend_latency_ms,
-        sample.backend_version,
-        sample.backend_online,
-        sample.backend_max,
-      )
+    ? endpoint(sample.backend_reachable, sample.backend_latency_ms, sample.backend_version, sample.backend_online, sample.backend_max)
     : endpoint(false, null, null, null, null);
 
   return {
@@ -223,20 +188,12 @@ export async function getMinecraftOverview(): Promise<MinecraftOverview> {
     velocity,
     backend,
     backendProbe,
-    players: {
-      online: publicEndpoint.online,
-      max: publicEndpoint.max,
-    },
-    voiceChat: {
-      port: 24454,
-      published: sample?.voice_chat_port_published ?? false,
-    },
+    players: { online: publicEndpoint.online, max: publicEndpoint.max },
+    voiceChat: { port: 24454, published: sample?.voice_chat_port_published ?? false },
     networkPolicy: {
       proxyPortPublished: sample?.proxy_port_published ?? false,
       backendPortPublished: sample?.backend_port_published ?? false,
-      backendDirectAccessBlocked: sample
-        ? !sample.backend_port_published
-        : false,
+      backendDirectAccessBlocked: sample ? !sample.backend_port_published : false,
     },
   };
 }
