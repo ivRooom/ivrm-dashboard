@@ -6,23 +6,17 @@ const DISPATCHER_STALE_AFTER_MS = 180_000;
 export function notificationHealth(summary: NotificationSummary | null): ReliabilityHealth {
   if (!summary) return "unknown";
   if (!summary.channelEnabled) return "disabled";
-  if (!summary.channelConfigured || summary.channelLastErrorCode || summary.dispatcherLastErrorCode) {
+  if (!summary.channelConfigured || summary.channelLastErrorCode || summary.dispatcherLastErrorCode || summary.failedCount > 0) {
     return "critical";
   }
   const generatedAt = Date.parse(summary.generatedAt);
   const invokedAt = summary.dispatcherLastInvokedAt
     ? Date.parse(summary.dispatcherLastInvokedAt)
     : Number.NaN;
-  if (
-    !Number.isFinite(generatedAt) ||
-    !Number.isFinite(invokedAt) ||
-    generatedAt - invokedAt > DISPATCHER_STALE_AFTER_MS
-  ) {
+  if (!Number.isFinite(generatedAt) || !Number.isFinite(invokedAt) || generatedAt - invokedAt > DISPATCHER_STALE_AFTER_MS) {
     return "critical";
   }
-  if (summary.pendingCount > 0 || summary.retryCount > 0 || summary.failedCount > 0) {
-    return "degraded";
-  }
+  if (summary.pendingCount > 0 || summary.retryCount > 0) return "degraded";
   return "operational";
 }
 
@@ -32,9 +26,9 @@ export function buildNotificationService(summary: NotificationSummary | null): R
     label: "Notification Delivery",
     description: "Discord Channel・Dispatcher・Durable Outboxの配送品質",
     health: notificationHealth(summary),
-    activeIncidentCount: summary ? summary.pendingCount + summary.retryCount + summary.failedCount : 0,
-    activeCriticalCount: summary?.failedCount ?? 0,
-    activeWarningCount: summary ? summary.pendingCount + summary.retryCount : 0,
+    activeIncidentCount: summary?.activeSignalCount ?? 0,
+    activeCriticalCount: summary?.activeCriticalCount ?? 0,
+    activeWarningCount: summary?.activeWarningCount ?? 0,
     recoveredIncidentCount: summary?.sent24hCount ?? 0,
     knownDowntimeSeconds: null,
     incidentFreeRatio: null,
