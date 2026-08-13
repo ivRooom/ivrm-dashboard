@@ -1,0 +1,280 @@
+.eventsContent {
+  max-width: 1320px;
+}
+
+.eyebrow {
+  margin-bottom: 8px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.secondaryLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 32px 0 22px;
+}
+
+.summaryGrid article {
+  min-height: 116px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.summaryGrid span,
+.summaryGrid small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.summaryGrid strong {
+  display: block;
+  margin: 14px 0 7px;
+  font-size: 24px;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.55fr) minmax(170px, 0.65fr) minmax(230px, 1.2fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 24px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.filters label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.filters select {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+}
+
+.filters button {
+  min-height: 40px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.timeline {
+  position: relative;
+  display: grid;
+  gap: 10px;
+}
+
+.timeline::before {
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 18px;
+  width: 1px;
+  background: var(--line);
+  content: "";
+}
+
+.event {
+  position: relative;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 15px 16px 15px 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.marker {
+  position: relative;
+  z-index: 1;
+  width: 11px;
+  height: 11px;
+  margin: 5px auto 0;
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--line);
+  background: var(--muted);
+}
+
+.markerCritical {
+  background: var(--bad);
+}
+
+.markerWarning {
+  background: var(--warn);
+}
+
+.markerRecovery {
+  background: var(--ok);
+}
+
+.markerInfo {
+  background: var(--standby);
+}
+
+.eventMain {
+  min-width: 0;
+}
+
+.eventHeading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.eventHeading h3 {
+  font-size: 14px;
+}
+
+.badge {
+  width: max-content;
+  padding: 4px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.critical {
+  background: rgb(255 119 119 / 12%);
+  color: var(--bad);
+}
+
+.warning {
+  background: rgb(243 199 104 / 12%);
+  color: var(--warn);
+}
+
+.recovery {
+  background: rgb(120 231 154 / 12%);
+  color: var(--ok);
+}
+
+.info {
+  background: rgb(124 196 255 / 12%);
+  color: var(--standby);
+}
+
+.meta,
+.transition,
+.expected {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.transition strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.eventAside {
+  min-width: 128px;
+  text-align: right;
+}
+
+.eventAside time,
+.eventAside small {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.eventAside a {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.notice {
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.notice p {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+@media (max-width: 900px) {
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .summaryGrid,
+  .filters {
+    grid-template-columns: 1fr;
+  }
+
+  .headerActions {
+    margin-top: 14px;
+  }
+
+  .event {
+    grid-template-columns: 30px minmax(0, 1fr);
+  }
+
+  .timeline::before {
+    left: 14px;
+  }
+
+  .eventAside {
+    grid-column: 2;
+    min-width: 0;
+    text-align: left;
+  }
+}

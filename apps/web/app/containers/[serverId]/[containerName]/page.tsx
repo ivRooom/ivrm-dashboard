@@ -1,6 +1,10 @@
 import { notFound } from "next/navigation";
 import { AutoRefresh } from "../../../../components/auto-refresh";
-import { MetricLineChart } from "../../../../components/metric-line-chart";
+import { ContainerEventPanel } from "../../../../components/container-event-panel";
+import {
+  MetricLineChart,
+  type MetricChartMarker,
+} from "../../../../components/metric-line-chart";
 import {
   HISTORY_RANGE_CONFIG,
   getContainerMetricHistory,
@@ -10,6 +14,11 @@ import {
   type HistoryDataSource,
   type HistoryRange,
 } from "../../../../lib/history";
+import {
+  getMonitoringEvents,
+  type MonitoringEvent,
+  type MonitoringEventType,
+} from "../../../../lib/monitoring-events";
 import {
   getMonitoringSnapshot,
   type ContainerExpectedState,
@@ -65,6 +74,16 @@ const dataSourceLabels: Record<HistoryDataSource, string> = {
   rollup_5m: "5分ロールアップ",
 };
 
+const eventMarkerLabels: Record<MonitoringEventType, string> = {
+  state_changed: "State変化",
+  health_changed: "Health変化",
+  restart_count_increased: "RestartCount増加",
+  oom_killed: "OOMKilled",
+  exit_code_changed: "ExitCode変化",
+  maintenance_started: "Maintenance開始",
+  maintenance_ended: "Maintenance終了",
+};
+
 type PageProps = {
   params: Promise<{ serverId: string; containerName: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -75,9 +94,7 @@ function firstValue(value: string | string[] | undefined): string | null {
 }
 
 function formatBytes(bytes: number | null): string {
-  if (bytes === null) {
-    return "未取得";
-  }
+  if (bytes === null) return "未取得";
   const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
   let value = bytes;
   let unitIndex = 0;
@@ -86,10 +103,6 @@ function formatBytes(bytes: number | null): string {
     unitIndex += 1;
   }
   return `${value.toFixed(value >= 10 || unitIndex === 0 ? 1 : 2)} ${units[unitIndex]}`;
-}
-
-function formatPercent(value: number | null): string {
-  return value === null ? "未取得" : `${value.toFixed(2)}%`;
 }
 
 function memoryPercent(container: ContainerOverview): number | null {
@@ -105,7 +118,11 @@ function memoryPercent(container: ContainerOverview): number | null {
 
 function formatMemory(container: ContainerOverview): string {
   const percent = memoryPercent(container);
-  if (percent === null || container.memoryUsageBytes === null || container.memoryLimitBytes === null) {
+  if (
+    percent === null ||
+    container.memoryUsageBytes === null ||
+    container.memoryLimitBytes === null
+  ) {
     return "未取得";
   }
   return `${formatBytes(container.memoryUsageBytes)} / ${formatBytes(container.memoryLimitBytes)} (${percent.toFixed(1)}%)`;
@@ -114,9 +131,7 @@ function formatMemory(container: ContainerOverview): string {
 function formatRelativeTime(timestamp: string, reference: string): string {
   const target = Date.parse(timestamp);
   const now = Date.parse(reference);
-  if (!Number.isFinite(target) || !Number.isFinite(now)) {
-    return "時刻不明";
-  }
+  if (!Number.isFinite(target) || !Number.isFinite(now)) return "時刻不明";
   const ageSeconds = Math.max(0, Math.floor((now - target) / 1_000));
   if (ageSeconds < 60) return `${ageSeconds}秒前`;
   if (ageSeconds < 3_600) return `${Math.floor(ageSeconds / 60)}分前`;
@@ -125,9 +140,7 @@ function formatRelativeTime(timestamp: string, reference: string): string {
 }
 
 function formatDateTime(timestamp: string | null): string {
-  if (!timestamp || !Number.isFinite(Date.parse(timestamp))) {
-    return "未設定";
-  }
+  if (!timestamp || !Number.isFinite(Date.parse(timestamp))) return "未設定";
   return new Intl.DateTimeFormat("ja-JP", {
     dateStyle: "short",
     timeStyle: "short",
@@ -140,9 +153,7 @@ function formatExpectedState(value: ContainerExpectedState | null): string {
 }
 
 function formatExit(container: ContainerOverview): string {
-  if (container.oomKilled) {
-    return "OOMKilled";
-  }
+  if (container.oomKilled) return "OOMKilled";
   return container.exitCode === null ? "—" : `Code ${container.exitCode}`;
 }
 
@@ -162,9 +173,7 @@ function latest(
 ): number | null {
   for (let index = points.length - 1; index >= 0; index -= 1) {
     const value = selector(points[index]);
-    if (value !== null && Number.isFinite(value)) {
-      return value;
-    }
+    if (value !== null && Number.isFinite(value)) return value;
   }
   return null;
 }
@@ -180,9 +189,7 @@ function singleSeries(
   selector: (point: ContainerMetricHistoryPoint) => number | null,
   transform?: (value: number) => number,
 ) {
-  if (!history) {
-    return [];
-  }
+  if (!history) return [];
   return [
     {
       id,
@@ -212,9 +219,7 @@ function dualSeries(
   },
   transform?: (value: number) => number,
 ) {
-  if (!history) {
-    return [];
-  }
+  if (!history) return [];
   return [first, second].map((item) => ({
     id: item.id,
     label: item.label,
@@ -236,10 +241,18 @@ function historyHref(
   return `/containers/${encodeURIComponent(serverId)}/${encodeURIComponent(containerName)}?range=${range}`;
 }
 
+function eventMarkers(events: MonitoringEvent[]): MetricChartMarker[] {
+  return events.map((event) => ({
+    id: String(event.id),
+    timestamp: event.occurredAt,
+    label: eventMarkerLabels[event.eventType],
+    severity: event.severity,
+  }));
+}
+
 export default async function ContainerDetailPage({ params, searchParams }: PageProps) {
   const [route, query] = await Promise.all([params, searchParams]);
   const { serverId, containerName } = route;
-
   if (!IDENTIFIER_PATTERN.test(serverId) || !IDENTIFIER_PATTERN.test(containerName)) {
     notFound();
   }
@@ -256,36 +269,44 @@ export default async function ContainerDetailPage({ params, searchParams }: Page
     const snapshot = await getMonitoringSnapshot();
     generatedAt = snapshot.generatedAt;
     host = snapshot.hosts.find((item) => item.serverId === serverId) ?? null;
-    if (!host) {
-      notFound();
-    }
+    if (!host) notFound();
     container =
       snapshot.containers.find(
         (item) => item.hostId === host?.id && item.name === containerName,
       ) ?? null;
-    if (!container) {
-      notFound();
-    }
+    if (!container) notFound();
   } catch (error) {
-    if (error && typeof error === "object" && "digest" in error) {
-      throw error;
-    }
+    if (error && typeof error === "object" && "digest" in error) throw error;
     currentError = true;
     console.error("コンテナ現在値の取得に失敗しました", error);
   }
 
   let history: ContainerMetricHistorySeries | null = null;
+  let events: MonitoringEvent[] = [];
   let historyError = false;
+  let eventError = false;
+
   if (host) {
-    try {
-      const series = await getContainerMetricHistory(range);
+    const [historyResult, eventResult] = await Promise.allSettled([
+      getContainerMetricHistory(range),
+      getMonitoringEvents({ range, serverId, containerName }),
+    ]);
+
+    if (historyResult.status === "fulfilled") {
       history =
-        series.find(
+        historyResult.value.find(
           (item) => item.hostId === host?.id && item.containerName === containerName,
         ) ?? null;
-    } catch (error) {
+    } else {
       historyError = true;
-      console.error("コンテナ個別履歴の取得に失敗しました", error);
+      console.error("コンテナ個別履歴の取得に失敗しました", historyResult.reason);
+    }
+
+    if (eventResult.status === "fulfilled") {
+      events = eventResult.value;
+    } else {
+      eventError = true;
+      console.error("コンテナ監視イベントの取得に失敗しました", eventResult.reason);
     }
   }
 
@@ -298,6 +319,7 @@ export default async function ContainerDetailPage({ params, searchParams }: Page
   const seriesLabel = container
     ? `${container.name} / ${container.hostDisplayName}`
     : containerName;
+  const markers = eventMarkers(events);
   const peakCpu = peak(points, (point) => point.cpuPercent);
   const peakMemory = peak(points, (point) => point.memoryPercent);
   const peakPids = peak(points, (point) => point.pids);
@@ -318,10 +340,11 @@ export default async function ContainerDetailPage({ params, searchParams }: Page
         <nav aria-label="メインナビゲーション">
           <a href="/#top">概要</a>
           <a href="/minecraft">Minecraft</a>
-          <a aria-current="page" href="/containers">
-            コンテナ
-          </a>
+          <a aria-current="page" href="/containers">コンテナ</a>
           <a href={`/history?range=${range}`}>履歴グラフ</a>
+          <a href={`/events?range=${range}&target=${encodeURIComponent(`${serverId}/${containerName}`)}`}>
+            イベント
+          </a>
         </nav>
         <div className="agent">
           <i className={currentError ? "error" : container?.status ?? "offline"} />
@@ -338,16 +361,16 @@ export default async function ContainerDetailPage({ params, searchParams }: Page
           <div>
             <p className={styles.eyebrow}>CONTAINER DETAIL</p>
             <h1>{containerName}</h1>
-            <p>
-              {host?.displayName ?? serverId}の現在値と、選択期間のリソース推移を確認します。
-            </p>
+            <p>{host?.displayName ?? serverId}の現在値、履歴、状態変化を確認します。</p>
           </div>
           <div className={styles.headerActions}>
-            <a className={styles.secondaryLink} href="/containers">
-              コンテナ一覧
-            </a>
-            <a className={styles.secondaryLink} href={`/history?range=${range}`}>
-              全体履歴
+            <a className={styles.secondaryLink} href="/containers">コンテナ一覧</a>
+            <a className={styles.secondaryLink} href={`/history?range=${range}`}>全体履歴</a>
+            <a
+              className={styles.secondaryLink}
+              href={`/events?range=${range}&target=${encodeURIComponent(`${serverId}/${containerName}`)}`}
+            >
+              全イベント
             </a>
           </div>
         </header>
@@ -363,9 +386,7 @@ export default async function ContainerDetailPage({ params, searchParams }: Page
               <article>
                 <span>運用状態</span>
                 <strong>{statusLabels[container.status]}</strong>
-                <small>
-                  {stateLabels[container.state]} / {healthLabels[container.health]}
-                </small>
+                <small>{stateLabels[container.state]} / {healthLabels[container.health]}</small>
               </article>
               <article>
                 <span>CPU / PIDs</span>
@@ -378,7 +399,7 @@ export default async function ContainerDetailPage({ params, searchParams }: Page
               </article>
               <article>
                 <span>Memory</span>
-                <strong>{formatPercent(memoryPercent(container))}</strong>
+                <strong>{memoryPercent(container)?.toFixed(2) ?? "—"}%</strong>
                 <small>{formatMemory(container)}</small>
               </article>
               <article>
@@ -389,63 +410,26 @@ export default async function ContainerDetailPage({ params, searchParams }: Page
             </section>
 
             <section className={styles.currentGrid} aria-label="コンテナ現在値詳細">
-              <div>
-                <span>EXPECTED STATE</span>
-                <strong>{formatExpectedState(container.expectedState)}</strong>
-              </div>
-              <div>
-                <span>STATE / HEALTH</span>
-                <strong>
-                  {stateLabels[container.state]} / {healthLabels[container.health]}
-                </strong>
-              </div>
-              <div>
-                <span>RESTART / EXIT</span>
-                <strong>
-                  {container.restartCount} / {formatExit(container)}
-                </strong>
-              </div>
-              <div>
-                <span>NETWORK RX / TX</span>
-                <strong>
-                  {formatBytes(container.networkRxBytes)} / {formatBytes(container.networkTxBytes)}
-                </strong>
-                <small>Collector累積Counter</small>
-              </div>
-              <div>
-                <span>BLOCK READ / WRITE</span>
-                <strong>
-                  {formatBytes(container.blockReadBytes)} / {formatBytes(container.blockWriteBytes)}
-                </strong>
-                <small>Collector累積Counter</small>
-              </div>
-              <div>
-                <span>OOM KILLED</span>
-                <strong>{container.oomKilled ? "検知" : "なし"}</strong>
-              </div>
+              <div><span>EXPECTED STATE</span><strong>{formatExpectedState(container.expectedState)}</strong></div>
+              <div><span>STATE / HEALTH</span><strong>{stateLabels[container.state]} / {healthLabels[container.health]}</strong></div>
+              <div><span>RESTART / EXIT</span><strong>{container.restartCount} / {formatExit(container)}</strong></div>
+              <div><span>NETWORK RX / TX</span><strong>{formatBytes(container.networkRxBytes)} / {formatBytes(container.networkTxBytes)}</strong><small>Collector累積Counter</small></div>
+              <div><span>BLOCK READ / WRITE</span><strong>{formatBytes(container.blockReadBytes)} / {formatBytes(container.blockWriteBytes)}</strong><small>Collector累積Counter</small></div>
+              <div><span>OOM KILLED</span><strong>{container.oomKilled ? "検知" : "なし"}</strong></div>
             </section>
 
             {container.maintenanceMode ? (
               <section className={`${styles.notice} ${styles.maintenance}`}>
-                <strong>
-                  {container.maintenanceActive ? "メンテナンス中" : "メンテナンス設定は期限切れ"}
-                </strong>
-                <p>
-                  {container.maintenanceReason ?? "理由未設定"} / 期限 {formatDateTime(container.maintenanceUntil)}
-                </p>
+                <strong>{container.maintenanceActive ? "メンテナンス中" : "メンテナンス設定は期限切れ"}</strong>
+                <p>{container.maintenanceReason ?? "理由未設定"} / 期限 {formatDateTime(container.maintenanceUntil)}</p>
               </section>
             ) : null}
           </>
         ) : null}
 
         <div className={styles.sectionHeading}>
-          <div>
-            <span>HISTORY</span>
-            <h2>個別リソース履歴</h2>
-          </div>
-          <p>
-            Network / Block I/Oは累積値ではなく区間差分の速度です。欠損Bucketは0補完しません。
-          </p>
+          <div><span>HISTORY</span><h2>個別リソース履歴</h2></div>
+          <p>縦の破線は同じ期間に発生したState / Health / Restart / OOMなどの監視イベントです。</p>
         </div>
 
         <nav className={styles.periodSelector} aria-label="表示期間">
@@ -462,158 +446,43 @@ export default async function ContainerDetailPage({ params, searchParams }: Page
         </nav>
 
         <section className={styles.summaryGrid} aria-label="選択期間の履歴サマリー">
-          <div>
-            <span>表示期間</span>
-            <strong>{rangeConfig.label}</strong>
-            <small>{rangeConfig.aggregationLabel}</small>
-          </div>
-          <div>
-            <span>Peak CPU</span>
-            <strong>{peakCpu === null ? "—" : `${peakCpu.toFixed(2)}%`}</strong>
-            <small>選択期間の最大値</small>
-          </div>
-          <div>
-            <span>Peak Memory</span>
-            <strong>{peakMemory === null ? "—" : `${peakMemory.toFixed(2)}%`}</strong>
-            <small>選択期間の最大値</small>
-          </div>
-          <div>
-            <span>Peak PIDs</span>
-            <strong>{peakPids === null ? "—" : Math.round(peakPids)}</strong>
-            <small>選択期間の最大値</small>
-          </div>
-          <div>
-            <span>RestartCount</span>
-            <strong>{latestRestart === null ? "—" : Math.round(latestRestart)}</strong>
-            <small>期間内の最新値</small>
-          </div>
-          <div>
-            <span>集約元Sample</span>
-            <strong>{historyError ? "—" : totalSamples.toLocaleString("ja-JP")}</strong>
-            <small>{dataSourceLabels[historyDataSource]}</small>
-          </div>
-          <div>
-            <span>Bucket</span>
-            <strong>{rangeConfig.aggregationLabel}</strong>
-            <small>{expectedIntervalSeconds}秒間隔</small>
-          </div>
-          <div>
-            <span>Data Source</span>
-            <strong>{dataSourceLabels[historyDataSource]}</strong>
-            <small>既存の履歴RPCを再利用</small>
-          </div>
+          <div><span>表示期間</span><strong>{rangeConfig.label}</strong><small>{rangeConfig.aggregationLabel}</small></div>
+          <div><span>Peak CPU</span><strong>{peakCpu === null ? "—" : `${peakCpu.toFixed(2)}%`}</strong><small>選択期間の最大値</small></div>
+          <div><span>Peak Memory</span><strong>{peakMemory === null ? "—" : `${peakMemory.toFixed(2)}%`}</strong><small>選択期間の最大値</small></div>
+          <div><span>Peak PIDs</span><strong>{peakPids === null ? "—" : Math.round(peakPids)}</strong><small>選択期間の最大値</small></div>
+          <div><span>RestartCount</span><strong>{latestRestart === null ? "—" : Math.round(latestRestart)}</strong><small>期間内の最新値</small></div>
+          <div><span>監視イベント</span><strong>{eventError ? "—" : events.length}</strong><small>同期間の状態変化</small></div>
+          <div><span>集約元Sample</span><strong>{historyError ? "—" : totalSamples.toLocaleString("ja-JP")}</strong><small>{dataSourceLabels[historyDataSource]}</small></div>
+          <div><span>Data Source</span><strong>{dataSourceLabels[historyDataSource]}</strong><small>{expectedIntervalSeconds}秒Bucket</small></div>
         </section>
 
         {historyError ? (
           <div className="empty error-panel" role="alert">
             <strong>個別履歴を取得できませんでした</strong>
-            <p>履歴RPCの状態を確認してください。現在値の表示には影響しません。</p>
+            <p>履歴RPCの状態を確認してください。現在値・イベント表示には影響しません。</p>
           </div>
         ) : (
           <div className={styles.chartGrid}>
-            <MetricLineChart
-              aggregationLabel={rangeConfig.aggregationLabel}
-              description="Docker CPU使用率の推移です。"
-              endAt={endAt}
-              expectedIntervalSeconds={expectedIntervalSeconds}
-              periodLabel={rangeConfig.label}
-              series={singleSeries(history, "cpu", seriesLabel, (point) => point.cpuPercent)}
-              startAt={startAt}
-              title="CPU使用率"
-              unit="%"
-            />
-            <MetricLineChart
-              aggregationLabel={rangeConfig.aggregationLabel}
-              description="Container Memory Limitに対する使用率です。"
-              endAt={endAt}
-              expectedIntervalSeconds={expectedIntervalSeconds}
-              maximum={100}
-              periodLabel={rangeConfig.label}
-              series={singleSeries(history, "memory", seriesLabel, (point) => point.memoryPercent)}
-              startAt={startAt}
-              title="メモリ使用率"
-              unit="%"
-            />
-            <MetricLineChart
-              aggregationLabel={rangeConfig.aggregationLabel}
-              description="コンテナ内のProcess数です。"
-              endAt={endAt}
-              expectedIntervalSeconds={expectedIntervalSeconds}
-              periodLabel={rangeConfig.label}
-              series={singleSeries(history, "pids", seriesLabel, (point) => point.pids)}
-              startAt={startAt}
-              title="PIDs"
-              unit=""
-              valueDigits={0}
-            />
-            <MetricLineChart
-              aggregationLabel={rangeConfig.aggregationLabel}
-              description="Dockerが報告する累積RestartCountの推移です。"
-              endAt={endAt}
-              expectedIntervalSeconds={expectedIntervalSeconds}
-              periodLabel={rangeConfig.label}
-              series={singleSeries(history, "restart", seriesLabel, (point) => point.restartCount)}
-              startAt={startAt}
-              title="RestartCount"
-              unit=""
-              valueDigits={0}
-            />
-            <MetricLineChart
-              aggregationLabel={rangeConfig.aggregationLabel}
-              description="Network累積Counterを区間差分へ変換した転送速度です。"
-              endAt={endAt}
-              expectedIntervalSeconds={expectedIntervalSeconds}
-              periodLabel={rangeConfig.label}
-              series={dualSeries(
-                history,
-                {
-                  id: "network-rx",
-                  label: "RX",
-                  selector: (point) => point.networkRxRateBps,
-                },
-                {
-                  id: "network-tx",
-                  label: "TX",
-                  selector: (point) => point.networkTxRateBps,
-                },
-                (value) => value / 1024,
-              )}
-              startAt={startAt}
-              title="Network I/O"
-              unit=" KiB/s"
-            />
-            <MetricLineChart
-              aggregationLabel={rangeConfig.aggregationLabel}
-              description="Block I/O累積Counterを区間差分へ変換した速度です。"
-              endAt={endAt}
-              expectedIntervalSeconds={expectedIntervalSeconds}
-              periodLabel={rangeConfig.label}
-              series={dualSeries(
-                history,
-                {
-                  id: "block-read",
-                  label: "Read",
-                  selector: (point) => point.blockReadRateBps,
-                },
-                {
-                  id: "block-write",
-                  label: "Write",
-                  selector: (point) => point.blockWriteRateBps,
-                },
-                (value) => value / 1024,
-              )}
-              startAt={startAt}
-              title="Block I/O"
-              unit=" KiB/s"
-            />
+            <MetricLineChart aggregationLabel={rangeConfig.aggregationLabel} description="Docker CPU使用率の推移です。" endAt={endAt} expectedIntervalSeconds={expectedIntervalSeconds} markers={markers} periodLabel={rangeConfig.label} series={singleSeries(history,"cpu",seriesLabel,(point)=>point.cpuPercent)} startAt={startAt} title="CPU使用率" unit="%" />
+            <MetricLineChart aggregationLabel={rangeConfig.aggregationLabel} description="Container Memory Limitに対する使用率です。" endAt={endAt} expectedIntervalSeconds={expectedIntervalSeconds} markers={markers} maximum={100} periodLabel={rangeConfig.label} series={singleSeries(history,"memory",seriesLabel,(point)=>point.memoryPercent)} startAt={startAt} title="メモリ使用率" unit="%" />
+            <MetricLineChart aggregationLabel={rangeConfig.aggregationLabel} description="コンテナ内のProcess数です。" endAt={endAt} expectedIntervalSeconds={expectedIntervalSeconds} markers={markers} periodLabel={rangeConfig.label} series={singleSeries(history,"pids",seriesLabel,(point)=>point.pids)} startAt={startAt} title="PIDs" unit="" valueDigits={0} />
+            <MetricLineChart aggregationLabel={rangeConfig.aggregationLabel} description="Dockerが報告する累積RestartCountの推移です。" endAt={endAt} expectedIntervalSeconds={expectedIntervalSeconds} markers={markers} periodLabel={rangeConfig.label} series={singleSeries(history,"restart",seriesLabel,(point)=>point.restartCount)} startAt={startAt} title="RestartCount" unit="" valueDigits={0} />
+            <MetricLineChart aggregationLabel={rangeConfig.aggregationLabel} description="Network累積Counterを区間差分へ変換した転送速度です。" endAt={endAt} expectedIntervalSeconds={expectedIntervalSeconds} markers={markers} periodLabel={rangeConfig.label} series={dualSeries(history,{id:"network-rx",label:"RX",selector:(point)=>point.networkRxRateBps},{id:"network-tx",label:"TX",selector:(point)=>point.networkTxRateBps},(value)=>value/1024)} startAt={startAt} title="Network I/O" unit=" KiB/s" />
+            <MetricLineChart aggregationLabel={rangeConfig.aggregationLabel} description="Block I/O累積Counterを区間差分へ変換した速度です。" endAt={endAt} expectedIntervalSeconds={expectedIntervalSeconds} markers={markers} periodLabel={rangeConfig.label} series={dualSeries(history,{id:"block-read",label:"Read",selector:(point)=>point.blockReadRateBps},{id:"block-write",label:"Write",selector:(point)=>point.blockWriteRateBps},(value)=>value/1024)} startAt={startAt} title="Block I/O" unit=" KiB/s" />
           </div>
         )}
 
+        <ContainerEventPanel
+          containerName={containerName}
+          error={eventError}
+          events={events}
+          range={range}
+          serverId={serverId}
+        />
+
         <section className={styles.notice}>
           <strong>読み取り専用</strong>
-          <p>
-            この画面は既存の監視Snapshotと履歴RPCだけを利用します。Docker操作、Shell、RCON、Secret、ログ本文は扱いません。
-          </p>
+          <p>この画面は監視Snapshot・履歴RPC・構造化イベントだけを利用します。Docker操作、Shell、RCON、Secret、ログ本文は扱いません。</p>
         </section>
       </section>
     </main>
