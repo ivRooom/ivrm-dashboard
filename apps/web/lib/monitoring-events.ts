@@ -183,6 +183,18 @@ function parseEventRow(row: MonitoringEventRow): MonitoringEvent | null {
   };
 }
 
+function parseEventPayload(payload: unknown, source: string): MonitoringEvent[] {
+  if (!Array.isArray(payload)) {
+    throw new Error(`${source}が配列以外を返しました`);
+  }
+
+  const events = payload.map((row) => parseEventRow(row as MonitoringEventRow));
+  if (events.some((event) => event === null)) {
+    throw new Error(`${source}のレスポンス形式が不正です`);
+  }
+  return events as MonitoringEvent[];
+}
+
 export function parseMonitoringEventSeverity(
   value: string | null | undefined,
 ): MonitoringEventSeverityFilter {
@@ -226,16 +238,10 @@ async function fetchEventPage(
     throw new Error(`get_monitoring_events_v2が${response.status}を返しました`);
   }
 
-  const payload: unknown = await response.json();
-  if (!Array.isArray(payload)) {
-    throw new Error("get_monitoring_events_v2が配列以外を返しました");
-  }
-
-  const events = payload.map((row) => parseEventRow(row as MonitoringEventRow));
-  if (events.some((event) => event === null)) {
-    throw new Error("get_monitoring_events_v2のレスポンス形式が不正です");
-  }
-  return events as MonitoringEvent[];
+  return parseEventPayload(
+    await response.json(),
+    "get_monitoring_events_v2",
+  );
 }
 
 export async function getMonitoringEvents({
@@ -282,4 +288,40 @@ export async function getMonitoringEvents({
   }
 
   return events;
+}
+
+export async function getMonitoringIncidentContext(
+  beforeAt: string,
+): Promise<MonitoringEvent[]> {
+  if (!Number.isFinite(Date.parse(beforeAt))) {
+    throw new Error("Incident Context境界時刻が不正です");
+  }
+
+  const { url, serviceRoleKey } = supabaseConfiguration();
+  const response = await fetch(
+    `${url}/rest/v1/rpc/get_monitoring_incident_context_v1`,
+    {
+      method: "POST",
+      headers: {
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ p_before_at: beforeAt }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `get_monitoring_incident_context_v1が${response.status}を返しました`,
+    );
+  }
+
+  return parseEventPayload(
+    await response.json(),
+    "get_monitoring_incident_context_v1",
+  );
 }
