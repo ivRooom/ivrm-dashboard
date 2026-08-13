@@ -127,8 +127,15 @@ function servicesFromMinecraft(
       endpoint: `${minecraft.publicEndpoint.host}:${minecraft.publicEndpoint.port}`,
       protocol: "TCP",
       exposure: "public",
-      status: minecraft.publicEndpoint.published ? minecraftServiceStatus(minecraft.status) : "attention",
-      note: minecraft.publicEndpoint.published ? (minecraft.publicEndpoint.version ?? "Version未取得") : "Proxy Port未公開",
+      status:
+        minecraft.publicEndpoint.published && minecraft.publicEndpoint.reachable
+          ? minecraftServiceStatus(minecraft.status)
+          : "attention",
+      note: !minecraft.publicEndpoint.published
+        ? "Proxy Port未公開"
+        : !minecraft.publicEndpoint.reachable
+          ? "Public Probe到達不可"
+          : (minecraft.publicEndpoint.version ?? "Version未取得"),
     },
     {
       id: "minecraft-voice",
