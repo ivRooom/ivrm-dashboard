@@ -114,13 +114,14 @@ export default async function ReliabilityPage({ searchParams }: PageProps) {
               <article className={styles.metric}><span>KNOWN DOWNTIME</span><strong>{duration(data.overall.knownDowntimeSeconds)}</strong><small>重複時間はUnion</small></article>
               <article className={styles.metric}><span>ACTIVE</span><strong>{data.overall.activeIncidentCount}</strong><small>重大 {data.overall.activeCriticalCount}</small></article>
               <article className={styles.metric}><span>MEDIAN RECOVERY</span><strong>{duration(data.overall.medianRecoverySeconds)}</strong><small>Recovered {data.overall.recoveredIncidentCount}</small></article>
+              <article className={styles.metric}><span>LONGEST RECOVERY</span><strong>{duration(data.overall.longestRecoverySeconds)}</strong><small>選択期間内の最大復旧時間</small></article>
             </section>
             {!data.backupDataAvailable || !data.notificationDataAvailable ? (
               <div className={styles.coverage}>一部データソースを取得できないため、取得できたサービスだけで継続表示しています。</div>
             ) : null}
             <section>
               <div className={styles.sectionTitle}><div><span>SERVICE SCORECARDS</span><h2>サービス別信頼性</h2></div><p>SLO値は未設定のため仮定せず、実Incidentだけを集計します。</p></div>
-              <div className={styles.serviceGrid}>{data.services.map((service) => <ReliabilityServiceCard key={service.id} service={service} />)}</div>
+              <div className={styles.serviceGrid}>{data.services.map((service) => <ReliabilityServiceCard key={service.id} service={service} range={range} />)}</div>
             </section>
             <ReliabilityNotificationPanel data={data} />
             <section className={styles.notice}><strong>Incident-free ratioについて</strong><p>Recovery済みIncidentと開始時刻を証明できるActive IncidentだけをDowntimeへ含めます。複数障害の重複時間は1回だけ数えます。開始時刻不明のActive障害がある場合は実際の比率が表示値以下となるため「≤」で示します。</p></section>
