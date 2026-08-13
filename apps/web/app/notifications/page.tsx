@@ -79,12 +79,19 @@ export default async function NotificationsPage() {
     summary?.channelEnabled && summary.channelConfigured &&
     (!summary.dispatcherLastInvokedAt || Date.parse(generatedAt) - Date.parse(summary.dispatcherLastInvokedAt) > 180_000),
   );
+  const dispatcherError = Boolean(
+    summary?.channelEnabled && summary.channelConfigured &&
+    (summary.dispatcherLastErrorCode || summary.channelLastErrorCode),
+  );
   const notificationHealth = loadError ? "取得エラー"
     : !summary?.channelEnabled ? "監視のみ"
     : !summary.channelConfigured ? "設定待ち"
-    : summary.failedCount > 0 || dispatcherStale ? "要確認"
+    : summary.failedCount > 0 || dispatcherStale || dispatcherError ? "要確認"
     : summary.retryCount > 0 ? "再試行中"
     : "正常";
+  const notificationNeedsAttention = Boolean(
+    loadError || summary?.failedCount || dispatcherStale || dispatcherError,
+  );
 
   return (
     <main className="shell">
@@ -97,7 +104,7 @@ export default async function NotificationsPage() {
           <a href="/events">イベント</a><a href="/history">履歴グラフ</a>
         </nav>
         <div className="agent">
-          <i className={loadError || summary?.failedCount ? "error" : summary?.retryCount || dispatcherStale ? "stale" : "online"} />
+          <i className={notificationNeedsAttention ? "error" : summary?.retryCount ? "stale" : "online"} />
           Notification Center<br /><small>{notificationHealth}</small>
         </div>
       </aside>
@@ -117,7 +124,7 @@ export default async function NotificationsPage() {
         ) : summary ? (
           <>
             <section className={styles.summaryGrid} aria-label="Notificationサマリー">
-              <article className={summary.failedCount || dispatcherStale ? styles.critical : summary.retryCount ? styles.warning : undefined}><span>NOTIFICATION HEALTH</span><strong>{notificationHealth}</strong><small>{summary.channelDisplayName}</small></article>
+              <article className={summary.failedCount || dispatcherStale || dispatcherError ? styles.critical : summary.retryCount ? styles.warning : undefined}><span>NOTIFICATION HEALTH</span><strong>{notificationHealth}</strong><small>{summary.channelDisplayName}</small></article>
               <article><span>ACTIVE SIGNALS</span><strong>{summary.activeSignalCount}</strong><small>重大 {summary.activeCriticalCount} / 注意 {summary.activeWarningCount}</small></article>
               <article className={summary.pendingCount + summary.retryCount > 0 ? styles.warning : undefined}><span>QUEUE</span><strong>{summary.pendingCount} / {summary.retryCount}</strong><small>Pending / Retry</small></article>
               <article className={summary.failedCount > 0 ? styles.critical : undefined}><span>FAILED</span><strong>{summary.failedCount}</strong><small>最大5回Retry後</small></article>

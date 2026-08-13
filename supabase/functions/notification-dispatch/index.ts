@@ -98,27 +98,43 @@ Deno.serve(async (request: Request) => {
   const rows = (Array.isArray(data) ? data : []) as DeliveryRow[];
   let sent = 0;
   let failed = 0;
+  let suppressed = 0;
 
   for (const row of rows) {
-    const payload = {
-      username: "IVRM Monitor",
-      allowed_mentions: { parse: [] as string[] },
-      embeds: [{
-        title: row.title.slice(0, 256),
-        description: row.message.slice(0, 4096),
-        color: colorForSeverity(row.severity),
-        url: detailUrl(row.detail_href),
-        fields: [
-          { name: "状態", value: transitionLabel(row.transition), inline: true },
-          { name: "対象", value: `${sourceLabel(row.source_type)} / ${row.entity_name}`.slice(0, 1024), inline: true },
-          { name: "Server", value: row.server_id.slice(0, 1024), inline: true },
-        ],
-        footer: { text: `IVRM Notification Center / Attempt ${row.attempts}` },
-        timestamp: row.occurred_at,
-      }],
-    };
-
     try {
+      // Claim後にChannelがOFFへ切り替わる競合も安全側へ倒す。
+      const { data: channelReady, error: channelError } = await client.rpc("notification_channel_ready_v1");
+      if (channelError || channelReady !== true) {
+        const reason = channelError ? "channel_check_failed" : "channel_disabled_during_dispatch";
+        const { error: suppressError } = await client.rpc("suppress_notification_delivery_v1", {
+          p_id: row.id,
+          p_claim_token: claimToken,
+          p_reason: reason,
+        });
+        if (suppressError) failed += 1;
+        else suppressed += 1;
+        continue;
+      }
+
+      // Payload組み立てもRow単位try内で行い、不正RowがBatch全体を止めないようにする。
+      const payload = {
+        username: "IVRM Monitor",
+        allowed_mentions: { parse: [] as string[] },
+        embeds: [{
+          title: row.title.slice(0, 256),
+          description: row.message.slice(0, 4096),
+          color: colorForSeverity(row.severity),
+          url: detailUrl(row.detail_href),
+          fields: [
+            { name: "状態", value: transitionLabel(row.transition), inline: true },
+            { name: "対象", value: `${sourceLabel(row.source_type)} / ${row.entity_name}`.slice(0, 1024), inline: true },
+            { name: "Server", value: row.server_id.slice(0, 1024), inline: true },
+          ],
+          footer: { text: `IVRM Notification Center / Attempt ${row.attempts}` },
+          timestamp: row.occurred_at,
+        }],
+      };
+
       const response = await fetch(webhook, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -151,7 +167,7 @@ Deno.serve(async (request: Request) => {
       failed += 1;
       await client.rpc("complete_notification_delivery_v1", {
         p_id: row.id, p_claim_token: claimToken, p_success: false, p_http_status: null,
-        p_external_delivery_id: null, p_error_code: "discord_network_error",
+        p_external_delivery_id: null, p_error_code: "dispatcher_row_error",
       });
     }
   }
@@ -162,5 +178,5 @@ Deno.serve(async (request: Request) => {
     p_batch_count: rows.length,
     p_error_code: dispatchSucceeded ? null : "partial_delivery_failure",
   });
-  return jsonResponse(200, { ok: dispatchSucceeded, claimed: rows.length, sent, failed });
+  return jsonResponse(200, { ok: dispatchSucceeded, claimed: rows.length, sent, failed, suppressed });
 });

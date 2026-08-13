@@ -1,3 +1,5 @@
+import "server-only";
+
 export type NotificationSeverity = "info" | "warning" | "critical" | "recovery";
 export type NotificationSource = "host" | "container" | "backup";
 export type NotificationStatus = "pending" | "sending" | "sent" | "retry" | "failed" | "suppressed";
@@ -144,6 +146,11 @@ function nullableInteger(value: unknown): number | null | undefined {
   return value === null ? null : integer(value) ?? undefined;
 }
 
+function validRelativeHref(value: unknown): string | null {
+  const href = text(value, 1001);
+  return href && href.startsWith("/") && !href.startsWith("//") ? href : null;
+}
+
 function singleRow(payload: unknown): Row {
   if (!Array.isArray(payload) || payload.length !== 1) throw new Error("Notification Summaryレスポンスが不正です");
   return objectRow(payload[0]);
@@ -196,9 +203,9 @@ function parseSignals(payload: unknown): NotificationSignal[] {
     const openedAt = timestamp(row.opened_at);
     const lastSeenAt = timestamp(row.last_seen_at);
     const reason = text(row.reason, 1800);
-    const detailHref = text(row.detail_href, 1001);
+    const detailHref = validRelativeHref(row.detail_href);
     if (!signalKey || !sourceType || !SOURCES.has(sourceType) || !serverId || !entityType || !SOURCES.has(entityType) || !entityName ||
-        !signalType || !severity || !["warning", "critical"].includes(severity) || !openedAt || !lastSeenAt || !reason || !detailHref?.startsWith("/")) {
+        !signalType || !severity || !["warning", "critical"].includes(severity) || !openedAt || !lastSeenAt || !reason || !detailHref) {
       throw new Error("Notification Signal行が不正です");
     }
     return { signalKey, sourceType, serverId, entityType, entityName, signalType, severity, openedAt, lastSeenAt, reason, detailHref };
@@ -218,7 +225,7 @@ function parseDeliveries(payload: unknown): NotificationDelivery[] {
     const severity = text(row.severity) as NotificationSeverity | null;
     const title = text(row.title, 160);
     const message = text(row.message, 1800);
-    const detailHref = text(row.detail_href, 1001);
+    const detailHref = validRelativeHref(row.detail_href);
     const occurredAt = timestamp(row.occurred_at);
     const status = text(row.status) as NotificationStatus | null;
     const suppressionReason = nullableText(row.suppression_reason, 256);
@@ -228,7 +235,7 @@ function parseDeliveries(payload: unknown): NotificationDelivery[] {
     const lastErrorCode = nullableText(row.last_error_code, 128);
     if (rowId === null || rowId < 1 || !sourceType || !SOURCES.has(sourceType) || !serverId || !entityType || !SOURCES.has(entityType) ||
         !entityName || !transition || !TRANSITIONS.has(transition) || !severity || !SEVERITIES.has(severity) || !title || !message ||
-        !detailHref?.startsWith("/") || !occurredAt || !status || !STATUSES.has(status) || suppressionReason === undefined || attempts === null ||
+        !detailHref || !occurredAt || !status || !STATUSES.has(status) || suppressionReason === undefined || attempts === null ||
         sentAt === undefined || lastHttpStatus === undefined || lastErrorCode === undefined) {
       throw new Error("Notification Delivery行が不正です");
     }

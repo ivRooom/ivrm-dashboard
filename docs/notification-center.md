@@ -44,6 +44,18 @@ Claimは`FOR UPDATE SKIP LOCKED`を使い、複数Dispatcherが同時実行さ�
 
 Signalの初回OpenはSignal Key単位のtransaction advisory lockで直列化し、存在しない行への同時Insert競合も防ぎます。
 
+### Channel停止・再開時の扱い
+
+ChannelをOFFまたは未設定へ切り替えると、`pending / retry / sending`は即座に`supressed`ではなく正規の`status=suppressed`へ移し、Claimも解除します。これにより停止中のRowが再有効化直後に古い通知として一括配送されることを防ぎます。
+
+再びChannelがReadyになった場合は、現在もActiveなSignalについて、現在のMaintenance / Suppression条件が解除されているときだけ、そのIncident内で最新の`opened / escalated` Suppressed Rowを1件だけ`pending`へ戻します。
+
+- 継続中の障害: 通知再開後に最新状態を1件だけ配送可能
+- OOMKilled / RestartCountなどone-shot: 古いイベントを後追い再送しない
+- すでにRecovery済みのSignal: 再送しない
+
+Dispatcherも各RowのDiscord送信直前にChannel状態を再確認します。Claim後にChannelがOFFへ切り替わった場合は、そのRowを送信せずSuppressedへ戻します。
+
 ## Secret / 環境設定
 
 次の情報はGitHub、通常DBテーブル、Outboxへ保存しません。
@@ -59,7 +71,7 @@ Scheduler TokenはMigration 020がDB内部で自動生成します。
 
 通常のセットアップでScheduler Tokenを手動生成・コピーする必要はありません。
 
-Dispatcher URLは環境固有なので、Supabase Vault `ivrm_notification_dispatch_url`へ現在ProjectのEdge Function URLを登録します。MigrationにはProduction Project IDを埋め込みません。
+Dispatcher URLは環境固有なので、Supabase Vault `ivrm_notification_dispatch_url`へ**現在ProjectのEdge Function URLを必ず登録してからChannelを有効化**します。MigrationにはProduction Project IDを埋め込みません。
 
 ```sql
 select vault.create_secret(
@@ -69,6 +81,8 @@ select vault.create_secret(
   null
 );
 ```
+
+既に同名Secretがある場合は新規作成せず、Supabase Vaultの更新手段で現在ProjectのURLへ更新します。別ProjectのURLを設定しないでください。
 
 Discord WebhookはEdge Function Secret `DISCORD_WEBHOOK_URL`へ保存します。DispatcherはDiscord公式Webhook URLだけを許可し、`allowed_mentions.parse=[]`を常に付与します。
 
@@ -105,6 +119,7 @@ select public.set_notification_channel_v1(true, true, 'Discord Alerts');
 - Enabled = ON
 - Webhook Secret = Configured
 - Dispatcherが数分以内に更新
+- Last Errorが`—`
 - Failed / Retryが増加していない
 
 Channelを止める場合はSecretを削除する前に先にOFFにします。
@@ -132,15 +147,16 @@ Containerは既存`container_expectations.maintenance_mode`も自動的に配送
 3. `retry`ならHTTP status / error codeを確認
 4. Dispatcherが3分以上更新されない場合はSupabase Cron / `pg_net` / Edge Functionを確認
 5. `dispatcher_url_missing`ならVaultの`ivrm_notification_dispatch_url`を確認
-6. `failed`は最大5回Retry済みなので、Discord Webhook設定・Discord側障害を確認
+6. `channel_unconfigured`ならEdge Function Secret `DISCORD_WEBHOOK_URL`とChannel状態を確認
+7. `failed`は最大5回Retry済みなので、Discord Webhook設定・Discord側障害を確認
 
 Webhook URLやレスポンス本文をログへ貼り付けないでください。
 
 ## セキュリティ
 
 - NotificationテーブルはRLSを有効化し、`anon` / `authenticated`から直接参照不可
-- Web UIはServer ComponentからService Role RPCだけを利用
-- DispatcherのClaim / Complete / Token Verify RPCもService Roleのみ
+- Web UIはServer ComponentからService Role RPCだけを利用し、`apps/web/lib/notifications.ts`は`server-only`でClient importを禁止
+- DispatcherのClaim / Complete / Suppress / Token Verify RPCもService Roleのみ
 - Edge FunctionはGateway JWTをOFFにする代わりにCustom Scheduler Tokenを必須化し、SHA-256で照合
 - Dispatcher URLはVaultから取得し、別ProjectへScheduler Tokenを送らない
 - `detail_href`は単一`/`始まりの相対URLだけを許可し、`//host`形式を拒否
