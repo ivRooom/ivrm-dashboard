@@ -207,12 +207,15 @@ export function parseBackupReport(rawBody: Uint8Array): BackupReportPayload {
     throw new BackupReportError(400, "invalid_payload");
   }
 
-  const reportedAtMs = Date.parse(value.reportedAt);
+  const serverId = value.serverId;
+  const reportedAt = value.reportedAt;
+  const rawRuns = value.runs;
+  const reportedAtMs = Date.parse(reportedAt);
   if (Math.abs(Date.now() - reportedAtMs) > MAX_CLOCK_SKEW_SECONDS * 1_000) {
     throw new BackupReportError(401, "expired_request");
   }
 
-  const runs = value.runs.map((item) => normalizeRun(item, value.reportedAt));
+  const runs = rawRuns.map((item) => normalizeRun(item, reportedAt));
   if (runs.some((run) => run === null)) {
     throw new BackupReportError(400, "invalid_payload");
   }
@@ -226,8 +229,8 @@ export function parseBackupReport(rawBody: Uint8Array): BackupReportPayload {
   }
 
   return {
-    serverId: value.serverId,
-    reportedAt: value.reportedAt,
+    serverId,
+    reportedAt,
     runs: runs as BackupRunReport[],
   };
 }
