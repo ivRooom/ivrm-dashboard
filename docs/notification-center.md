@@ -38,15 +38,21 @@ BackupはBackup Age / Remote Sync / Retention / Restore Testを毎分再評価�
 - `retry`: 配送失敗後のBackoff待ち
 - `sent`: Discord送信完了
 - `failed`: 5回Retry後も失敗
-- `suppressed`: Channel無効・未設定・Maintenance・明示抑制
+- `suppressed`: Channel無効・未設定・Maintenance・明示抑制・Lifecycle上の送信不要
 
 Claimは`FOR UPDATE SKIP LOCKED`を使い、複数Dispatcherが同時実行されても同じ行を二重送信しません。`sending`のまま5分以上残ったClaimは次回Claim時に`retry`へ戻します。
 
 Signalの初回OpenはSignal Key単位のtransaction advisory lockで直列化し、存在しない行への同時Insert競合も防ぎます。
 
+### Transition順序
+
+同一`signal_key`の未配送Transitionは時系列順を維持します。また、SignalがRecoveryした時点で未配送の`opened / escalated`は`signal_recovered_before_delivery`としてSuppressedへ移し、復旧後に古いCriticalが届くことを防ぎます。
+
+Opening / Escalationが一度も`sent`にならなかったEpisodeでは、Recoveryだけを単独送信せず`recovered_before_first_delivery`としてSuppressedへ記録します。新しいEpisodeがすでに開始している古いRecoveryは`superseded_by_new_incident`として送信しません。
+
 ### Channel停止・再開時の扱い
 
-ChannelをOFFまたは未設定へ切り替えると、`pending / retry / sending`は即座に`supressed`ではなく正規の`status=suppressed`へ移し、Claimも解除します。これにより停止中のRowが再有効化直後に古い通知として一括配送されることを防ぎます。
+ChannelをOFFまたは未設定へ切り替えると、`pending / retry / sending`のRowを即座に`status=suppressed`へ移し、Claimも解除します。これにより停止中のRowが再有効化直後に古い通知として一括配送されることを防ぎます。
 
 再びChannelがReadyになった場合は、現在もActiveなSignalについて、現在のMaintenance / Suppression条件が解除されているときだけ、そのIncident内で最新の`opened / escalated` Suppressed Rowを1件だけ`pending`へ戻します。
 
@@ -54,7 +60,22 @@ ChannelをOFFまたは未設定へ切り替えると、`pending / retry / sendin
 - OOMKilled / RestartCountなどone-shot: 古いイベントを後追い再送しない
 - すでにRecovery済みのSignal: 再送しない
 
-Dispatcherも各RowのDiscord送信直前にChannel状態を再確認します。Claim後にChannelがOFFへ切り替わった場合は、そのRowを送信せずSuppressedへ戻します。
+### 動的Suppression
+
+`pending / retry`はClaim時にもMaintenance / Global / Host / Container / Backup / Signal Suppressionを再評価します。Row作成後にMaintenanceやSuppressionが始まった場合でも、その期間中はDiscordへ配送しません。
+
+Dispatcherも各RowのDiscord送信直前にClaim・Channel・Suppression・Signal lifecycleを再確認します。Claim後に状態が変わった場合は、Discordへ送らずSuppressedへ戻します。
+
+### Backup Policy無効化
+
+Backup Policyを`enabled=false`へ変更、または削除した場合、そのPolicy由来の以下のSLA Signalを退役します。
+
+- `backup_age`
+- `remote_sync`
+- `retention`
+- `restore_test`
+
+未配送Rowは`backup_policy_disabled`としてSuppressedへ移し、Signal Stateは削除します。Policyを再度有効化した場合は現在のBackup状態から新しいEpisodeとして再評価されます。
 
 ## Secret / 環境設定
 
@@ -88,9 +109,11 @@ Discord WebhookはEdge Function Secret `DISCORD_WEBHOOK_URL`へ保存します�
 
 ## Edge Functionのデプロイ
 
-`notification-dispatch`はSupabase GatewayのJWT検証ではなく、Notification Center専用Scheduler TokenをSHA-256で照合します。そのためRepoの`supabase/config.toml`で明示的に以下を設定しています。
+`notification-dispatch`はSupabase GatewayのJWT検証ではなく、Notification Center専用Scheduler TokenをSHA-256で照合します。Repoの`supabase/config.toml`にはSupabase CLI用の`project_id`とFunction単位の設定を明示しています。
 
 ```toml
+project_id = "ivrm-dashboard"
+
 [functions.notification-dispatch]
 verify_jwt = false
 ```
@@ -156,7 +179,7 @@ Webhook URLやレスポンス本文をログへ貼り付けないでください
 
 - NotificationテーブルはRLSを有効化し、`anon` / `authenticated`から直接参照不可
 - Web UIはServer ComponentからService Role RPCだけを利用し、`apps/web/lib/notifications.ts`は`server-only`でClient importを禁止
-- DispatcherのClaim / Complete / Suppress / Token Verify RPCもService Roleのみ
+- DispatcherのClaim / Complete / Suppress / Delivery Gate / Token Verify RPCもService Roleのみ
 - Edge FunctionはGateway JWTをOFFにする代わりにCustom Scheduler Tokenを必須化し、SHA-256で照合
 - Dispatcher URLはVaultから取得し、別ProjectへScheduler Tokenを送らない
 - `detail_href`は単一`/`始まりの相対URLだけを許可し、`//host`形式を拒否

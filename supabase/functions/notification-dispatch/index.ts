@@ -102,10 +102,13 @@ Deno.serve(async (request: Request) => {
 
   for (const row of rows) {
     try {
-      // Claim後にChannelがOFFへ切り替わる競合も安全側へ倒す。
-      const { data: channelReady, error: channelError } = await client.rpc("notification_channel_ready_v1");
-      if (channelError || channelReady !== true) {
-        const reason = channelError ? "channel_check_failed" : "channel_disabled_during_dispatch";
+      // Claim後にChannel/Suppression/Signal状態が変わる競合も、外部送信直前に再評価する。
+      const { data: blockReason, error: blockError } = await client.rpc("notification_delivery_block_reason_v1", {
+        p_id: row.id,
+        p_claim_token: claimToken,
+      });
+      if (blockError || (typeof blockReason === "string" && blockReason.length > 0)) {
+        const reason = blockError ? "delivery_gate_failed" : String(blockReason).slice(0, 256);
         const { error: suppressError } = await client.rpc("suppress_notification_delivery_v1", {
           p_id: row.id,
           p_claim_token: claimToken,
@@ -116,7 +119,6 @@ Deno.serve(async (request: Request) => {
         continue;
       }
 
-      // Payload組み立てもRow単位try内で行い、不正RowがBatch全体を止めないようにする。
       const payload = {
         username: "IVRM Monitor",
         allowed_mentions: { parse: [] as string[] },
