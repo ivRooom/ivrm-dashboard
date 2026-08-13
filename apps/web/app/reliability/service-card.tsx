@@ -1,4 +1,4 @@
-import type { ReliabilityService } from "../../lib/reliability";
+import type { ReliabilityRange, ReliabilityService } from "../../lib/reliability";
 import styles from "./reliability.module.css";
 
 const healthLabels = {
@@ -38,7 +38,13 @@ function date(timestamp: string | null): string {
   }).format(new Date(timestamp));
 }
 
-export function ReliabilityServiceCard({ service }: { service: ReliabilityService }) {
+type Props = {
+  service: ReliabilityService;
+  range: ReliabilityRange;
+};
+
+export function ReliabilityServiceCard({ service, range }: Props) {
+  const notification = service.id === "notifications";
   return (
     <article className={styles.serviceCard}>
       <div className={styles.serviceHead}>
@@ -55,10 +61,11 @@ export function ReliabilityServiceCard({ service }: { service: ReliabilityServic
       <div className={styles.serviceMetrics}>
         <div><span>INCIDENT-FREE</span><strong>{ratio(service.incidentFreeRatio, service.exactCoverage)}</strong></div>
         <div><span>KNOWN DOWNTIME</span><strong>{duration(service.knownDowntimeSeconds)}</strong></div>
-        <div><span>ACTIVE</span><strong>{service.activeIncidentCount}</strong></div>
-        <div><span>RECOVERED</span><strong>{service.recoveredIncidentCount}</strong></div>
+        <div><span>{notification ? "ACTIVE SIGNALS" : "ACTIVE"}</span><strong>{service.activeIncidentCount}</strong></div>
+        <div><span>{notification ? "SENT 24H" : "RECOVERED"}</span><strong>{service.recoveredIncidentCount}</strong></div>
         <div><span>MEDIAN RECOVERY</span><strong>{duration(service.medianRecoverySeconds)}</strong></div>
-        <div><span>LAST RECOVERY</span><strong>{date(service.latestRecoveredAt)}</strong></div>
+        <div><span>LONGEST RECOVERY</span><strong>{duration(service.longestRecoverySeconds)}</strong></div>
+        <div><span>{notification ? "LAST DELIVERY" : "LAST RECOVERY"}</span><strong>{date(service.latestRecoveredAt)}</strong></div>
       </div>
 
       {!service.exactCoverage && service.incidentFreeRatio !== null ? (
@@ -69,7 +76,7 @@ export function ReliabilityServiceCard({ service }: { service: ReliabilityServic
 
       <div className={styles.serviceActions}>
         <a href={service.detailHref}>詳細を見る</a>
-        <a href="/incidents">Incident Center</a>
+        <a href={`/incidents?range=${range}`}>Incident Center</a>
       </div>
     </article>
   );
