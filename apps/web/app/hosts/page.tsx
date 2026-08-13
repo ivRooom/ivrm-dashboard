@@ -173,9 +173,7 @@ export default async function HostsPage() {
                 <article className={styles.hostCard} key={host.id}>
                   <div className={styles.cardTop}>
                     <div className={styles.identity}>
-                      <h2>
-                        <a className={styles.detailLink} href={`/hosts/${encodeURIComponent(host.serverId)}`}>{host.displayName}</a>
-                      </h2>
+                      <h2><a className={styles.detailLink} href={`/hosts/${encodeURIComponent(host.serverId)}`}>{host.displayName}</a></h2>
                       <p>{host.serverId} / {host.provider.toUpperCase()} / {host.environment}</p>
                     </div>
                     <span className={`status ${host.status}`}>{statusLabels[host.status]}</span>
@@ -202,7 +200,10 @@ export default async function HostsPage() {
         )}
 
         {eventError ? (
-          <section className={styles.notice}><strong>Hostイベントのみ取得できませんでした</strong><p>現在値の表示には影響しません。`get_host_monitoring_events_v1`の状態を確認してください。</p></section>
+          <section className={styles.notice}>
+            <strong>Hostイベントのみ取得できませんでした</strong>
+            <p>現在値の表示には影響しません。<code>get_host_monitoring_events_v2</code>の状態を確認してください。</p>
+          </section>
         ) : null}
       </section>
     </main>
