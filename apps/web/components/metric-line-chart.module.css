@@ -95,6 +95,29 @@
   fill: var(--panel);
 }
 
+.eventMarker {
+  stroke-width: 1.5;
+  stroke-dasharray: 5 5;
+  opacity: 0.72;
+  vector-effect: non-scaling-stroke;
+}
+
+.markerInfo {
+  stroke: var(--standby);
+}
+
+.markerWarning {
+  stroke: var(--warn);
+}
+
+.markerCritical {
+  stroke: var(--bad);
+}
+
+.markerRecovery {
+  stroke: var(--ok);
+}
+
 .legend {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
@@ -132,6 +155,13 @@
 
 .legendItem span {
   margin-top: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.markerHint {
+  margin-top: 12px;
   color: var(--muted);
   font-size: 10px;
   line-height: 1.5;
