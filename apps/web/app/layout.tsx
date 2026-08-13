@@ -6,6 +6,7 @@ import {
   getConsoleSession,
   isPublicConsoleRoute,
 } from "../lib/console-auth";
+import { NavigationLinks } from "./navigation-links";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -95,14 +96,7 @@ export default async function RootLayout({
               ) : null}
             </span>
           ) : null}
-          <a href="/hosts" style={navigationLinkStyle}>ホスト</a>
-          <a href="/containers" style={navigationLinkStyle}>コンテナ</a>
-          <a href="/incidents" style={navigationLinkStyle}>インシデント</a>
-          <a href="/backups" style={navigationLinkStyle}>バックアップ</a>
-          <a href="/notifications" style={navigationLinkStyle}>通知</a>
-          <a href="/events" style={navigationLinkStyle}>イベント</a>
-          <a href="/operations" style={navigationLinkStyle}>操作基盤</a>
-          <a href="/security" style={navigationLinkStyle}>認証・権限</a>
+          <NavigationLinks style={navigationLinkStyle} />
           {session.authProvider === "discord" ? (
             <form action="/api/auth/logout" method="post" style={{ margin: 0 }}>
               <button
