@@ -9,6 +9,7 @@ const links = [
   ["/backups", "バックアップ"],
   ["/notifications", "通知"],
   ["/reliability", "信頼性"],
+  ["/inventory", "インベントリ"],
   ["/events", "イベント"],
   ["/operations", "操作基盤"],
   ["/security", "認証・権限"],
