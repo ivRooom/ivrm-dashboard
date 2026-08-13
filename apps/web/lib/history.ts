@@ -143,7 +143,7 @@ function timestamp(value: unknown): string | null {
 }
 
 export function parseHistoryRange(value: string | null | undefined): HistoryRange {
-  return value && value in HISTORY_RANGE_CONFIG
+  return value && Object.hasOwn(HISTORY_RANGE_CONFIG, value)
     ? (value as HistoryRange)
     : "24h";
 }
