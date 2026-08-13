@@ -51,13 +51,17 @@ export type InfrastructureInventory = {
     unmanagedContainerCount: number;
     maintenanceCount: number;
     agentUpgradeRecommendedCount: number;
-    cpuCoreCount: number;
-    memoryTotalBytes: number;
-    diskTotalBytes: number;
+    cpuCoreCount: number | null;
+    cpuCapacityComplete: boolean;
+    memoryTotalBytes: number | null;
+    memoryCapacityComplete: boolean;
+    diskTotalBytes: number | null;
+    diskCapacityComplete: boolean;
   };
 };
 
 const ATTENTION_CONTAINER_STATUSES = new Set<ContainerStatus>(["error", "stale", "offline"]);
+const MINECRAFT_FRESH_SECONDS = 180;
 
 export function parseInventoryView(value: string | null | undefined): InventoryView {
   return value === "attention" ? "attention" : "all";
@@ -111,9 +115,9 @@ function servicesFromMinecraft(
 ): InventoryNetworkService[] {
   if (!minecraft) {
     return [
-      { id: "minecraft-public", name: "Minecraft Public", endpoint: "mc.ivrm.jp:25565", protocol: "TCP", exposure: "public", status: "unknown", note: "Minecraft Probe未受信" },
+      { id: "minecraft-public", name: "Minecraft Public", endpoint: "mc.ivrm.jp:25565", protocol: "TCP", exposure: "public", status: "unknown", note: "Minecraft Probe未受信または鮮度切れ" },
       { id: "minecraft-voice", name: "Simple Voice Chat", endpoint: "mc.ivrm.jp:24454", protocol: "UDP", exposure: "public", status: "unknown", note: "Port Binding未確認" },
-      { id: "minecraft-backend", name: "Minecraft Backend", endpoint: "mc-main:25565", protocol: "TCP", exposure: "internal", status: "unknown", note: "Backend Probe未受信" },
+      { id: "minecraft-backend", name: "Minecraft Backend", endpoint: "mc-main:25565", protocol: "TCP", exposure: "internal", status: "unknown", note: "Backend Probe未受信または鮮度切れ" },
     ];
   }
   return [
@@ -145,6 +149,15 @@ function servicesFromMinecraft(
       note: minecraft.networkPolicy.backendDirectAccessBlocked ? "Host直接公開なし" : "Backend PortがHostへ公開されています",
     },
   ];
+}
+
+function knownTotal(values: Array<number | null>): { total: number | null; complete: boolean } {
+  if (values.length === 0) return { total: 0, complete: true };
+  const known = values.filter((value): value is number => value !== null);
+  return {
+    total: known.length > 0 ? known.reduce((sum, value) => sum + value, 0) : null,
+    complete: known.length === values.length,
+  };
 }
 
 export async function getInfrastructureInventory(view: InventoryView): Promise<InfrastructureInventory> {
@@ -192,12 +205,24 @@ export async function getInfrastructureInventory(view: InventoryView): Promise<I
       })
     : allHosts;
 
+  const minecraftFresh = Boolean(
+    minecraft.ok &&
+    minecraft.value &&
+    minecraft.value.status !== "unknown" &&
+    minecraft.value.checkedAt &&
+    minecraft.value.ageSeconds !== null &&
+    minecraft.value.ageSeconds <= MINECRAFT_FRESH_SECONDS,
+  );
+  const cpu = knownTotal(allHosts.map((host) => host.cpuCount));
+  const memory = knownTotal(allHosts.map((host) => host.memoryTotalBytes));
+  const disk = knownTotal(allHosts.map((host) => host.diskTotalBytes));
+
   return {
     generatedAt: monitoring.generatedAt,
     view,
-    minecraftDataAvailable: minecraft.ok,
+    minecraftDataAvailable: minecraftFresh,
     hosts,
-    services: servicesFromMinecraft(minecraft.value),
+    services: servicesFromMinecraft(minecraftFresh ? minecraft.value : null),
     summary: {
       hostCount: allHosts.length,
       containerCount: allContainers.length,
@@ -205,9 +230,12 @@ export async function getInfrastructureInventory(view: InventoryView): Promise<I
       unmanagedContainerCount: allContainers.filter((container) => !container.managed).length,
       maintenanceCount: allContainers.filter((container) => container.maintenanceActive).length,
       agentUpgradeRecommendedCount: allHosts.filter((host) => host.agentCapability === "upgrade_recommended").length,
-      cpuCoreCount: allHosts.reduce((sum, host) => sum + (host.cpuCount ?? 0), 0),
-      memoryTotalBytes: allHosts.reduce((sum, host) => sum + (host.memoryTotalBytes ?? 0), 0),
-      diskTotalBytes: allHosts.reduce((sum, host) => sum + (host.diskTotalBytes ?? 0), 0),
+      cpuCoreCount: cpu.total,
+      cpuCapacityComplete: cpu.complete,
+      memoryTotalBytes: memory.total,
+      memoryCapacityComplete: memory.complete,
+      diskTotalBytes: disk.total,
+      diskCapacityComplete: disk.complete,
     },
   };
 }
