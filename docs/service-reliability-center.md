@@ -25,12 +25,12 @@ SLO目標値は現時点で未設定です。99.9%などの目標をアプリ側
 
 Reliability CenterはNotification CenterのSummary RPCだけを読み込みます。Signals / Deliveries / Suppressionsの補助取得が失敗しても、Summaryが正常ならNotification Reliabilityを継続判定できます。
 
-- Channel OFF: `Disabled`。意図した停止なので障害扱いしません。
-- Channel ONかつ未設定: `Critical`
-- Dispatcher未起動、または最終起動から3分超: `Critical`
-- Channel / Dispatcher Error: `Critical`
-- Pending / Retry / Failedあり: `Degraded`
-- その他: `Operational`
+状態は次の優先順で評価します。
+
+1. Channel OFF: `Disabled`。意図した停止なので障害扱いしません。
+2. Channel ONで未設定、Channel / Dispatcher Error、Dispatcher未起動または最終起動から3分超、配送失敗あり: `Critical`
+3. Pending / Retryあり: `Degraded`
+4. 上記以外: `Operational`
 
 Active Suppression数も表示し、通知が抑制されている状態を確認できます。
 
