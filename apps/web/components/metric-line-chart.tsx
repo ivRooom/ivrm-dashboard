@@ -11,6 +11,13 @@ type MetricChartSeries = {
   points: MetricChartPoint[];
 };
 
+export type MetricChartMarker = {
+  id: string;
+  timestamp: string;
+  label: string;
+  severity: "info" | "warning" | "critical" | "recovery";
+};
+
 type MetricLineChartProps = {
   title: string;
   description: string;
@@ -24,6 +31,7 @@ type MetricLineChartProps = {
   maximum?: number;
   valueDigits?: number;
   emptyDescription?: string;
+  markers?: MetricChartMarker[];
 };
 
 type PositionedPoint = {
@@ -39,6 +47,13 @@ const PADDING = { top: 22, right: 20, bottom: 38, left: 58 };
 const PLOT_WIDTH = WIDTH - PADDING.left - PADDING.right;
 const PLOT_HEIGHT = HEIGHT - PADDING.top - PADDING.bottom;
 const SERIES_HUE_STEP = 47;
+
+const markerClasses: Record<MetricChartMarker["severity"], string> = {
+  info: styles.markerInfo,
+  warning: styles.markerWarning,
+  critical: styles.markerCritical,
+  recovery: styles.markerRecovery,
+};
 
 function seriesColor(index: number): string {
   return `hsl(${(index * SERIES_HUE_STEP + 84) % 360}deg 72% 60%)`;
@@ -103,6 +118,7 @@ export function MetricLineChart({
   maximum,
   valueDigits,
   emptyDescription = "選択期間に有効なサンプルが取得されると自動的に表示されます。",
+  markers = [],
 }: MetricLineChartProps) {
   const startMilliseconds = Date.parse(startAt);
   const endMilliseconds = Date.parse(endAt);
@@ -127,6 +143,16 @@ export function MetricLineChart({
         .sort((left, right) => left.timestamp - right.timestamp),
     }))
     .filter((item) => item.points.length > 0);
+
+  const visibleMarkers = markers
+    .map((marker) => ({ ...marker, time: Date.parse(marker.timestamp) }))
+    .filter(
+      (marker) =>
+        Number.isFinite(marker.time) &&
+        marker.time >= startMilliseconds &&
+        marker.time <= endMilliseconds,
+    )
+    .sort((left, right) => left.time - right.time);
 
   const values = visibleSeries.flatMap((item) =>
     item.points.map((point) => point.value),
@@ -163,7 +189,7 @@ export function MetricLineChart({
               className={styles.chart}
               viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
               role="img"
-              aria-label={`${title}。${visibleSeries.map((item) => item.label).join("、")}の直近${periodLabel}の推移`}
+              aria-label={`${title}。${visibleSeries.map((item) => item.label).join("、")}の直近${periodLabel}の推移。イベントマーカー${visibleMarkers.length}件`}
             >
               <title>{title}</title>
 
@@ -220,6 +246,24 @@ export function MetricLineChart({
                     >
                       {formatTime(tick)}
                     </text>
+                  </g>
+                );
+              })}
+
+              {visibleMarkers.map((marker) => {
+                const x =
+                  PADDING.left +
+                  ((marker.time - startMilliseconds) / duration) * PLOT_WIDTH;
+                return (
+                  <g key={marker.id}>
+                    <title>{`${marker.label} / ${formatTime(marker.time)}`}</title>
+                    <line
+                      className={`${styles.eventMarker} ${markerClasses[marker.severity]}`}
+                      x1={x}
+                      x2={x}
+                      y1={PADDING.top}
+                      y2={HEIGHT - PADDING.bottom}
+                    />
                   </g>
                 );
               })}
@@ -314,6 +358,11 @@ export function MetricLineChart({
               );
             })}
           </div>
+          {visibleMarkers.length > 0 ? (
+            <p className={styles.markerHint}>
+              縦の破線はState / Health / Restart / OOMなどの監視イベントです（{visibleMarkers.length}件）。
+            </p>
+          ) : null}
         </>
       )}
     </article>
