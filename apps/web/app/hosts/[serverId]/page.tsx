@@ -328,7 +328,7 @@ export default async function HostDetailPage({ params, searchParams }: PageProps
 
         <div className={styles.sectionHeading}>
           <div><span>HOST EVENTS</span><h2>Hostイベント</h2></div>
-          <p>OS Uptime低下、Agent Version変更、180秒を超えるHeartbeat gapを記録します。</p>
+          <p>OS Uptime低下、Agent Version変更、45秒を超えるHeartbeat gapを記録します。</p>
         </div>
 
         {eventError ? (
