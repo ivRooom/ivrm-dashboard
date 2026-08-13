@@ -1,3 +1,8 @@
+-- 既存環境でpgcryptoがpublic等へ入っていても、後続Migration 020のSchema参照を安定させる。
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
+alter extension pgcrypto set schema extensions;
+
 create or replace function public.reconcile_notification_container_signals_v1()
 returns integer
 language plpgsql
