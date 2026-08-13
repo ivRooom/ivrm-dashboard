@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getUnifiedIncidentCenterSnapshot } from "./unified-incidents";
-import { getNotificationCenterSnapshot } from "./notifications";
+import { getNotificationSummary } from "./notification-summary";
 import { buildIncidentService } from "./reliability-incident-service";
 import { buildNotificationService } from "./reliability-notification-service";
 import { buildOverall } from "./reliability-overall-data";
@@ -18,11 +18,11 @@ export type {
 export async function getReliabilitySnapshot(
   range: ReliabilityRange,
 ): Promise<ReliabilitySnapshot> {
-  const notificationPromise = getNotificationCenterSnapshot()
-    .then((snapshot) => ({ ok: true as const, snapshot }))
+  const notificationPromise = getNotificationSummary()
+    .then((summary) => ({ ok: true as const, summary }))
     .catch((error: unknown) => {
-      console.error("Reliability CenterのNotification情報取得に失敗しました", error);
-      return { ok: false as const, snapshot: null };
+      console.error("Reliability CenterのNotification Summary取得に失敗しました", error);
+      return { ok: false as const, summary: null };
     });
   const [incidents, notification] = await Promise.all([
     getUnifiedIncidentCenterSnapshot(range),
@@ -42,7 +42,7 @@ export async function getReliabilitySnapshot(
       incidents.generatedAt,
       incidents.backupDataAvailable,
     ),
-    buildNotificationService(notification.snapshot),
+    buildNotificationService(notification.summary),
   ];
 
   return {
@@ -53,19 +53,19 @@ export async function getReliabilitySnapshot(
     overall: buildOverall(incidents, services, range),
     services,
     notifications: {
-      enabled: notification.snapshot?.summary.channelEnabled ?? null,
-      configured: notification.snapshot?.summary.channelConfigured ?? null,
-      pendingCount: notification.snapshot?.summary.pendingCount ?? null,
-      retryCount: notification.snapshot?.summary.retryCount ?? null,
-      failedCount: notification.snapshot?.summary.failedCount ?? null,
-      suppressedCount: notification.snapshot?.summary.suppressedCount ?? null,
-      sent24hCount: notification.snapshot?.summary.sent24hCount ?? null,
-      activeSuppressionCount: notification.snapshot?.summary.activeSuppressionCount ?? null,
-      lastDeliveryAt: notification.snapshot?.summary.lastDeliveryAt ?? null,
-      dispatcherLastSuccessAt: notification.snapshot?.summary.dispatcherLastSuccessAt ?? null,
+      enabled: notification.summary?.channelEnabled ?? null,
+      configured: notification.summary?.channelConfigured ?? null,
+      pendingCount: notification.summary?.pendingCount ?? null,
+      retryCount: notification.summary?.retryCount ?? null,
+      failedCount: notification.summary?.failedCount ?? null,
+      suppressedCount: notification.summary?.suppressedCount ?? null,
+      sent24hCount: notification.summary?.sent24hCount ?? null,
+      activeSuppressionCount: notification.summary?.activeSuppressionCount ?? null,
+      lastDeliveryAt: notification.summary?.lastDeliveryAt ?? null,
+      dispatcherLastSuccessAt: notification.summary?.dispatcherLastSuccessAt ?? null,
       lastErrorCode:
-        notification.snapshot?.summary.dispatcherLastErrorCode ??
-        notification.snapshot?.summary.channelLastErrorCode ??
+        notification.summary?.dispatcherLastErrorCode ??
+        notification.summary?.channelLastErrorCode ??
         null,
     },
   };
