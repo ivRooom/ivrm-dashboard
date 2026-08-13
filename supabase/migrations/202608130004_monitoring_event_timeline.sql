@@ -88,7 +88,7 @@ begin
     return 'critical';
   end if;
 
-  -- 計画Maintenance中の停止・Health変化・RestartはIncident扱いしない。
+  -- 計画Maintenance中の停止・Health変化・Restart等はIncident扱いしない。
   if p_maintenance_active then
     return 'info';
   end if;
@@ -344,7 +344,7 @@ after insert on public.container_samples
 for each row execute function public.capture_container_monitoring_events();
 
 -- container_expectationsに既存の自動updated_at処理がないため、
--- Maintenance切替時刻をDB側で確定させる。
+-- Maintenanceや期待状態の変更時刻をDB側で確定させる。
 create or replace function public.touch_container_expectations_updated_at()
 returns trigger
 language plpgsql
@@ -372,37 +372,56 @@ security definer
 set search_path = pg_catalog, public
 as $$
 declare
+  v_time timestamptz := new.updated_at;
+  v_old_active boolean;
+  v_new_active boolean;
   v_type text;
-  v_time timestamptz;
   v_key text;
 begin
-  if new.maintenance_mode is not distinct from old.maintenance_mode then
+  -- modeだけではなく期限を含む「実効Maintenance状態」を比較する。
+  v_old_active := old.maintenance_mode
+    and (old.maintenance_until is null or old.maintenance_until > v_time);
+  v_new_active := new.maintenance_mode
+    and (new.maintenance_until is null or new.maintenance_until > v_time);
+
+  -- 期限切れ後に明示解除された場合、Cronより先に更新されても
+  -- 論理終了イベントを期限時刻で取りこぼさない。
+  if old.maintenance_mode
+     and old.maintenance_until is not null
+     and old.maintenance_until <= v_time
+     and not new.maintenance_mode then
+    insert into public.monitoring_events (
+      event_key, host_id, container_name, occurred_at, event_type, severity,
+      from_value, to_value, expected_state
+    ) values (
+      'maintenance-expiry:'
+        || old.host_id || ':'
+        || old.container_name || ':'
+        || extract(epoch from old.maintenance_until)::text,
+      old.host_id,
+      old.container_name,
+      old.maintenance_until,
+      'maintenance_ended',
+      'info',
+      'true',
+      'false',
+      old.expected_state
+    ) on conflict (event_key) do nothing;
+  end if;
+
+  if v_old_active is not distinct from v_new_active then
     return new;
   end if;
 
   v_type := case
-    when new.maintenance_mode then 'maintenance_started'
+    when v_new_active then 'maintenance_started'
     else 'maintenance_ended'
   end;
-
-  -- 期限経過後に明示解除された場合は、既に論理的に終了した期限時刻を使う。
-  -- Cronが先にexpiry eventを作っていても同じKeyとなり重複しない。
-  if not new.maintenance_mode
-     and old.maintenance_until is not null
-     and old.maintenance_until <= new.updated_at then
-    v_time := old.maintenance_until;
-    v_key := 'maintenance-expiry:'
-      || new.host_id || ':'
-      || new.container_name || ':'
-      || extract(epoch from old.maintenance_until)::text;
-  else
-    v_time := new.updated_at;
-    v_key := 'expectation:'
-      || new.host_id || ':'
-      || new.container_name || ':'
-      || extract(epoch from new.updated_at)::text || ':'
-      || v_type;
-  end if;
+  v_key := 'expectation-effective:'
+    || new.host_id || ':'
+    || new.container_name || ':'
+    || extract(epoch from v_time)::text || ':'
+    || v_type;
 
   insert into public.monitoring_events (
     event_key, host_id, container_name, occurred_at, event_type, severity,
@@ -414,8 +433,8 @@ begin
     v_time,
     v_type,
     'info',
-    old.maintenance_mode::text,
-    new.maintenance_mode::text,
+    v_old_active::text,
+    v_new_active::text,
     new.expected_state
   ) on conflict (event_key) do nothing;
 
@@ -429,7 +448,8 @@ revoke all on function public.capture_container_maintenance_event()
 drop trigger if exists capture_container_maintenance_event_after_update
   on public.container_expectations;
 create trigger capture_container_maintenance_event_after_update
-after update of maintenance_mode on public.container_expectations
+after update of maintenance_mode, maintenance_until
+on public.container_expectations
 for each row execute function public.capture_container_maintenance_event();
 
 -- maintenance_mode=trueのまま期限を過ぎても、アプリ上は期限時点でMaintenance終了となる。
@@ -474,8 +494,10 @@ $$;
 revoke all on function public.capture_expired_container_maintenance_events()
   from public, anon, authenticated, service_role;
 
--- 既存SampleのBackfill。過去のMaintenance有効期間は現行Expectationだけから
--- 正確に復元できないため、過去イベント分類へ現在のMaintenance状態を遡及しない。
+-- 既存SampleをBackfillする。
+-- Expectation履歴テーブルは存在しないため、現在のExpectationの最終更新時刻より
+-- 古いSampleへ現在値を遡及しない。Expectationを証明できない期間は
+-- expected_state=null / infoとして状態変化の事実だけを保存する。
 with ordered as (
   select
     samples.id,
@@ -493,7 +515,15 @@ with ordered as (
     lag(samples.oom_killed) over w as prev_oom_killed,
     lag(samples.exit_code) over w as prev_exit_code,
     lag(samples.id) over w as prev_id,
-    expectations.expected_state
+    expectations.expected_state as current_expected_state,
+    expectations.maintenance_mode as current_maintenance_mode,
+    expectations.maintenance_until as current_maintenance_until,
+    case
+      when expectations.host_id is not null
+       and expectations.updated_at <= samples.received_at
+        then true
+      else false
+    end as expectation_known
   from public.container_samples as samples
   left join public.container_expectations as expectations
     on expectations.host_id = samples.host_id
@@ -502,6 +532,20 @@ with ordered as (
     partition by samples.host_id, samples.container_name
     order by samples.received_at, samples.id
   )
+), classified as (
+  select
+    ordered.*,
+    case
+      when expectation_known then current_expected_state
+      else null
+    end as backfill_expected_state,
+    expectation_known
+      and coalesce(current_maintenance_mode, false)
+      and (
+        current_maintenance_until is null
+        or current_maintenance_until > received_at
+      ) as backfill_maintenance_active
+  from ordered
 ), event_rows as (
   select
     'sample:' || id || ':state' as event_key,
@@ -509,15 +553,23 @@ with ordered as (
     container_name,
     received_at as occurred_at,
     'state_changed'::text as event_type,
-    public.classify_container_monitoring_event_v2(
-      expected_state, 'state_changed', prev_state, state, null, false
-    ) as severity,
+    case
+      when expectation_known then public.classify_container_monitoring_event_v2(
+        backfill_expected_state,
+        'state_changed',
+        prev_state,
+        state,
+        null,
+        backfill_maintenance_active
+      )
+      else 'info'
+    end as severity,
     prev_state::text as from_value,
     state::text as to_value,
     null::bigint as numeric_value,
-    expected_state,
+    backfill_expected_state as expected_state,
     id as sample_id
-  from ordered
+  from classified
   where prev_id is not null and state is distinct from prev_state
 
   union all
@@ -528,15 +580,23 @@ with ordered as (
     container_name,
     received_at,
     'health_changed',
-    public.classify_container_monitoring_event_v2(
-      expected_state, 'health_changed', prev_health, health, null, false
-    ),
+    case
+      when expectation_known then public.classify_container_monitoring_event_v2(
+        backfill_expected_state,
+        'health_changed',
+        prev_health,
+        health,
+        null,
+        backfill_maintenance_active
+      )
+      else 'info'
+    end,
     prev_health::text,
     health::text,
     null::bigint,
-    expected_state,
+    backfill_expected_state,
     id
-  from ordered
+  from classified
   where prev_id is not null and health is distinct from prev_health
 
   union all
@@ -547,20 +607,23 @@ with ordered as (
     container_name,
     received_at,
     'restart_count_increased',
-    public.classify_container_monitoring_event_v2(
-      expected_state,
-      'restart_count_increased',
-      prev_restart_count::text,
-      restart_count::text,
-      (restart_count - prev_restart_count)::bigint,
-      false
-    ),
+    case
+      when expectation_known then public.classify_container_monitoring_event_v2(
+        backfill_expected_state,
+        'restart_count_increased',
+        prev_restart_count::text,
+        restart_count::text,
+        (restart_count - prev_restart_count)::bigint,
+        backfill_maintenance_active
+      )
+      else 'info'
+    end,
     prev_restart_count::text,
     restart_count::text,
     (restart_count - prev_restart_count)::bigint,
-    expected_state,
+    backfill_expected_state,
     id
-  from ordered
+  from classified
   where prev_id is not null and restart_count > prev_restart_count
 
   union all
@@ -575,9 +638,9 @@ with ordered as (
     'false',
     'true',
     null::bigint,
-    expected_state,
+    backfill_expected_state,
     id
-  from ordered
+  from classified
   where prev_id is not null
     and prev_oom_killed = false
     and oom_killed = true
@@ -590,20 +653,23 @@ with ordered as (
     container_name,
     received_at,
     'exit_code_changed',
-    public.classify_container_monitoring_event_v2(
-      expected_state,
-      'exit_code_changed',
-      prev_exit_code::text,
-      exit_code::text,
-      exit_code::bigint,
-      false
-    ),
+    case
+      when expectation_known then public.classify_container_monitoring_event_v2(
+        backfill_expected_state,
+        'exit_code_changed',
+        prev_exit_code::text,
+        exit_code::text,
+        exit_code::bigint,
+        backfill_maintenance_active
+      )
+      else 'info'
+    end,
     prev_exit_code::text,
     exit_code::text,
     exit_code::bigint,
-    expected_state,
+    backfill_expected_state,
     id
-  from ordered
+  from classified
   where prev_id is not null and exit_code is distinct from prev_exit_code
 )
 insert into public.monitoring_events (
