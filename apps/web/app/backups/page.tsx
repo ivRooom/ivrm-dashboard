@@ -95,6 +95,10 @@ function targetKey(target: Pick<BackupTargetSnapshot, "hostId" | "backupTarget" 
   return `${target.hostId}:${target.backupTarget}:${target.gameMode}:${target.backupType}`;
 }
 
+function targetAnchor(target: Pick<BackupTargetSnapshot, "hostId" | "backupTarget" | "gameMode" | "backupType">): string {
+  return `backup-target-${target.hostId}-${target.backupTarget}-${target.gameMode}-${target.backupType}`;
+}
+
 function healthClass(health: BackupHealth): string {
   return {
     healthy: styles.healthy,
@@ -266,7 +270,7 @@ export default async function BackupsPage({ searchParams }: PageProps) {
               ) : (
                 <div className={styles.targetGrid}>
                   {targets.map((target) => (
-                    <article className={styles.targetCard} key={target.policyId}>
+                    <article id={targetAnchor(target)} className={styles.targetCard} key={target.policyId}>
                       <div className={styles.cardHeading}>
                         <div>
                           <p className={styles.entityType}>{typeLabels[target.backupType]} / {target.gameMode}</p>
