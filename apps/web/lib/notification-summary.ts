@@ -9,7 +9,13 @@ function env(name: string): string {
 }
 
 function integer(value: unknown): number | null {
-  const parsed = typeof value === "number" ? value : Number(value);
+  if (
+    typeof value !== "number" &&
+    (typeof value !== "string" || !/^\d+$/.test(value))
+  ) {
+    return null;
+  }
+  const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 }
 
