@@ -90,18 +90,16 @@ type OpenSignal = {
   startedAt: string;
   severity: IncidentSeverity;
   startEvent: MonitoringEvent;
-  eventCount: number;
 };
 
 type OpenEpisode = {
   startedAt: string;
   severity: IncidentSeverity;
   startEvent: MonitoringEvent;
-  activeSignals: Set<SignalName>;
   eventCount: number;
-  lastEvent: MonitoringEvent;
 };
 
+const INCIDENT_RANGES = new Set<IncidentRange>(["24h", "7d", "30d"]);
 const ACTIVE_HOST_STATUSES = new Set(["stale", "offline"] as const);
 const ACTIVE_CONTAINER_STATUSES = new Set(["error", "stale", "offline"] as const);
 const SIGNAL_TYPES = new Map<MonitoringEventType, SignalName>([
@@ -111,7 +109,7 @@ const SIGNAL_TYPES = new Map<MonitoringEventType, SignalName>([
 ]);
 
 export function parseIncidentRange(value: string | null | undefined): IncidentRange {
-  return value && value in INCIDENT_RANGE_CONFIG
+  return value && INCIDENT_RANGES.has(value as IncidentRange)
     ? (value as IncidentRange)
     : "24h";
 }
@@ -180,14 +178,18 @@ function eventByEntity(events: MonitoringEvent[]): Map<string, MonitoringEvent[]
     grouped.set(key, current);
   }
   for (const current of grouped.values()) {
-    current.sort((left, right) =>
-      Date.parse(left.occurredAt) - Date.parse(right.occurredAt) || left.id - right.id,
+    current.sort(
+      (left, right) =>
+        Date.parse(left.occurredAt) - Date.parse(right.occurredAt) ||
+        left.id - right.id,
     );
   }
   return grouped;
 }
 
-function hostEventsByEntity(events: HostMonitoringEvent[]): Map<string, HostMonitoringEvent[]> {
+function hostEventsByEntity(
+  events: HostMonitoringEvent[],
+): Map<string, HostMonitoringEvent[]> {
   const grouped = new Map<string, HostMonitoringEvent[]>();
   for (const event of events) {
     const key = entityKey(event.hostId);
@@ -196,8 +198,10 @@ function hostEventsByEntity(events: HostMonitoringEvent[]): Map<string, HostMoni
     grouped.set(key, current);
   }
   for (const current of grouped.values()) {
-    current.sort((left, right) =>
-      Date.parse(left.occurredAt) - Date.parse(right.occurredAt) || left.id - right.id,
+    current.sort(
+      (left, right) =>
+        Date.parse(left.occurredAt) - Date.parse(right.occurredAt) ||
+        left.id - right.id,
     );
   }
   return grouped;
@@ -215,13 +219,11 @@ function deriveOpenSignals(events: MonitoringEvent[]): Map<SignalName, OpenSigna
       const open = signals.get(signal);
       if (open) {
         open.severity = maxSeverity(open.severity, startSeverity);
-        open.eventCount += 1;
       } else {
         signals.set(signal, {
           startedAt: event.occurredAt,
           severity: startSeverity,
           startEvent: event,
-          eventCount: 1,
         });
       }
       continue;
@@ -267,7 +269,9 @@ function currentHealthIsIncident(container: ContainerOverview): boolean {
   return container.health === "unhealthy" || container.health === "starting";
 }
 
-function fallbackSeverity(status: ContainerStatus | HostOverview["status"]): IncidentSeverity {
+function fallbackSeverity(
+  status: ContainerStatus | HostOverview["status"],
+): IncidentSeverity {
   return status === "stale" ? "warning" : "critical";
 }
 
@@ -308,10 +312,12 @@ function deriveActiveContainerIncidents(
   const active: ActiveIncident[] = [];
 
   for (const container of snapshot.containers) {
-    if (!ACTIVE_CONTAINER_STATUSES.has(container.status as "error" | "stale" | "offline")) {
-      continue;
-    }
-    if (container.maintenanceActive) {
+    if (
+      !ACTIVE_CONTAINER_STATUSES.has(
+        container.status as "error" | "stale" | "offline",
+      ) ||
+      container.maintenanceActive
+    ) {
       continue;
     }
 
@@ -333,29 +339,42 @@ function deriveActiveContainerIncidents(
     if (container.oomKilled) {
       const oomEvent = [...events]
         .reverse()
-        .find((event) => event.eventType === "oom_killed" && event.severity === "critical");
+        .find(
+          (event) =>
+            event.eventType === "oom_killed" && event.severity === "critical",
+        );
       if (oomEvent) {
         candidates.push({
           startedAt: oomEvent.occurredAt,
           severity: "critical",
           startEvent: oomEvent,
-          eventCount: 1,
         });
       }
     }
 
-    candidates.sort((left, right) => Date.parse(left.startedAt) - Date.parse(right.startedAt));
-    const first = candidates[0] ?? null;
-    const severity = candidates.reduce<IncidentSeverity>(
-      (current, candidate) => maxSeverity(current, candidate.severity),
-      fallbackSeverity(container.status),
+    candidates.sort(
+      (left, right) => Date.parse(left.startedAt) - Date.parse(right.startedAt),
     );
+    const first = candidates[0] ?? null;
+    let severity = fallbackSeverity(container.status);
+    if (first) {
+      severity = candidates.reduce<IncidentSeverity>(
+        (current, candidate) => maxSeverity(current, candidate.severity),
+        first.severity,
+      );
+    }
+
     const startedAt = first?.startedAt ?? null;
     const latestEvent = [...events]
       .reverse()
-      .find((event) => !startedAt || Date.parse(event.occurredAt) >= Date.parse(startedAt)) ?? null;
+      .find(
+        (event) =>
+          !startedAt || Date.parse(event.occurredAt) >= Date.parse(startedAt),
+      ) ?? null;
     const relatedEventCount = startedAt
-      ? events.filter((event) => Date.parse(event.occurredAt) >= Date.parse(startedAt)).length
+      ? events.filter(
+          (event) => Date.parse(event.occurredAt) >= Date.parse(startedAt),
+        ).length
       : events.length;
 
     active.push({
@@ -369,7 +388,9 @@ function deriveActiveContainerIncidents(
       currentStatus: container.status as "error" | "stale" | "offline",
       startedAt,
       durationSeconds: durationSeconds(startedAt, snapshot.generatedAt),
-      startReason: first ? eventTransition(first.startEvent) : "開始Transitionを30日以内に特定できません",
+      startReason: first
+        ? eventTransition(first.startEvent)
+        : "開始Transitionを30日以内に特定できません",
       latestTransitionAt: latestEvent?.occurredAt ?? null,
       latestTransition: latestEvent ? eventTransition(latestEvent) : null,
       relatedEventCount,
@@ -427,7 +448,7 @@ function deriveRecoveredContainerIncidents(
   const recovered: RecoveredIncident[] = [];
 
   for (const entityEvents of grouped.values()) {
-    const signals = new Set<SignalName>();
+    const activeSignals = new Set<SignalName>();
     let episode: OpenEpisode | null = null;
 
     for (const event of entityEvents) {
@@ -436,36 +457,32 @@ function deriveRecoveredContainerIncidents(
       const startSeverity = incidentSeverity(event.severity);
 
       if (startSeverity) {
-        const signalWasOpen = signals.has(signal);
-        signals.add(signal);
+        activeSignals.add(signal);
         if (!episode) {
           episode = {
             startedAt: event.occurredAt,
             severity: startSeverity,
             startEvent: event,
-            activeSignals: signals,
             eventCount: 1,
-            lastEvent: event,
           };
         } else {
           episode.severity = maxSeverity(episode.severity, startSeverity);
           episode.eventCount += 1;
-          episode.lastEvent = event;
-          if (!signalWasOpen) episode.activeSignals = signals;
         }
         continue;
       }
 
-      if (event.severity !== "recovery" || !signals.has(signal) || !episode) {
+      if (
+        event.severity !== "recovery" ||
+        !activeSignals.has(signal) ||
+        !episode
+      ) {
         continue;
       }
 
-      signals.delete(signal);
+      activeSignals.delete(signal);
       episode.eventCount += 1;
-      episode.lastEvent = event;
-      episode.activeSignals = signals;
-
-      if (signals.size > 0) continue;
+      if (activeSignals.size > 0) continue;
 
       const start = Date.parse(episode.startedAt);
       const recoveredAt = Date.parse(event.occurredAt);
@@ -489,8 +506,16 @@ function deriveRecoveredContainerIncidents(
           startReason: eventTransition(episode.startEvent),
           recoveryReason: eventTransition(event),
           relatedEventCount: episode.eventCount,
-          detailHref: containerDetailHref(event.serverId, event.containerName, range),
-          eventsHref: containerEventsHref(event.serverId, event.containerName, range),
+          detailHref: containerDetailHref(
+            event.serverId,
+            event.containerName,
+            range,
+          ),
+          eventsHref: containerEventsHref(
+            event.serverId,
+            event.containerName,
+            range,
+          ),
         });
       }
       episode = null;
@@ -514,26 +539,32 @@ function deriveRecoveredHostGaps(
     ) {
       return [];
     }
+
     const recoveredAt = Date.parse(event.occurredAt);
     if (!Number.isFinite(recoveredAt)) return [];
-    const startedAt = new Date(recoveredAt - event.numericValue * 1_000).toISOString();
-    return [{
-      id: `recovered-host-gap:${event.id}`,
-      entityType: "host",
-      severity: "warning",
-      hostId: event.hostId,
-      serverId: event.serverId,
-      hostDisplayName: event.hostDisplayName,
-      containerName: null,
-      startedAt,
-      recoveredAt: event.occurredAt,
-      durationSeconds: event.numericValue,
-      startReason: "Heartbeat受信が180秒を超えて途絶",
-      recoveryReason: "Heartbeat受信を再開",
-      relatedEventCount: 1,
-      detailHref: hostDetailHref(event.serverId, range),
-      eventsHref: hostDetailHref(event.serverId, range),
-    }];
+    const startedAt = new Date(
+      recoveredAt - event.numericValue * 1_000,
+    ).toISOString();
+
+    return [
+      {
+        id: `recovered-host-gap:${event.id}`,
+        entityType: "host",
+        severity: "warning",
+        hostId: event.hostId,
+        serverId: event.serverId,
+        hostDisplayName: event.hostDisplayName,
+        containerName: null,
+        startedAt,
+        recoveredAt: event.occurredAt,
+        durationSeconds: event.numericValue,
+        startReason: "Heartbeat受信が180秒を超えて途絶",
+        recoveryReason: "Heartbeat受信を再開",
+        relatedEventCount: 1,
+        detailHref: hostDetailHref(event.serverId, range),
+        eventsHref: hostDetailHref(event.serverId, range),
+      },
+    ];
   });
 }
 
@@ -544,7 +575,9 @@ function median(values: number[]): number | null {
   if (sorted.length % 2 === 1) return sorted[middle] ?? null;
   const left = sorted[middle - 1];
   const right = sorted[middle];
-  return left === undefined || right === undefined ? null : Math.floor((left + right) / 2);
+  return left === undefined || right === undefined
+    ? null
+    : Math.floor((left + right) / 2);
 }
 
 export async function getIncidentCenterSnapshot(
@@ -557,25 +590,36 @@ export async function getIncidentCenterSnapshot(
   ]);
 
   const rangeStart =
-    Date.parse(snapshot.generatedAt) - INCIDENT_RANGE_CONFIG[range].hours * 3_600_000;
+    Date.parse(snapshot.generatedAt) -
+    INCIDENT_RANGE_CONFIG[range].hours * 3_600_000;
   const groupedContainerEvents = eventByEntity(containerEvents);
   const groupedHostEvents = hostEventsByEntity(hostEvents);
 
   const active = [
     ...deriveActiveHostIncidents(snapshot, groupedHostEvents, range),
-    ...deriveActiveContainerIncidents(snapshot, groupedContainerEvents, range),
+    ...deriveActiveContainerIncidents(
+      snapshot,
+      groupedContainerEvents,
+      range,
+    ),
   ].sort((left, right) => {
     const severityDiff = severityRank(right.severity) - severityRank(left.severity);
     if (severityDiff !== 0) return severityDiff;
-    const leftStart = left.startedAt ? Date.parse(left.startedAt) : Number.POSITIVE_INFINITY;
-    const rightStart = right.startedAt ? Date.parse(right.startedAt) : Number.POSITIVE_INFINITY;
+    const leftStart = left.startedAt
+      ? Date.parse(left.startedAt)
+      : Number.POSITIVE_INFINITY;
+    const rightStart = right.startedAt
+      ? Date.parse(right.startedAt)
+      : Number.POSITIVE_INFINITY;
     return leftStart - rightStart;
   });
 
   const recovered = [
     ...deriveRecoveredContainerIncidents(containerEvents, rangeStart, range),
     ...deriveRecoveredHostGaps(hostEvents, rangeStart, range),
-  ].sort((left, right) => Date.parse(right.recoveredAt) - Date.parse(left.recoveredAt));
+  ].sort(
+    (left, right) => Date.parse(right.recoveredAt) - Date.parse(left.recoveredAt),
+  );
 
   const containerEventsInRange = containerEvents.filter(
     (event) => Date.parse(event.occurredAt) >= rangeStart,
@@ -589,8 +633,11 @@ export async function getIncidentCenterSnapshot(
   const warningEventCount =
     containerEventsInRange.filter((event) => event.severity === "warning").length +
     hostEventsInRange.filter((event) => event.severity === "warning").length;
-  const recoveryDurations = recovered.map((incident) => incident.durationSeconds);
+  const recoveryDurations = recovered.map(
+    (incident) => incident.durationSeconds,
+  );
   const affectedEntities = new Set<string>();
+
   for (const incident of active) {
     affectedEntities.add(entityKey(incident.hostId, incident.containerName));
   }
@@ -605,14 +652,20 @@ export async function getIncidentCenterSnapshot(
     recovered,
     summary: {
       activeCount: active.length,
-      activeCriticalCount: active.filter((incident) => incident.severity === "critical").length,
-      activeWarningCount: active.filter((incident) => incident.severity === "warning").length,
+      activeCriticalCount: active.filter(
+        (incident) => incident.severity === "critical",
+      ).length,
+      activeWarningCount: active.filter(
+        (incident) => incident.severity === "warning",
+      ).length,
       recoveredCount: recovered.length,
       criticalEventCount,
       warningEventCount,
       exactRecoveryCount: recovered.length,
       medianRecoverySeconds: median(recoveryDurations),
-      longestRecoverySeconds: recoveryDurations.length ? Math.max(...recoveryDurations) : null,
+      longestRecoverySeconds: recoveryDurations.length
+        ? Math.max(...recoveryDurations)
+        : null,
       affectedEntityCount: affectedEntities.size,
       latestRecoveredAt: recovered[0]?.recoveredAt ?? null,
     },
