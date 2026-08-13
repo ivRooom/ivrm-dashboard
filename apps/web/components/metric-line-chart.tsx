@@ -18,8 +18,12 @@ type MetricLineChartProps = {
   startAt: string;
   endAt: string;
   expectedIntervalSeconds: number;
+  aggregationLabel: string;
+  periodLabel: string;
   unit: string;
   maximum?: number;
+  valueDigits?: number;
+  emptyDescription?: string;
 };
 
 type PositionedPoint = {
@@ -51,8 +55,12 @@ function formatTime(timestamp: number): string {
   }).format(new Date(timestamp));
 }
 
-function formatValue(value: number, unit: string): string {
-  const digits = value >= 10 ? 1 : 2;
+function formatValue(
+  value: number,
+  unit: string,
+  valueDigits?: number,
+): string {
+  const digits = valueDigits ?? (value >= 10 ? 1 : 2);
   return `${value.toFixed(digits)}${unit}`;
 }
 
@@ -89,8 +97,12 @@ export function MetricLineChart({
   startAt,
   endAt,
   expectedIntervalSeconds,
+  aggregationLabel,
+  periodLabel,
   unit,
   maximum,
+  valueDigits,
+  emptyDescription = "選択期間に有効なサンプルが取得されると自動的に表示されます。",
 }: MetricLineChartProps) {
   const startMilliseconds = Date.parse(startAt);
   const endMilliseconds = Date.parse(endAt);
@@ -136,13 +148,13 @@ export function MetricLineChart({
           <h3>{title}</h3>
           <p>{description}</p>
         </div>
-        <span>5分平均</span>
+        <span>{aggregationLabel}</span>
       </div>
 
       {visibleSeries.length === 0 ? (
         <div className={styles.empty}>
-          <strong>グラフ化できるデータがまだありません</strong>
-          <p>Agent 0.4.0のデータが蓄積されると自動的に表示されます。</p>
+          <strong>グラフ化できるデータがありません</strong>
+          <p>{emptyDescription}</p>
         </div>
       ) : (
         <>
@@ -151,7 +163,7 @@ export function MetricLineChart({
               className={styles.chart}
               viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
               role="img"
-              aria-label={`${title}。${visibleSeries.map((item) => item.label).join("、")}の直近24時間の推移`}
+              aria-label={`${title}。${visibleSeries.map((item) => item.label).join("、")}の直近${periodLabel}の推移`}
             >
               <title>{title}</title>
 
@@ -175,7 +187,7 @@ export function MetricLineChart({
                       y={y + 4}
                       textAnchor="end"
                     >
-                      {formatValue(tick, unit)}
+                      {formatValue(tick, unit, valueDigits)}
                     </text>
                   </g>
                 );
@@ -293,8 +305,9 @@ export function MetricLineChart({
                   <div>
                     <strong>{item.label}</strong>
                     <span>
-                      最新 {formatValue(latest, unit)} / 最小{" "}
-                      {formatValue(minimum, unit)} / 最大 {formatValue(peak, unit)}
+                      最新 {formatValue(latest, unit, valueDigits)} / 最小{" "}
+                      {formatValue(minimum, unit, valueDigits)} / 最大{" "}
+                      {formatValue(peak, unit, valueDigits)}
                     </span>
                   </div>
                 </div>

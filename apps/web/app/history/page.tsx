@@ -1,12 +1,28 @@
 import { AutoRefresh } from "../../components/auto-refresh";
 import { MetricLineChart } from "../../components/metric-line-chart";
-import { getContainerMetricHistory } from "../../lib/history";
+import {
+  HISTORY_RANGE_CONFIG,
+  getContainerMetricHistory,
+  getHostMetricHistory,
+  parseHistoryRange,
+  type HistoryRange,
+} from "../../lib/history";
 import styles from "./history.module.css";
 
 export const dynamic = "force-dynamic";
 
-const HOURS = 24;
-const BUCKET_SECONDS = 300;
+type HistoryPageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+const HISTORY_RANGES = Object.keys(HISTORY_RANGE_CONFIG) as HistoryRange[];
+
+function firstValue(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) {
+    return value[0] || null;
+  }
+  return value || null;
+}
 
 function formatPeriod(timestamp: string): string {
   return new Intl.DateTimeFormat("ja-JP", {
@@ -19,44 +35,185 @@ function formatPeriod(timestamp: string): string {
   }).format(new Date(timestamp));
 }
 
-export default async function HistoryPage() {
-  const endAt = new Date();
-  const startAt = new Date(endAt.getTime() - HOURS * 60 * 60 * 1_000);
-  let hasDataError = false;
-  let history = [] as Awaited<ReturnType<typeof getContainerMetricHistory>>;
+function toKiBPerSecond(value: number | null): number | null {
+  return value === null ? null : value / 1_024;
+}
 
-  try {
-    history = await getContainerMetricHistory(HOURS, BUCKET_SECONDS);
-  } catch (error) {
-    hasDataError = true;
-    console.error("監視履歴の取得に失敗しました", error);
+export default async function HistoryPage({ searchParams }: HistoryPageProps) {
+  const params = await searchParams;
+  const range = parseHistoryRange(firstValue(params.range));
+  const rangeConfig = HISTORY_RANGE_CONFIG[range];
+  const endAt = new Date();
+  const startAt = new Date(
+    endAt.getTime() - rangeConfig.hours * 60 * 60 * 1_000,
+  );
+
+  const [hostResult, containerResult] = await Promise.allSettled([
+    getHostMetricHistory(range),
+    getContainerMetricHistory(range),
+  ]);
+
+  const hostHistory = hostResult.status === "fulfilled" ? hostResult.value : [];
+  const containerHistory =
+    containerResult.status === "fulfilled" ? containerResult.value : [];
+  const hostDataError = hostResult.status === "rejected";
+  const containerDataError = containerResult.status === "rejected";
+
+  if (hostResult.status === "rejected") {
+    console.error("ホスト監視履歴の取得に失敗しました", hostResult.reason);
+  }
+  if (containerResult.status === "rejected") {
+    console.error("Docker監視履歴の取得に失敗しました", containerResult.reason);
   }
 
-  const cpuSeries = history.map((item) => ({
-    id: `${item.hostId}:${item.containerName}`,
-    label: `${item.containerName} / ${item.hostDisplayName}`,
-    points: item.points.map((point) => ({
-      timestamp: point.timestamp,
-      value: point.cpuPercent,
-    })),
-  }));
-  const memorySeries = history.map((item) => ({
-    id: `${item.hostId}:${item.containerName}`,
-    label: `${item.containerName} / ${item.hostDisplayName}`,
+  const hostLoadSeries = hostHistory.flatMap((item) => [
+    {
+      id: `${item.hostId}:load1`,
+      label: `${item.hostDisplayName} / Load 1m`,
+      points: item.points.map((point) => ({
+        timestamp: point.timestamp,
+        value: point.loadAverage1,
+      })),
+    },
+    {
+      id: `${item.hostId}:load5`,
+      label: `${item.hostDisplayName} / Load 5m`,
+      points: item.points.map((point) => ({
+        timestamp: point.timestamp,
+        value: point.loadAverage5,
+      })),
+    },
+    {
+      id: `${item.hostId}:load15`,
+      label: `${item.hostDisplayName} / Load 15m`,
+      points: item.points.map((point) => ({
+        timestamp: point.timestamp,
+        value: point.loadAverage15,
+      })),
+    },
+  ]);
+
+  const hostMemorySeries = hostHistory.map((item) => ({
+    id: `${item.hostId}:memory`,
+    label: item.hostDisplayName,
     points: item.points.map((point) => ({
       timestamp: point.timestamp,
       value: point.memoryPercent,
     })),
   }));
-  const sampleCount = history.reduce(
+
+  const hostDiskSeries = hostHistory.map((item) => ({
+    id: `${item.hostId}:disk`,
+    label: item.hostDisplayName,
+    points: item.points.map((point) => ({
+      timestamp: point.timestamp,
+      value: point.diskPercent,
+    })),
+  }));
+
+  const containerLabel = (host: string, container: string) =>
+    `${container} / ${host}`;
+
+  const cpuSeries = containerHistory.map((item) => ({
+    id: `${item.hostId}:${item.containerName}:cpu`,
+    label: containerLabel(item.hostDisplayName, item.containerName),
+    points: item.points.map((point) => ({
+      timestamp: point.timestamp,
+      value: point.cpuPercent,
+    })),
+  }));
+
+  const memorySeries = containerHistory.map((item) => ({
+    id: `${item.hostId}:${item.containerName}:memory`,
+    label: containerLabel(item.hostDisplayName, item.containerName),
+    points: item.points.map((point) => ({
+      timestamp: point.timestamp,
+      value: point.memoryPercent,
+    })),
+  }));
+
+  const pidsSeries = containerHistory.map((item) => ({
+    id: `${item.hostId}:${item.containerName}:pids`,
+    label: containerLabel(item.hostDisplayName, item.containerName),
+    points: item.points.map((point) => ({
+      timestamp: point.timestamp,
+      value: point.pids,
+    })),
+  }));
+
+  const restartSeries = containerHistory.map((item) => ({
+    id: `${item.hostId}:${item.containerName}:restart`,
+    label: containerLabel(item.hostDisplayName, item.containerName),
+    points: item.points.map((point) => ({
+      timestamp: point.timestamp,
+      value: point.restartCount,
+    })),
+  }));
+
+  const networkSeries = containerHistory.flatMap((item) => [
+    {
+      id: `${item.hostId}:${item.containerName}:network-rx`,
+      label: `${containerLabel(item.hostDisplayName, item.containerName)} / RX`,
+      points: item.points.map((point) => ({
+        timestamp: point.timestamp,
+        value: toKiBPerSecond(point.networkRxRateBps),
+      })),
+    },
+    {
+      id: `${item.hostId}:${item.containerName}:network-tx`,
+      label: `${containerLabel(item.hostDisplayName, item.containerName)} / TX`,
+      points: item.points.map((point) => ({
+        timestamp: point.timestamp,
+        value: toKiBPerSecond(point.networkTxRateBps),
+      })),
+    },
+  ]);
+
+  const blockSeries = containerHistory.flatMap((item) => [
+    {
+      id: `${item.hostId}:${item.containerName}:block-read`,
+      label: `${containerLabel(item.hostDisplayName, item.containerName)} / Read`,
+      points: item.points.map((point) => ({
+        timestamp: point.timestamp,
+        value: toKiBPerSecond(point.blockReadRateBps),
+      })),
+    },
+    {
+      id: `${item.hostId}:${item.containerName}:block-write`,
+      label: `${containerLabel(item.hostDisplayName, item.containerName)} / Write`,
+      points: item.points.map((point) => ({
+        timestamp: point.timestamp,
+        value: toKiBPerSecond(point.blockWriteRateBps),
+      })),
+    },
+  ]);
+
+  const hostSampleCount = hostHistory.reduce(
     (total, item) =>
       total + item.points.reduce((sum, point) => sum + point.sampleCount, 0),
     0,
   );
+  const containerSampleCount = containerHistory.reduce(
+    (total, item) =>
+      total + item.points.reduce((sum, point) => sum + point.sampleCount, 0),
+    0,
+  );
+  const sourceLabel =
+    range === "7d" || range === "30d"
+      ? "5分ロールアップ"
+      : "生データ";
+
+  const sharedChartProps = {
+    startAt: startAt.toISOString(),
+    endAt: endAt.toISOString(),
+    expectedIntervalSeconds: rangeConfig.bucketSeconds,
+    aggregationLabel: rangeConfig.aggregationLabel,
+    periodLabel: rangeConfig.label,
+  } as const;
 
   return (
     <main className="shell">
-      <AutoRefresh intervalMs={60_000} />
+      <AutoRefresh intervalMs={rangeConfig.refreshMs} />
 
       <aside className="sidebar">
         <a className="brand" href="/#top">
@@ -68,15 +225,19 @@ export default async function HistoryPage() {
           <a href="/minecraft">Minecraft</a>
           <a href="/#hosts">ホスト</a>
           <a href="/#containers">コンテナ</a>
-          <a aria-current="page" href="/history">
+          <a aria-current="page" href={`/history?range=${range}`}>
             履歴グラフ
           </a>
         </nav>
         <div className="agent">
-          <i className={hasDataError ? "error" : "online"} />
+          <i className={hostDataError && containerDataError ? "error" : "online"} />
           Metrics History
           <br />
-          <small>{hasDataError ? "取得エラー" : "5分集約"}</small>
+          <small>
+            {hostDataError && containerDataError
+              ? "取得エラー"
+              : rangeConfig.aggregationLabel}
+          </small>
         </div>
       </aside>
 
@@ -84,7 +245,9 @@ export default async function HistoryPage() {
         <header>
           <div>
             <h1>監視履歴</h1>
-            <p>DockerコンテナのCPU・メモリ推移を時系列で確認できます。</p>
+            <p>
+              ホストとDockerコンテナの負荷・リソース・I/O推移を時系列で確認できます。
+            </p>
           </div>
           <a className={styles.secondaryLink} href="/">
             現在値へ戻る
@@ -94,69 +257,168 @@ export default async function HistoryPage() {
         <section className={styles.summary} aria-label="履歴表示条件">
           <div>
             <span>表示期間</span>
-            <strong>直近24時間</strong>
+            <strong>直近{rangeConfig.label}</strong>
           </div>
           <div>
             <span>集約粒度</span>
-            <strong>5分平均</strong>
+            <strong>{rangeConfig.aggregationLabel}</strong>
+          </div>
+          <div>
+            <span>データソース</span>
+            <strong>{sourceLabel}</strong>
+          </div>
+          <div>
+            <span>ホスト</span>
+            <strong>{hostDataError ? "—" : hostHistory.length}</strong>
           </div>
           <div>
             <span>コンテナ</span>
-            <strong>{hasDataError ? "—" : history.length}</strong>
+            <strong>{containerDataError ? "—" : containerHistory.length}</strong>
           </div>
           <div>
-            <span>元サンプル</span>
-            <strong>
-              {hasDataError ? "—" : sampleCount.toLocaleString("ja-JP")}
+            <span>集約元サンプル</span>
+            <strong className={styles.compactValue}>
+              H {hostDataError ? "—" : hostSampleCount.toLocaleString("ja-JP")} / C{" "}
+              {containerDataError
+                ? "—"
+                : containerSampleCount.toLocaleString("ja-JP")}
             </strong>
           </div>
         </section>
 
         <div className={styles.toolbar}>
-          <div className={styles.periodSelector} aria-label="表示期間">
-            <span className={styles.active}>24時間</span>
-            <span aria-disabled="true">7日（準備中）</span>
-            <span aria-disabled="true">30日（準備中）</span>
-          </div>
+          <nav className={styles.periodSelector} aria-label="表示期間">
+            {HISTORY_RANGES.map((candidate) => (
+              <a
+                aria-current={candidate === range ? "page" : undefined}
+                className={candidate === range ? styles.active : undefined}
+                href={`/history?range=${candidate}`}
+                key={candidate}
+              >
+                {HISTORY_RANGE_CONFIG[candidate].label}
+              </a>
+            ))}
+          </nav>
           <small>
             {formatPeriod(startAt.toISOString())}〜
             {formatPeriod(endAt.toISOString())}
           </small>
         </div>
 
-        {hasDataError ? (
-          <div className="empty error-panel" role="alert">
-            <strong>監視履歴を取得できませんでした</strong>
-            <p>Supabaseの履歴RPCとVercel環境変数を確認してください。</p>
+        <section className={styles.metricSection} aria-labelledby="host-history-title">
+          <div className={styles.sectionHeading}>
+            <div>
+              <span>HOST</span>
+              <h2 id="host-history-title">ホスト履歴</h2>
+            </div>
+            <p>OSレベルのLoad Average・メモリ・ディスク使用率です。</p>
           </div>
-        ) : (
-          <section className={styles.chartGrid} aria-label="Dockerリソース履歴">
-            <MetricLineChart
-              title="CPU使用率"
-              description="各コンテナの5分平均です。欠損区間は線を接続しません。"
-              series={cpuSeries}
-              startAt={startAt.toISOString()}
-              endAt={endAt.toISOString()}
-              expectedIntervalSeconds={BUCKET_SECONDS}
-              unit="%"
-            />
-            <MetricLineChart
-              title="メモリ使用率"
-              description="使用量をコンテナのメモリ上限で割った5分平均です。"
-              series={memorySeries}
-              startAt={startAt.toISOString()}
-              endAt={endAt.toISOString()}
-              expectedIntervalSeconds={BUCKET_SECONDS}
-              unit="%"
-              maximum={100}
-            />
-          </section>
-        )}
+
+          {hostDataError ? (
+            <div className="empty error-panel" role="alert">
+              <strong>ホスト履歴を取得できませんでした</strong>
+              <p>Supabaseのホスト履歴RPCを確認してください。</p>
+            </div>
+          ) : (
+            <div className={styles.chartGrid}>
+              <MetricLineChart
+                {...sharedChartProps}
+                title="Load Average"
+                description="1分・5分・15分の平均実行待ち負荷を比較します。"
+                series={hostLoadSeries}
+                unit=""
+              />
+              <MetricLineChart
+                {...sharedChartProps}
+                title="ホストメモリ使用率"
+                description="総メモリとAvailableから算出した使用率です。"
+                series={hostMemorySeries}
+                unit="%"
+                maximum={100}
+              />
+              <MetricLineChart
+                {...sharedChartProps}
+                title="ディスク使用率"
+                description="監視対象ファイルシステムの総容量とAvailableから算出します。"
+                series={hostDiskSeries}
+                unit="%"
+                maximum={100}
+              />
+            </div>
+          )}
+        </section>
+
+        <section className={styles.metricSection} aria-labelledby="container-history-title">
+          <div className={styles.sectionHeading}>
+            <div>
+              <span>DOCKER</span>
+              <h2 id="container-history-title">コンテナ履歴</h2>
+            </div>
+            <p>
+              CPU・メモリに加えて、Process数・再起動回数・Network / Block I/Oを確認します。
+            </p>
+          </div>
+
+          {containerDataError ? (
+            <div className="empty error-panel" role="alert">
+              <strong>Docker履歴を取得できませんでした</strong>
+              <p>SupabaseのDocker履歴RPCを確認してください。</p>
+            </div>
+          ) : (
+            <div className={styles.chartGrid}>
+              <MetricLineChart
+                {...sharedChartProps}
+                title="CPU使用率"
+                description="各コンテナのCPU使用率です。欠損区間は線を接続しません。"
+                series={cpuSeries}
+                unit="%"
+              />
+              <MetricLineChart
+                {...sharedChartProps}
+                title="メモリ使用率"
+                description="使用量をコンテナのメモリ上限で割った使用率です。"
+                series={memorySeries}
+                unit="%"
+                maximum={100}
+              />
+              <MetricLineChart
+                {...sharedChartProps}
+                title="PIDs"
+                description="コンテナ内で観測したProcess数の推移です。"
+                series={pidsSeries}
+                unit=""
+                valueDigits={0}
+              />
+              <MetricLineChart
+                {...sharedChartProps}
+                title="再起動回数"
+                description="Docker RestartCountの最新値を各時間バケットへ保持します。"
+                series={restartSeries}
+                unit=""
+                valueDigits={0}
+              />
+              <MetricLineChart
+                {...sharedChartProps}
+                title="Network I/O"
+                description="Dockerの累積RX/TX Counterを区間差分からKiB/sへ変換します。Counter resetは欠損扱いです。"
+                series={networkSeries}
+                unit=" KiB/s"
+              />
+              <MetricLineChart
+                {...sharedChartProps}
+                title="Block I/O"
+                description="Dockerの累積Read/Write Counterを区間差分からKiB/sへ変換します。Counter resetは欠損扱いです。"
+                series={blockSeries}
+                unit=" KiB/s"
+              />
+            </div>
+          )}
+        </section>
 
         <section className={styles.note}>
-          <strong>データ保持について</strong>
+          <strong>データ保持・集約について</strong>
           <p>
-            現在は既存の生データから直近24時間を5分単位で集約しています。7日・30日表示は、1分・5分・1時間ロールアップと自動削除処理を追加してから有効化します。
+            1時間・6時間・24時間は生データから期間に応じて集約します。7日・30日は5分ロールアップを30分・1時間へ再集約するため、長期間表示で15秒生データを毎回全走査しません。今回の変更では生データを削除せず、Retentionは別タスクで検証後に導入します。
           </p>
         </section>
       </section>

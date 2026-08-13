@@ -19,7 +19,7 @@
 
 .summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 12px;
   margin: 38px 0 20px;
 }
@@ -47,12 +47,17 @@
   font-size: 20px;
 }
 
+.summary .compactValue {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
 .toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 28px;
 }
 
 .toolbar > small {
@@ -65,12 +70,22 @@
   gap: 8px;
 }
 
-.periodSelector span {
+.periodSelector a {
   padding: 7px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--muted);
   font-size: 12px;
+  text-decoration: none;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.periodSelector a:hover {
+  border-color: #3c4453;
+  color: var(--text);
 }
 
 .periodSelector .active {
@@ -79,8 +94,39 @@
   color: var(--accent);
 }
 
-.periodSelector span[aria-disabled="true"] {
-  opacity: 0.55;
+.metricSection {
+  margin-top: 34px;
+}
+
+.sectionHeading {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 20px;
+  margin-bottom: 14px;
+}
+
+.sectionHeading span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+.sectionHeading h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.sectionHeading p {
+  max-width: 700px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: right;
 }
 
 .chartGrid {
@@ -90,7 +136,7 @@
 }
 
 .note {
-  margin-top: 18px;
+  margin-top: 24px;
   padding: 18px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -104,6 +150,18 @@
   line-height: 1.7;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .periodSelector a {
+    transition: none;
+  }
+}
+
+@media (max-width: 1280px) {
+  .summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 1180px) {
   .chartGrid {
     grid-template-columns: 1fr;
@@ -115,13 +173,19 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .toolbar {
+  .toolbar,
+  .sectionHeading {
     display: block;
   }
 
-  .toolbar > small {
+  .toolbar > small,
+  .sectionHeading p {
     display: block;
     margin-top: 10px;
+  }
+
+  .sectionHeading p {
+    text-align: left;
   }
 }
 
