@@ -105,6 +105,9 @@ function stringValue(value: unknown, maximumLength = 128): string | null {
 }
 
 function integerValue(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isSafeInteger(parsed) ? parsed : null;
 }
