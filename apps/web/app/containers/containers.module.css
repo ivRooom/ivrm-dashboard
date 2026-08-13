@@ -1,0 +1,313 @@
+.containerContent {
+  max-width: 1540px;
+}
+
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.secondaryLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 9px 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.secondaryLink:hover,
+.secondaryLink:focus-visible {
+  border-color: #3c4453;
+  background: var(--panel-2);
+  outline: none;
+}
+
+.eyebrow {
+  margin-bottom: 7px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 38px 0 24px;
+}
+
+.summaryGrid > article,
+.summaryGrid > div {
+  min-height: 110px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.summaryGrid span,
+.summaryGrid small,
+.summaryGrid strong {
+  display: block;
+}
+
+.summaryGrid span,
+.summaryGrid small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.summaryGrid strong {
+  margin: 13px 0 7px;
+  overflow-wrap: anywhere;
+  font-size: 20px;
+}
+
+.containerGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.containerCard {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+}
+
+.cardTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.identity {
+  min-width: 0;
+}
+
+.identity h2,
+.identity h3 {
+  overflow-wrap: anywhere;
+}
+
+.identity p {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.detailLink {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.detailLink:hover,
+.detailLink:focus-visible {
+  color: var(--accent);
+  outline: none;
+}
+
+.metaGrid,
+.currentGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.metaGrid > div,
+.currentGrid > div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-2);
+}
+
+.metaGrid span,
+.currentGrid span,
+.metaGrid strong,
+.currentGrid strong,
+.metaGrid small,
+.currentGrid small {
+  display: block;
+}
+
+.metaGrid span,
+.currentGrid span {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.metaGrid strong,
+.currentGrid strong {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.metaGrid small,
+.currentGrid small {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.sectionHeading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  margin: 28px 0 15px;
+}
+
+.sectionHeading span {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.sectionHeading p {
+  max-width: 640px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: right;
+}
+
+.periodSelector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.periodSelector a {
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.periodSelector a:hover,
+.periodSelector a:focus-visible {
+  color: var(--text);
+  outline: none;
+}
+
+.periodSelector .active {
+  border-color: rgb(184 255 61 / 45%);
+  background: rgb(184 255 61 / 10%);
+  color: var(--accent);
+}
+
+.chartGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.notice {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.notice strong,
+.notice p {
+  display: block;
+}
+
+.notice p {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.maintenance {
+  border-color: rgb(199 167 255 / 38%);
+  background: rgb(199 167 255 / 7%);
+}
+
+@media (max-width: 1180px) {
+  .containerGrid,
+  .chartGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .metaGrid,
+  .currentGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sectionHeading {
+    display: block;
+  }
+
+  .sectionHeading p {
+    margin-top: 8px;
+    text-align: left;
+  }
+}
+
+@media (max-width: 620px) {
+  .headerActions {
+    justify-content: flex-start;
+    margin-top: 16px;
+  }
+
+  .summaryGrid,
+  .metaGrid,
+  .currentGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .summaryGrid {
+    margin-top: 28px;
+  }
+
+  .cardTop {
+    display: block;
+  }
+
+  .cardTop :global(.status) {
+    margin-top: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .secondaryLink,
+  .detailLink,
+  .periodSelector a {
+    scroll-behavior: auto;
+    transition: none;
+  }
+}
