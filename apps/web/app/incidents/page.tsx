@@ -1,13 +1,13 @@
 import { AutoRefresh } from "../../components/auto-refresh";
 import {
   INCIDENT_RANGE_CONFIG,
-  getIncidentCenterSnapshot,
+  getUnifiedIncidentCenterSnapshot,
   parseIncidentRange,
   type ActiveIncident,
   type IncidentRange,
   type IncidentSeverity,
   type RecoveredIncident,
-} from "../../lib/incidents";
+} from "../../lib/unified-incidents";
 import styles from "./incidents.module.css";
 
 export const dynamic = "force-dynamic";
@@ -21,11 +21,12 @@ const severityLabels: Record<IncidentSeverity, string> = {
   warning: "注意",
 };
 
-const currentStatusLabels = {
+const currentStatusLabels: Record<ActiveIncident["currentStatus"], string> = {
   error: "異常",
   stale: "更新遅延",
   offline: "受信停止",
-} as const;
+  degraded: "保護異常",
+};
 
 function firstValue(value: string | string[] | undefined): string | null {
   return Array.isArray(value) ? value[0] || null : value || null;
@@ -71,13 +72,22 @@ function formatDuration(seconds: number | null): string {
 }
 
 function entityName(incident: ActiveIncident | RecoveredIncident): string {
+  if (incident.entityType === "backup") return incident.backupTarget;
   return incident.containerName ?? incident.hostDisplayName;
 }
 
 function entityMeta(incident: ActiveIncident | RecoveredIncident): string {
+  if (incident.entityType === "backup") {
+    return `${incident.gameMode} / ${incident.backupType.toUpperCase()} / ${incident.hostDisplayName} / ${incident.serverId}`;
+  }
   return incident.containerName
     ? `${incident.hostDisplayName} / ${incident.serverId}`
     : `${incident.serverId} / Host`;
+}
+
+function entityTypeLabel(incident: ActiveIncident | RecoveredIncident): string {
+  if (incident.entityType === "backup") return "BACKUP";
+  return incident.entityType === "host" ? "HOST" : "CONTAINER";
 }
 
 function severityClass(severity: IncidentSeverity): string {
@@ -91,7 +101,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
   let loadError = false;
 
   try {
-    data = await getIncidentCenterSnapshot(range);
+    data = await getUnifiedIncidentCenterSnapshot(range);
   } catch (error) {
     loadError = true;
     console.error("Incident Centerの取得に失敗しました", error);
@@ -101,6 +111,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
   const active = data?.active ?? [];
   const recovered = data?.recovered ?? [];
   const summary = data?.summary ?? null;
+  const backupDataAvailable = data?.backupDataAvailable ?? false;
 
   return (
     <main className="shell">
@@ -114,6 +125,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
           <a href="/hosts">ホスト</a>
           <a href="/containers">コンテナ</a>
           <a aria-current="page" href={`/incidents?range=${range}`}>インシデント</a>
+          <a href={`/backups?range=${range}`}>バックアップ</a>
           <a href={`/events?range=${range}`}>イベント</a>
           <a href={`/history?range=${range}`}>履歴グラフ</a>
         </nav>
@@ -129,11 +141,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
           <div>
             <p className={styles.eyebrow}>RELIABILITY / INCIDENT CENTER</p>
             <h1>インシデントセンター</h1>
-            <p>現在進行中の障害と、開始・復旧を証明できた過去IncidentをHost / Container横断で確認します。</p>
+            <p>現在進行中の障害と、開始・復旧を証明できた過去IncidentをHost / Container / Backup横断で確認します。</p>
           </div>
           <div className={styles.headerActions}>
             <a className={styles.secondaryLink} href={`/events?range=${range}`}>生イベントを見る</a>
-            <a className={styles.secondaryLink} href="/containers">コンテナ一覧</a>
+            <a className={styles.secondaryLink} href={`/backups?range=${range}`}>バックアップを見る</a>
           </div>
         </header>
 
@@ -157,6 +169,13 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
           </div>
         ) : summary ? (
           <>
+            {!backupDataAvailable ? (
+              <section className={styles.notice}>
+                <strong>Backup Incidentだけ取得できませんでした</strong>
+                <p>Host / Container Incidentは継続表示しています。Backup CenterのService Role RPCを確認してください。</p>
+              </section>
+            ) : null}
+
             <section className={styles.summaryGrid} aria-label="Incidentサマリー">
               <article className={summary.activeCount > 0 ? styles.summaryAttention : undefined}>
                 <span>ACTIVE</span>
@@ -181,25 +200,25 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
               <article>
                 <span>AFFECTED ENTITIES</span>
                 <strong>{summary.affectedEntityCount}</strong>
-                <small>Host / Containerの重複を除外</small>
+                <small>Host / Container / Backupの重複を除外</small>
               </article>
               <article>
                 <span>INCIDENT EVENTS</span>
                 <strong>{summary.criticalEventCount} / {summary.warningEventCount}</strong>
-                <small>重大 / 注意 Structured Event</small>
+                <small>Host・Container重大/注意 / Backup Active {summary.backupActiveCount}</small>
               </article>
             </section>
 
             <section className={styles.sectionBlock}>
               <div className={styles.sectionHeading}>
                 <div><span>ACTIVE NOW</span><h2>現在進行中</h2></div>
-                <p>現在のMonitoring SnapshotをSource of Truthとして判定します。</p>
+                <p>Monitoring SnapshotとBackup HealthをSource of Truthとして判定します。</p>
               </div>
 
               {active.length === 0 ? (
                 <div className={styles.healthyState}>
                   <strong>Active Incidentはありません</strong>
-                  <p>Host / Containerは現在の期待状態に対して正常です。</p>
+                  <p>Host / Container / Backupは現在確認できる期待状態に対して正常です。</p>
                 </div>
               ) : (
                 <div className={styles.activeGrid}>
@@ -207,7 +226,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                     <article className={styles.incidentCard} key={incident.id}>
                       <div className={styles.cardHeading}>
                         <div>
-                          <p className={styles.entityType}>{incident.entityType === "host" ? "HOST" : "CONTAINER"}</p>
+                          <p className={styles.entityType}>{entityTypeLabel(incident)}</p>
                           <h3>{entityName(incident)}</h3>
                           <small>{entityMeta(incident)}</small>
                         </div>
@@ -220,8 +239,8 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       <div className={styles.metricGrid}>
                         <div><span>現在状態</span><strong>{currentStatusLabels[incident.currentStatus]}</strong></div>
                         <div><span>開始</span><strong>{incident.exactStart ? formatRelativeTime(incident.startedAt, generatedAt) : "開始時刻不明"}</strong><small>{incident.exactStart ? formatDateTime(incident.startedAt) : "推測しません"}</small></div>
-                        <div><span>継続時間</span><strong>{formatDuration(incident.durationSeconds)}</strong><small>{incident.exactStart ? "Structured Event基準" : "算出対象外"}</small></div>
-                        <div><span>関連イベント</span><strong>{incident.relatedEventCount}</strong><small>30日Context</small></div>
+                        <div><span>継続時間</span><strong>{formatDuration(incident.durationSeconds)}</strong><small>{incident.exactStart ? "Structured Data基準" : "算出対象外"}</small></div>
+                        <div><span>関連イベント</span><strong>{incident.relatedEventCount}</strong><small>{incident.entityType === "backup" ? "30日Backup Run" : "30日Context"}</small></div>
                       </div>
 
                       <div className={styles.reasonBox}>
@@ -231,8 +250,8 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       </div>
 
                       <div className={styles.cardActions}>
-                        <a href={incident.detailHref}>詳細を開く</a>
-                        <a href={incident.eventsHref}>関連イベント</a>
+                        <a href={incident.detailHref}>{incident.entityType === "backup" ? "Backup Centerを開く" : "詳細を開く"}</a>
+                        {incident.entityType !== "backup" ? <a href={incident.eventsHref}>関連イベント</a> : null}
                       </div>
                     </article>
                   ))}
@@ -255,7 +274,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       <div className={styles.recoveredMain}>
                         <div className={styles.cardHeading}>
                           <div>
-                            <p className={styles.entityType}>{incident.entityType === "host" ? "HOST" : "CONTAINER"}</p>
+                            <p className={styles.entityType}>{entityTypeLabel(incident)}</p>
                             <h3>{entityName(incident)}</h3>
                             <small>{entityMeta(incident)}</small>
                           </div>
@@ -269,11 +288,11 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                       <div className={styles.recoveryMetrics}>
                         <div><span>開始</span><strong>{formatDateTime(incident.startedAt)}</strong></div>
                         <div><span>復旧</span><strong>{formatDateTime(incident.recoveredAt)}</strong><small>{formatRelativeTime(incident.recoveredAt, generatedAt)}</small></div>
-                        <div><span>Recovery Time</span><strong>{formatDuration(incident.durationSeconds)}</strong><small>{incident.relatedEventCount} events</small></div>
+                        <div><span>Recovery Time</span><strong>{formatDuration(incident.durationSeconds)}</strong><small>{incident.relatedEventCount} {incident.entityType === "backup" ? "runs" : "events"}</small></div>
                       </div>
                       <div className={styles.cardActions}>
-                        <a href={incident.detailHref}>詳細</a>
-                        <a href={incident.eventsHref}>イベント</a>
+                        <a href={incident.detailHref}>{incident.entityType === "backup" ? "Backup Center" : "詳細"}</a>
+                        {incident.entityType !== "backup" ? <a href={incident.eventsHref}>イベント</a> : null}
                       </div>
                     </article>
                   ))}
@@ -283,7 +302,7 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
 
             <section className={styles.notice}>
               <strong>Durationを推測しない設計</strong>
-              <p>ContainerはState / Health / ExitCodeのwarning・critical開始とrecoveryを同一Entity内で追跡し、重なったシグナルがすべて復旧した時点だけCloseします。RestartCount、OOM、Host rebootなど復旧時刻を一意に証明できない単発イベントはMTTRへ含めません。Host Heartbeat gapはgap秒数がDBに保存されるため、復旧済み通信断として正確なDurationを集計します。</p>
+              <p>ContainerはState / Health / ExitCodeのwarning・critical開始とrecoveryを同一Entity内で追跡し、重なったシグナルがすべて復旧した時点だけCloseします。Host Heartbeat gapはgap秒数からDurationを確定します。BackupはRun failure / Checksum failureの開始と次のsuccess / SHA-256 Verifiedをimmutable Run履歴から両方証明できた場合だけMTTRへ含めます。Backup Age・Remote Sync・Restore Testなど現在Policy値に依存するSLA異常はActive表示しますが、Policy履歴がないためRecovery Durationへは混ぜません。</p>
             </section>
           </>
         ) : null}
