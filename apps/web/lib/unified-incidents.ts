@@ -165,8 +165,11 @@ function runKey(run: BackupHistoryRun): string {
   );
 }
 
-function backupHref(range: IncidentRange): string {
-  return `/backups?range=${range}`;
+function backupHref(
+  range: IncidentRange,
+  target: Pick<BackupTargetSnapshot, "hostId" | "backupTarget" | "gameMode" | "backupType">,
+): string {
+  return `/backups?range=${range}#backup-target-${target.hostId}-${target.backupTarget}-${target.gameMode}-${target.backupType}`;
 }
 
 function latestTransition(target: BackupTargetSnapshot): string | null {
@@ -245,6 +248,7 @@ function deriveActiveBackupIncidents(
       : null;
     const latestTransitionAt = latest?.completedAt ?? latest?.startedAt ?? success?.completedAt ?? null;
     const relatedRuns = historyByTarget.get(targetKey(target)) ?? [];
+    const detailHref = backupHref(range, target);
 
     return [
       {
@@ -266,8 +270,8 @@ function deriveActiveBackupIncidents(
         latestTransition: latestTransition(target),
         relatedEventCount: relatedRuns.length,
         exactStart,
-        detailHref: backupHref(range),
-        eventsHref: backupHref(range),
+        detailHref,
+        eventsHref: detailHref,
       },
     ];
   });
@@ -372,6 +376,7 @@ function deriveRecoveredBackupIncidents(
         recoveredAt >= started &&
         recoveredAt >= rangeStart
       ) {
+        const detailHref = backupHref(range, run);
         recovered.push({
           id: `recovered-backup:${runKey(run)}:${episode.startedAt}:${run.rowId}`,
           entityType: "backup",
@@ -389,8 +394,8 @@ function deriveRecoveredBackupIncidents(
           startReason: episode.startReason,
           recoveryReason,
           relatedEventCount: episode.eventCount,
-          detailHref: backupHref(range),
-          eventsHref: backupHref(range),
+          detailHref,
+          eventsHref: detailHref,
         });
       }
       episode = null;
