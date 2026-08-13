@@ -95,6 +95,9 @@ export default async function RootLayout({
               ) : null}
             </span>
           ) : null}
+          <a href="/hosts" style={navigationLinkStyle}>
+            ホスト
+          </a>
           <a href="/containers" style={navigationLinkStyle}>
             コンテナ
           </a>
