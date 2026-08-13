@@ -1,4 +1,5 @@
 import type { HistoryRange } from "./history";
+import { isValidHostServerId } from "./host-monitoring-events";
 
 export const MONITORING_EVENT_SEVERITIES = [
   "info",
@@ -60,7 +61,8 @@ type MonitoringEventQuery = {
   severity?: MonitoringEventSeverity | null;
 };
 
-const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
+const CONTAINER_IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
+const PAGE_SIZE = 500;
 const EVENT_TYPES = new Set<MonitoringEventType>([
   "state_changed",
   "health_changed",
@@ -88,12 +90,22 @@ function supabaseConfiguration(): { url: string; serviceRoleKey: string } {
   };
 }
 
-function identifier(value: string | null | undefined): string | null {
+function hostIdentifier(value: string | null | undefined): string | null {
   if (!value) {
     return null;
   }
-  if (!IDENTIFIER_PATTERN.test(value)) {
-    throw new Error("監視イベントの識別子が不正です");
+  if (!isValidHostServerId(value)) {
+    throw new Error("監視イベントのHost識別子が不正です");
+  }
+  return value;
+}
+
+function containerIdentifier(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  if (!CONTAINER_IDENTIFIER_PATTERN.test(value)) {
+    throw new Error("監視イベントのContainer識別子が不正です");
   }
   return value;
 }
@@ -121,7 +133,7 @@ function timestamp(value: unknown): string | null {
 function parseEventRow(row: MonitoringEventRow): MonitoringEvent | null {
   const id = integerValue(row.event_id);
   const hostId = stringValue(row.host_id, 64);
-  const serverId = stringValue(row.server_id);
+  const serverId = stringValue(row.server_id, 64);
   const hostDisplayName = stringValue(row.host_display_name, 256);
   const containerName = stringValue(row.container_name);
   const occurredAt = timestamp(row.occurred_at);
@@ -130,10 +142,13 @@ function parseEventRow(row: MonitoringEventRow): MonitoringEvent | null {
 
   if (
     id === null ||
+    id < 0 ||
     !hostId ||
     !serverId ||
+    !isValidHostServerId(serverId) ||
     !hostDisplayName ||
     !containerName ||
+    !CONTAINER_IDENTIFIER_PATTERN.test(containerName) ||
     !occurredAt ||
     !eventType ||
     !EVENT_TYPES.has(eventType) ||
@@ -176,23 +191,17 @@ export function parseMonitoringEventSeverity(
     : "all";
 }
 
-export async function getMonitoringEvents({
-  range,
-  serverId,
-  containerName,
-  severity,
-}: MonitoringEventQuery): Promise<MonitoringEvent[]> {
-  const safeServerId = identifier(serverId);
-  const safeContainerName = identifier(containerName);
-  if ((safeServerId === null) !== (safeContainerName === null)) {
-    throw new Error("HostとContainerは同時に指定してください");
-  }
-  if (severity && !SEVERITIES.has(severity)) {
-    throw new Error("監視イベントのSeverityが不正です");
-  }
-
+async function fetchEventPage(
+  query: Required<Pick<MonitoringEventQuery, "range">> & {
+    serverId: string | null;
+    containerName: string | null;
+    severity: MonitoringEventSeverity | null;
+  },
+  beforeAt: string | null,
+  beforeId: number | null,
+): Promise<MonitoringEvent[]> {
   const { url, serviceRoleKey } = supabaseConfiguration();
-  const response = await fetch(`${url}/rest/v1/rpc/get_monitoring_events_v1`, {
+  const response = await fetch(`${url}/rest/v1/rpc/get_monitoring_events_v2`, {
     method: "POST",
     headers: {
       apikey: serviceRoleKey,
@@ -201,22 +210,76 @@ export async function getMonitoringEvents({
       Accept: "application/json",
     },
     body: JSON.stringify({
-      p_range: range,
-      p_server_id: safeServerId,
-      p_container_name: safeContainerName,
-      p_severity: severity ?? null,
+      p_range: query.range,
+      p_server_id: query.serverId,
+      p_container_name: query.containerName,
+      p_severity: query.severity,
+      p_before_at: beforeAt,
+      p_before_id: beforeId,
+      p_limit: PAGE_SIZE,
     }),
     cache: "no-store",
     signal: AbortSignal.timeout(10_000),
   });
 
   if (!response.ok) {
-    throw new Error(`get_monitoring_events_v1が${response.status}を返しました`);
+    throw new Error(`get_monitoring_events_v2が${response.status}を返しました`);
   }
 
-  const rows = (await response.json()) as MonitoringEventRow[];
-  return rows
-    .map(parseEventRow)
-    .filter((event): event is MonitoringEvent => event !== null)
-    .sort((left, right) => Date.parse(right.occurredAt) - Date.parse(left.occurredAt));
+  const payload: unknown = await response.json();
+  if (!Array.isArray(payload)) {
+    throw new Error("get_monitoring_events_v2が配列以外を返しました");
+  }
+
+  const events = payload.map((row) => parseEventRow(row as MonitoringEventRow));
+  if (events.some((event) => event === null)) {
+    throw new Error("get_monitoring_events_v2のレスポンス形式が不正です");
+  }
+  return events as MonitoringEvent[];
+}
+
+export async function getMonitoringEvents({
+  range,
+  serverId,
+  containerName,
+  severity,
+}: MonitoringEventQuery): Promise<MonitoringEvent[]> {
+  const safeServerId = hostIdentifier(serverId);
+  const safeContainerName = containerIdentifier(containerName);
+  if ((safeServerId === null) !== (safeContainerName === null)) {
+    throw new Error("HostとContainerは同時に指定してください");
+  }
+  if (severity && !SEVERITIES.has(severity)) {
+    throw new Error("監視イベントのSeverityが不正です");
+  }
+
+  const events: MonitoringEvent[] = [];
+  let beforeAt: string | null = null;
+  let beforeId: number | null = null;
+
+  while (true) {
+    const page = await fetchEventPage(
+      {
+        range,
+        serverId: safeServerId,
+        containerName: safeContainerName,
+        severity: severity ?? null,
+      },
+      beforeAt,
+      beforeId,
+    );
+    events.push(...page);
+
+    if (page.length < PAGE_SIZE) {
+      break;
+    }
+    const last = page.at(-1);
+    if (!last) {
+      break;
+    }
+    beforeAt = last.occurredAt;
+    beforeId = last.id;
+  }
+
+  return events;
 }
