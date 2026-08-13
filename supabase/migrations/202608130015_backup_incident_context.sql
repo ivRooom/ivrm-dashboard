@@ -1,3 +1,14 @@
+create index if not exists backup_runs_incident_context_idx
+  on public.backup_runs (
+    host_id,
+    backup_target,
+    game_mode,
+    backup_type,
+    completed_at desc,
+    id desc
+  )
+  where completed_at is not null;
+
 create or replace function public.get_backup_incident_context_v1(
   p_before timestamptz
 )
