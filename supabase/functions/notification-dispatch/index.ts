@@ -63,7 +63,7 @@ function sourceLabel(source: DeliveryRow["source_type"]): string {
 }
 
 function detailUrl(href: string): string | undefined {
-  if (!href.startsWith("/")) return undefined;
+  if (!href.startsWith("/") || href.startsWith("//")) return undefined;
   try { return new URL(href, CONSOLE_BASE_URL).toString(); } catch { return undefined; }
 }
 

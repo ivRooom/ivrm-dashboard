@@ -1,0 +1,2 @@
+[functions.notification-dispatch]
+verify_jwt = false

@@ -9,7 +9,8 @@ Notification Centerは、Host / Container / BackupのStructured Signalを通知�
 ```text
 Monitoring Event / Backup Run ── Trigger ──┐
                                           ├─ notification_signal_state
-Agent Heartbeat / Backup SLA ─ pg_cron ──┘
+Container Snapshot ─────────── pg_cron ───┤
+Agent Heartbeat / Backup SLA ─ pg_cron ───┘
                                           ↓
                                   notification_outbox
                                           ↓ claim / retry
@@ -24,7 +25,9 @@ Host OfflineはAgent自身に依存せず、Supabase Cronが最新Heartbeatを�
 - 180秒超: CriticalへEscalation
 - 新しいHeartbeat受信: Recovery
 
-BackupはBackup Age / Remote Sync / Retention / Restore Testを毎分再評価し、Backup Run failed / Checksum failedは`backup_runs`のTriggerで即時反映します。
+ContainerはStructured Monitoring Eventに加え、最新45秒以内のSnapshotからState / Healthを毎分再評価します。これによりNotification Center導入前から継続している異常もSignalへ同期できます。古いContainer SnapshotはHost Heartbeat Signalに委ねます。
+
+BackupはBackup Age / Remote Sync / Retention / Restore Testを毎分再評価し、Backup Run failed / Checksum failedは`backup_runs`のTriggerで即時反映します。Signalは現在観測より古いイベントを無視するため、古いBackup Successが新しいFailureを誤ってRecoveryさせません。
 
 ## Outbox
 
@@ -39,7 +42,9 @@ BackupはBackup Age / Remote Sync / Retention / Restore Testを毎分再評価�
 
 Claimは`FOR UPDATE SKIP LOCKED`を使い、複数Dispatcherが同時実行されても同じ行を二重送信しません。`sending`のまま5分以上残ったClaimは次回Claim時に`retry`へ戻します。
 
-## Secret
+Signalの初回OpenはSignal Key単位のtransaction advisory lockで直列化し、存在しない行への同時Insert競合も防ぎます。
+
+## Secret / 環境設定
 
 次の情報はGitHub、通常DBテーブル、Outboxへ保存しません。
 
@@ -47,27 +52,55 @@ Claimは`FOR UPDATE SKIP LOCKED`を使い、複数Dispatcherが同時実行さ�
 - Scheduler Token平文
 - Supabase Service Role Key
 
-Scheduler Tokenは平文をSupabase Vaultの`ivrm_notification_dispatch_token`へ保存し、通常テーブルにはSHA-256だけを保持します。
+Scheduler TokenはMigration 020がDB内部で自動生成します。
+
+- 平文: Supabase Vault `ivrm_notification_dispatch_token`
+- SHA-256: `notification_dispatch_credentials`
+
+通常のセットアップでScheduler Tokenを手動生成・コピーする必要はありません。
+
+Dispatcher URLは環境固有なので、Supabase Vault `ivrm_notification_dispatch_url`へ現在ProjectのEdge Function URLを登録します。MigrationにはProduction Project IDを埋め込みません。
+
+```sql
+select vault.create_secret(
+  'https://<project-ref>.supabase.co/functions/v1/notification-dispatch',
+  'ivrm_notification_dispatch_url',
+  'IVRM Notification Center dispatcher URL',
+  null
+);
+```
 
 Discord WebhookはEdge Function Secret `DISCORD_WEBHOOK_URL`へ保存します。DispatcherはDiscord公式Webhook URLだけを許可し、`allowed_mentions.parse=[]`を常に付与します。
+
+## Edge Functionのデプロイ
+
+`notification-dispatch`はSupabase GatewayのJWT検証ではなく、Notification Center専用Scheduler TokenをSHA-256で照合します。そのためRepoの`supabase/config.toml`で明示的に以下を設定しています。
+
+```toml
+[functions.notification-dispatch]
+verify_jwt = false
+```
+
+CLIから個別にDeployする場合も同等にJWT検証OFFを維持してください。Custom Token照合を削除しないでください。
 
 ## Discord配送を有効化する
 
 初期状態では安全のためChannelは`enabled=false / configured=false`です。SignalとOutboxは動作しますが、配送候補は`channel_disabled`としてSuppressedになります。
 
-1. Supabase DashboardでEdge Function `notification-dispatch`へSecretを追加する。
+1. `ivrm_notification_dispatch_url`が現在ProjectのFunction URLを指していることを確認する。
+2. Supabase DashboardでEdge Function `notification-dispatch`へSecretを追加する。
 
 ```text
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 ```
 
-2. Secret登録後、Service Role権限でChannelを有効化する。
+3. Secret登録後、Service Role権限でChannelを有効化する。
 
 ```sql
 select public.set_notification_channel_v1(true, true, 'Discord Alerts');
 ```
 
-3. `/notifications`で以下を確認する。
+4. `/notifications`で以下を確認する。
 
 - Enabled = ON
 - Webhook Secret = Configured
@@ -98,7 +131,8 @@ Containerは既存`container_expectations.maintenance_mode`も自動的に配送
 2. Active SignalとDelivery Historyを確認
 3. `retry`ならHTTP status / error codeを確認
 4. Dispatcherが3分以上更新されない場合はSupabase Cron / `pg_net` / Edge Functionを確認
-5. `failed`は最大5回Retry済みなので、Discord Webhook設定・Discord側障害を確認
+5. `dispatcher_url_missing`ならVaultの`ivrm_notification_dispatch_url`を確認
+6. `failed`は最大5回Retry済みなので、Discord Webhook設定・Discord側障害を確認
 
 Webhook URLやレスポンス本文をログへ貼り付けないでください。
 
@@ -107,7 +141,9 @@ Webhook URLやレスポンス本文をログへ貼り付けないでください
 - NotificationテーブルはRLSを有効化し、`anon` / `authenticated`から直接参照不可
 - Web UIはServer ComponentからService Role RPCだけを利用
 - DispatcherのClaim / Complete / Token Verify RPCもService Roleのみ
-- Edge FunctionはCustom Scheduler TokenをSHA-256で照合
+- Edge FunctionはGateway JWTをOFFにする代わりにCustom Scheduler Tokenを必須化し、SHA-256で照合
+- Dispatcher URLはVaultから取得し、別ProjectへScheduler Tokenを送らない
+- `detail_href`は単一`/`始まりの相対URLだけを許可し、`//host`形式を拒否
 - arbitrary URL配送なし
 - Player IP、Cookie、Session Token、Webhook Token、生ログ本文は通知へ含めない
 - Discord Mentionは無効化
