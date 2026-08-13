@@ -1,11 +1,23 @@
-import type { NotificationCenterSnapshot } from "./notifications";
+import type { NotificationSummary } from "./notifications";
 import type { ReliabilityHealth, ReliabilityService } from "./reliability-types";
 
-export function notificationHealth(snapshot: NotificationCenterSnapshot | null): ReliabilityHealth {
-  if (!snapshot) return "unknown";
-  const summary = snapshot.summary;
+const DISPATCHER_STALE_AFTER_MS = 180_000;
+
+export function notificationHealth(summary: NotificationSummary | null): ReliabilityHealth {
+  if (!summary) return "unknown";
   if (!summary.channelEnabled) return "disabled";
   if (!summary.channelConfigured || summary.channelLastErrorCode || summary.dispatcherLastErrorCode) {
+    return "critical";
+  }
+  const generatedAt = Date.parse(summary.generatedAt);
+  const invokedAt = summary.dispatcherLastInvokedAt
+    ? Date.parse(summary.dispatcherLastInvokedAt)
+    : Number.NaN;
+  if (
+    !Number.isFinite(generatedAt) ||
+    !Number.isFinite(invokedAt) ||
+    generatedAt - invokedAt > DISPATCHER_STALE_AFTER_MS
+  ) {
     return "critical";
   }
   if (summary.pendingCount > 0 || summary.retryCount > 0 || summary.failedCount > 0) {
@@ -14,13 +26,12 @@ export function notificationHealth(snapshot: NotificationCenterSnapshot | null):
   return "operational";
 }
 
-export function buildNotificationService(snapshot: NotificationCenterSnapshot | null): ReliabilityService {
-  const summary = snapshot?.summary;
+export function buildNotificationService(summary: NotificationSummary | null): ReliabilityService {
   return {
     id: "notifications",
     label: "Notification Delivery",
     description: "Discord Channel・Dispatcher・Durable Outboxの配送品質",
-    health: notificationHealth(snapshot),
+    health: notificationHealth(summary),
     activeIncidentCount: summary ? summary.pendingCount + summary.retryCount + summary.failedCount : 0,
     activeCriticalCount: summary?.failedCount ?? 0,
     activeWarningCount: summary ? summary.pendingCount + summary.retryCount : 0,
