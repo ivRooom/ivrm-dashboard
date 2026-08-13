@@ -1,0 +1,360 @@
+.incidentContent {
+  max-width: 1380px;
+}
+
+.eyebrow,
+.sectionHeading span,
+.entityType {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.eyebrow {
+  margin-bottom: 8px;
+}
+
+.headerActions,
+.cardActions,
+.badges,
+.periodSelector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.secondaryLink,
+.cardActions a,
+.periodSelector a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.periodSelector {
+  margin: 26px 0 18px;
+}
+
+.periodSelector a {
+  min-width: 78px;
+  justify-content: center;
+  background: var(--panel-2);
+}
+
+.periodSelector a:hover,
+.secondaryLink:hover,
+.cardActions a:hover,
+.activePeriod {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 34px;
+}
+
+.summaryGrid article {
+  min-height: 118px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.summaryAttention {
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--line)) !important;
+}
+
+.summaryGrid span,
+.summaryGrid small,
+.metricGrid span,
+.metricGrid small,
+.reasonBox span,
+.reasonBox small,
+.recoveryMetrics span,
+.recoveryMetrics small,
+.cardHeading small {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.summaryGrid strong {
+  display: block;
+  margin: 13px 0 7px;
+  font-size: 24px;
+}
+
+.sectionBlock {
+  margin-top: 34px;
+}
+
+.sectionHeading {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: end;
+  margin-bottom: 14px;
+}
+
+.sectionHeading h2 {
+  margin-top: 5px;
+  font-size: 19px;
+}
+
+.sectionHeading p {
+  max-width: 620px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  text-align: right;
+}
+
+.activeGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.incidentCard,
+.recoveredRow,
+.healthyState,
+.emptyState,
+.notice {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.incidentCard {
+  padding: 18px;
+}
+
+.cardHeading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.cardHeading h3 {
+  margin: 4px 0;
+  font-size: 16px;
+}
+
+.badge {
+  width: max-content;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+}
+
+.critical {
+  background: rgb(255 119 119 / 12%);
+  color: var(--bad);
+}
+
+.warning {
+  background: rgb(243 199 104 / 12%);
+  color: var(--warn);
+}
+
+.activeBadge {
+  background: rgb(255 119 119 / 8%);
+  color: var(--bad);
+}
+
+.recoveredBadge {
+  background: rgb(120 231 154 / 12%);
+  color: var(--ok);
+}
+
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.metricGrid > div,
+.recoveryMetrics > div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-2);
+}
+
+.metricGrid strong,
+.recoveryMetrics strong {
+  display: block;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+
+.reasonBox {
+  margin-top: 12px;
+  padding: 12px;
+  border-left: 2px solid var(--warn);
+  border-radius: 0 8px 8px 0;
+  background: var(--panel-2);
+}
+
+.reasonBox strong {
+  display: block;
+  margin: 5px 0;
+  font-size: 12px;
+}
+
+.cardActions {
+  margin-top: 14px;
+}
+
+.cardActions a {
+  min-height: 32px;
+  padding: 6px 10px;
+}
+
+.healthyState,
+.emptyState {
+  padding: 22px;
+  text-align: center;
+}
+
+.healthyState strong {
+  color: var(--ok);
+}
+
+.healthyState p,
+.emptyState {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.healthyState p {
+  margin-top: 6px;
+}
+
+.recoveredList {
+  display: grid;
+  gap: 10px;
+}
+
+.recoveredRow {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.2fr) minmax(360px, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 16px;
+}
+
+.recoveredMain {
+  min-width: 0;
+}
+
+.transition {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.transition strong {
+  color: var(--text);
+  font-size: 11px;
+}
+
+.recoveryMetrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.notice {
+  margin-top: 28px;
+  padding: 16px;
+}
+
+.notice p {
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+@media (max-width: 1100px) {
+  .activeGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .recoveredRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 850px) {
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .metricGrid,
+  .recoveryMetrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sectionHeading {
+    display: block;
+  }
+
+  .sectionHeading p {
+    margin-top: 7px;
+    text-align: left;
+  }
+}
+
+@media (max-width: 620px) {
+  .summaryGrid,
+  .metricGrid,
+  .recoveryMetrics {
+    grid-template-columns: 1fr;
+  }
+
+  .headerActions {
+    margin-top: 14px;
+  }
+
+  .cardHeading {
+    display: block;
+  }
+
+  .badges {
+    margin-top: 9px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .secondaryLink,
+  .cardActions a,
+  .periodSelector a {
+    scroll-behavior: auto;
+  }
+}
