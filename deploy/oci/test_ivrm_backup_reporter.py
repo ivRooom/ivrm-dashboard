@@ -47,14 +47,30 @@ class BackupReporterTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 REPORTER.load_input(path)
 
-    def test_send_report_requires_https(self):
+    def test_validate_endpoint_requires_https_for_remote_hosts(self):
         with self.assertRaises(ValueError):
-            REPORTER.send_report(
-                "http://example.com/api/agent/backups",
-                "oci-minecraft-01",
-                "x" * 32,
-                b"{}",
-            )
+            REPORTER.validate_endpoint("http://example.com/api/agent/backups")
+
+    def test_validate_endpoint_rejects_localhost_prefix_attack(self):
+        for endpoint in (
+            "http://localhost.evil.example/api/agent/backups",
+            "http://127.0.0.1.evil.example/api/agent/backups",
+            "http://localhost@evil.example/api/agent/backups",
+        ):
+            with self.subTest(endpoint=endpoint), self.assertRaises(ValueError):
+                REPORTER.validate_endpoint(endpoint)
+
+    def test_validate_endpoint_allows_only_exact_loopback_http(self):
+        for endpoint in (
+            "http://localhost:3000/api/agent/backups",
+            "http://127.0.0.1:3000/api/agent/backups",
+            "http://[::1]:3000/api/agent/backups",
+        ):
+            with self.subTest(endpoint=endpoint):
+                REPORTER.validate_endpoint(endpoint)
+
+    def test_validate_endpoint_allows_https(self):
+        REPORTER.validate_endpoint("https://console.ivrm.jp/api/agent/backups")
 
 
 if __name__ == "__main__":
