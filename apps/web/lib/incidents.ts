@@ -4,6 +4,7 @@ import {
 } from "./host-monitoring-events";
 import {
   getMonitoringEvents,
+  getMonitoringIncidentContext,
   type MonitoringEvent,
   type MonitoringEventSeverity,
   type MonitoringEventType,
@@ -106,6 +107,8 @@ const SIGNAL_TYPES = new Map<MonitoringEventType, SignalName>([
   ["health_changed", "health"],
   ["exit_code_changed", "exit"],
 ]);
+const HOST_STALE_AFTER_SECONDS = 45;
+const INCIDENT_CONTEXT_HOURS = 24 * 30;
 
 export function parseIncidentRange(value: string | null | undefined): IncidentRange {
   return value && INCIDENT_RANGES.has(value as IncidentRange)
@@ -136,6 +139,25 @@ function incidentSeverity(
 
 function signalName(event: MonitoringEvent): SignalName | null {
   return SIGNAL_TYPES.get(event.eventType) ?? null;
+}
+
+function resolvesSignal(event: MonitoringEvent): boolean {
+  if (event.severity === "recovery") {
+    return true;
+  }
+
+  if (event.eventType !== "state_changed") {
+    return false;
+  }
+
+  if (
+    event.expectedState === "stopped" &&
+    (event.toValue === "exited" || event.toValue === "created")
+  ) {
+    return true;
+  }
+
+  return event.expectedState === "absent" && event.toValue === "not_found";
 }
 
 function eventTransition(event: MonitoringEvent): string {
@@ -206,6 +228,16 @@ function hostEventsByEntity(
   return grouped;
 }
 
+function mergeUniqueEvents(
+  contextEvents: MonitoringEvent[],
+  rangeEvents: MonitoringEvent[],
+): MonitoringEvent[] {
+  const byId = new Map<number, MonitoringEvent>();
+  for (const event of contextEvents) byId.set(event.id, event);
+  for (const event of rangeEvents) byId.set(event.id, event);
+  return [...byId.values()];
+}
+
 function deriveOpenSignals(events: MonitoringEvent[]): Map<SignalName, OpenSignal> {
   const signals = new Map<SignalName, OpenSignal>();
 
@@ -228,7 +260,7 @@ function deriveOpenSignals(events: MonitoringEvent[]): Map<SignalName, OpenSigna
       continue;
     }
 
-    if (event.severity === "recovery") {
+    if (resolvesSignal(event)) {
       signals.delete(signal);
     }
   }
@@ -389,7 +421,7 @@ function deriveActiveContainerIncidents(
       durationSeconds: durationSeconds(startedAt, snapshot.generatedAt),
       startReason: first
         ? eventTransition(first.startEvent)
-        : "開始Transitionを30日以内に特定できません",
+        : "開始Transitionを監視イベントから特定できません",
       latestTransitionAt: latestEvent?.occurredAt ?? null,
       latestTransition: latestEvent ? eventTransition(latestEvent) : null,
       relatedEventCount,
@@ -471,11 +503,7 @@ function deriveRecoveredContainerIncidents(
         continue;
       }
 
-      if (
-        event.severity !== "recovery" ||
-        !activeSignals.has(signal) ||
-        !episode
-      ) {
+      if (!resolvesSignal(event) || !activeSignals.has(signal) || !episode) {
         continue;
       }
 
@@ -533,7 +561,7 @@ function deriveRecoveredHostGaps(
     if (
       event.eventType !== "heartbeat_gap_detected" ||
       event.numericValue === null ||
-      event.numericValue <= 0 ||
+      event.numericValue <= HOST_STALE_AFTER_SECONDS ||
       Date.parse(event.occurredAt) < rangeStart
     ) {
       return [];
@@ -541,8 +569,9 @@ function deriveRecoveredHostGaps(
 
     const recoveredAt = Date.parse(event.occurredAt);
     if (!Number.isFinite(recoveredAt)) return [];
+    const incidentDuration = event.numericValue - HOST_STALE_AFTER_SECONDS;
     const startedAt = new Date(
-      recoveredAt - event.numericValue * 1_000,
+      recoveredAt - incidentDuration * 1_000,
     ).toISOString();
 
     return [
@@ -556,8 +585,8 @@ function deriveRecoveredHostGaps(
         containerName: null,
         startedAt,
         recoveredAt: event.occurredAt,
-        durationSeconds: event.numericValue,
-        startReason: "Heartbeat受信が180秒を超えて途絶",
+        durationSeconds: incidentDuration,
+        startReason: `Heartbeat ageが${HOST_STALE_AFTER_SECONDS}秒を超え更新遅延`,
         recoveryReason: "Heartbeat受信を再開",
         relatedEventCount: 1,
         detailHref: hostDetailHref(event.serverId, range),
@@ -582,16 +611,25 @@ function median(values: number[]): number | null {
 export async function getIncidentCenterSnapshot(
   range: IncidentRange,
 ): Promise<IncidentCenterSnapshot> {
-  const [snapshot, containerEvents, hostEvents] = await Promise.all([
-    getMonitoringSnapshot(),
+  const snapshot = await getMonitoringSnapshot();
+  const contextBoundary = new Date(
+    Date.parse(snapshot.generatedAt) - INCIDENT_CONTEXT_HOURS * 3_600_000,
+  ).toISOString();
+
+  const [containerEvents, containerContext, hostEvents] = await Promise.all([
     getMonitoringEvents({ range: "30d" }),
+    getMonitoringIncidentContext(contextBoundary),
     getHostMonitoringEvents("30d"),
   ]);
+  const incidentContainerEvents = mergeUniqueEvents(
+    containerContext,
+    containerEvents,
+  );
 
   const rangeStart =
     Date.parse(snapshot.generatedAt) -
     INCIDENT_RANGE_CONFIG[range].hours * 3_600_000;
-  const groupedContainerEvents = eventByEntity(containerEvents);
+  const groupedContainerEvents = eventByEntity(incidentContainerEvents);
   const groupedHostEvents = hostEventsByEntity(hostEvents);
 
   const active = [
@@ -614,7 +652,11 @@ export async function getIncidentCenterSnapshot(
   });
 
   const recovered = [
-    ...deriveRecoveredContainerIncidents(containerEvents, rangeStart, range),
+    ...deriveRecoveredContainerIncidents(
+      incidentContainerEvents,
+      rangeStart,
+      range,
+    ),
     ...deriveRecoveredHostGaps(hostEvents, rangeStart, range),
   ].sort(
     (left, right) => Date.parse(right.recoveredAt) - Date.parse(left.recoveredAt),
