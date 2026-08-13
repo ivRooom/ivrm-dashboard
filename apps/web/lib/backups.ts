@@ -114,6 +114,8 @@ const FAILURE_CODES = new Set<BackupFailureCode>([
   "unknown",
 ]);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const HISTORY_PAGE_SIZE = 500;
+const MAX_HISTORY_PAGES = 1_000;
 
 export function parseBackupRange(value: string | null | undefined): BackupRange {
   return value && RANGES.has(value as BackupRange) ? (value as BackupRange) : "24h";
@@ -307,6 +309,31 @@ function parseHistoryRows(payload: unknown): BackupHistoryRun[] {
   });
 }
 
+async function getAllBackupHistory(range: BackupRange): Promise<BackupHistoryRun[]> {
+  const history: BackupHistoryRun[] = [];
+  let beforeStartedAt: string | null = null;
+  let beforeId: number | null = null;
+
+  for (let page = 0; page < MAX_HISTORY_PAGES; page += 1) {
+    const payload = await callRpc("get_backup_runs_v2", {
+      p_range: range,
+      p_limit: HISTORY_PAGE_SIZE,
+      p_before_started_at: beforeStartedAt,
+      p_before_id: beforeId,
+    });
+    const rows = parseHistoryRows(payload);
+    history.push(...rows);
+    if (rows.length < HISTORY_PAGE_SIZE) return history;
+
+    const last = rows.at(-1);
+    if (!last) return history;
+    beforeStartedAt = last.startedAt;
+    beforeId = last.rowId;
+  }
+
+  throw new Error("Backup履歴がページ上限を超えました");
+}
+
 function healthRank(health: BackupHealth): number {
   return { healthy: 0, unknown: 1, warning: 2, critical: 3 }[health];
 }
@@ -357,9 +384,7 @@ function evaluateTarget(
     }
   }
 
-  const remoteSyncPending = Boolean(
-    success && target.remoteSyncRequired && !success.remoteSyncedAt,
-  );
+  const remoteSyncPending = Boolean(success && target.remoteSyncRequired && !success.remoteSyncedAt);
   if (
     remoteSyncPending && success &&
     nowMs - Date.parse(success.completedAt) > target.remoteSyncWarningSeconds * 1_000 &&
@@ -392,24 +417,22 @@ function evaluateTarget(
   }
 
   if (health === "healthy" && reasons.length === 0) reasons.push("最新成功・整合性・SLAに異常はありません");
-
   return { ...target, health, healthReasons: reasons, backupAgeSeconds, remoteSyncPending, restoreReadiness };
 }
 
 export async function getBackupCenterSnapshot(range: BackupRange): Promise<BackupCenterSnapshot> {
-  const [centerPayload, historyPayload] = await Promise.all([
+  const [centerPayload, history] = await Promise.all([
     callRpc("get_backup_center_v1", {}),
-    callRpc("get_backup_runs_v1", { p_range: range, p_limit: 1000 }),
+    getAllBackupHistory(range),
   ]);
   const generatedAt = new Date().toISOString();
   const nowMs = Date.parse(generatedAt);
   const targets = parseCenterRows(centerPayload).map((target) => evaluateTarget(target, nowMs));
-  const history = parseHistoryRows(historyPayload);
   const completed = history.filter((run) => run.outcome === "success" || run.outcome === "failed");
   const successes = completed.filter((run) => run.outcome === "success");
   const failures = completed.filter((run) => run.outcome === "failed" && run.completedAt);
-  const latestSuccessAt = successes
-    .map((run) => run.completedAt)
+  const latestSuccessAt = targets
+    .map((target) => target.latestSuccess?.completedAt ?? null)
     .filter((value): value is string => value !== null)
     .sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? null;
   const latestFailureAt = failures
