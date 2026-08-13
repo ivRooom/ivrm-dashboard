@@ -234,7 +234,7 @@ export async function getHostMetricHistory(
   range: HistoryRange,
 ): Promise<HostMetricHistorySeries[]> {
   const rows = await callHistoryRpc<HostMetricHistoryRow[]>(
-    "get_host_metric_history_v2",
+    "get_host_metric_history_v3",
     range,
   );
 
@@ -261,7 +261,7 @@ export async function getContainerMetricHistory(
   range: HistoryRange,
 ): Promise<ContainerMetricHistorySeries[]> {
   const rows = await callHistoryRpc<ContainerMetricHistoryRow[]>(
-    "get_container_metric_history_v2",
+    "get_container_metric_history_v3",
     range,
   );
 
