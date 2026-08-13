@@ -108,6 +108,7 @@ const SIGNAL_TYPES = new Map<MonitoringEventType, SignalName>([
   ["exit_code_changed", "exit"],
 ]);
 const HOST_STALE_AFTER_SECONDS = 45;
+const HOST_OFFLINE_AFTER_SECONDS = 180;
 const INCIDENT_CONTEXT_HOURS = 24 * 30;
 
 export function parseIncidentRange(value: string | null | undefined): IncidentRange {
@@ -146,6 +147,14 @@ function resolvesSignal(event: MonitoringEvent): boolean {
     return true;
   }
 
+  if (event.eventType === "health_changed") {
+    return event.toValue === "healthy";
+  }
+
+  if (event.eventType === "exit_code_changed") {
+    return event.toValue !== null && Number(event.toValue) === 0;
+  }
+
   if (event.eventType !== "state_changed") {
     return false;
   }
@@ -157,7 +166,15 @@ function resolvesSignal(event: MonitoringEvent): boolean {
     return true;
   }
 
-  return event.expectedState === "absent" && event.toValue === "not_found";
+  if (event.expectedState === "absent" && event.toValue === "not_found") {
+    return true;
+  }
+
+  return (
+    event.expectedState !== "stopped" &&
+    event.expectedState !== "absent" &&
+    event.toValue === "running"
+  );
 }
 
 function eventTransition(event: MonitoringEvent): string {
@@ -578,7 +595,8 @@ function deriveRecoveredHostGaps(
       {
         id: `recovered-host-gap:${event.id}`,
         entityType: "host",
-        severity: "warning",
+        severity:
+          event.numericValue > HOST_OFFLINE_AFTER_SECONDS ? "critical" : "warning",
         hostId: event.hostId,
         serverId: event.serverId,
         hostDisplayName: event.hostDisplayName,
