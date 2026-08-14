@@ -14,6 +14,7 @@ const SLO_SERVICE_IDS: ReliabilitySloServiceId[] = [
   "container",
   "backup",
 ];
+const NON_EXCLUDABLE_CONTAINER_REASONS = new Set(["OOMKilledを検知"]);
 
 function effectiveWindowInterval(
   window: ReliabilityMaintenanceWindow,
@@ -30,10 +31,19 @@ function effectiveWindowInterval(
     : null;
 }
 
+function maintenanceExcludable(incident: Incident): boolean {
+  return !(
+    incident.entityType === "container" &&
+    NON_EXCLUDABLE_CONTAINER_REASONS.has(incident.startReason)
+  );
+}
+
 function appliesToIncident(
   window: ReliabilityMaintenanceWindow,
   incident: Incident,
 ): boolean {
+  if (!maintenanceExcludable(incident)) return false;
+
   switch (window.scopeType) {
     case "service":
       return window.serviceId === "overall" || window.serviceId === incident.entityType;
