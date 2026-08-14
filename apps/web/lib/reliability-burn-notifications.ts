@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
+import { recordReliabilityBurnRateHistory } from "./reliability-burn-observability";
 import { getReliabilityBurnRateSnapshot } from "./reliability-burn-rate";
 import type {
   ReliabilityBurnRateService,
@@ -108,8 +109,15 @@ export async function reconcileReliabilityBurnNotifications(): Promise<{
   evaluated: number;
   changed: number;
   skipped: number;
+  historyRecorded: boolean;
 }> {
   const snapshot = await getReliabilityBurnRateSnapshot();
+  const historyPromise = recordReliabilityBurnRateHistory(snapshot)
+    .then(() => true)
+    .catch((error: unknown) => {
+      console.error("Burn Rate履歴の記録に失敗しました。Alert評価は継続します", error);
+      return false;
+    });
   let evaluated = 0;
   let changed = 0;
   let skipped = 0;
@@ -139,5 +147,6 @@ export async function reconcileReliabilityBurnNotifications(): Promise<{
     evaluated,
     changed,
     skipped,
+    historyRecorded: await historyPromise,
   };
 }
