@@ -24,6 +24,9 @@ const SLO_LABELS: Record<ReliabilitySloServiceId, string> = {
   backup: "Backup Protection",
 };
 
+const DISCORD_SNOWFLAKE_PATTERN = /^[0-9]{17,20}$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 type PolicyRow = {
   service_id: unknown;
   target_percent: unknown;
@@ -138,6 +141,7 @@ export async function updateReliabilitySloPolicy(input: {
   enabled: boolean;
   requestId: string;
   actorEmail: string | null;
+  actorDiscordUserId: string | null;
   actorRole: "administrator" | "owner";
 }): Promise<ReliabilitySloPolicy> {
   if (!isSloServiceId(input.serviceId)) {
@@ -152,12 +156,21 @@ export async function updateReliabilitySloPolicy(input: {
   if (input.enabled && input.targetPercent === null) {
     throw new Error("有効なSLOにはtargetPercentが必要です");
   }
-  if (!/^[0-9a-f-]{36}$/i.test(input.requestId)) {
+  if (!UUID_PATTERN.test(input.requestId)) {
     throw new Error("SLO requestIdが不正です");
+  }
+  if (
+    input.actorDiscordUserId !== null &&
+    !DISCORD_SNOWFLAKE_PATTERN.test(input.actorDiscordUserId)
+  ) {
+    throw new Error("SLO actorDiscordUserIdが不正です");
+  }
+  if (!input.actorEmail && !input.actorDiscordUserId) {
+    throw new Error("SLO監査主体が取得できません");
   }
 
   const { url, serviceRoleKey } = supabaseConfiguration();
-  const response = await fetch(`${url}/rest/v1/rpc/update_reliability_slo_policy_v1`, {
+  const response = await fetch(`${url}/rest/v1/rpc/update_reliability_slo_policy_v2`, {
     method: "POST",
     headers: requestHeaders(serviceRoleKey),
     body: JSON.stringify({
@@ -167,6 +180,7 @@ export async function updateReliabilitySloPolicy(input: {
       p_request_id: input.requestId,
       p_actor_email: input.actorEmail,
       p_actor_role: input.actorRole,
+      p_actor_discord_user_id: input.actorDiscordUserId,
     }),
     cache: "no-store",
     signal: AbortSignal.timeout(5_000),

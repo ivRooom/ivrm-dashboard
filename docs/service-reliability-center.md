@@ -59,7 +59,7 @@ budget burn = known downtime / allowed downtime
 - Budget Burn: `≥` 表示値
 - Remaining Budget: `≤` 表示値
 
-これにより、欠損Telemetryから「SLO達成」と誤判定することを避けます。
+これにより、欠損Telemetryから「SLO達成」と誤判定することを避けます。SLO Policy自体の取得に失敗した場合も、成功した未設定状態と区別して各カードを`Data unavailable`にします。
 
 ## SLO Policy管理
 
@@ -75,9 +75,16 @@ Administrator以上のConsole RoleだけがReliability画面からSLO Policyを�
 - SLOを有効にする場合はTarget必須
 - Service Role KeyはServer側だけで使用
 
-Policy更新はTableへの直接PATCHではなく`update_reliability_slo_policy_v1` RPCを使用します。RPC内でPolicy行を`FOR UPDATE`し、更新と`append_audit_log()`へのHash chain監査ログ追加を同一トランザクションで行います。成功したPolicy変更だけが必ず監査ログと対になります。
+Policy更新はTableへの直接PATCHではなく`update_reliability_slo_policy_v2` RPCを使用します。RPC内でPolicy行を`FOR UPDATE`し、更新と`append_audit_log()`へのHash chain監査ログ追加を同一トランザクションで行います。成功したPolicy変更だけが必ず監査ログと対になります。
 
-RPC導入後はService Roleからも`reliability_slo_policies`の直接UPDATE権限を剥奪し、読み取りはTable SELECT、変更は監査付きRPCへ経路を限定します。監査Metadataには変更前後のTarget / Enabledだけを記録し、Secretや内部情報は含めません。
+RPC導入後はService Roleからも`reliability_slo_policies`の直接UPDATE権限を剥奪し、読み取りはTable SELECT、変更は監査付きRPCへ経路を限定します。
+
+監査主体は認証方式に応じて追跡可能にします。
+
+- Email / Cloudflare系Session: `actor_email`
+- Discord Session: `metadata.discordUserId`
+
+Discord IDは17〜20桁のSnowflake形式をServer / DBの双方で検証します。監査Metadataには主体識別子と変更前後のTarget / Enabledだけを記録し、Secretや内部IPは含めません。
 
 30秒の自動更新によって入力途中のPolicy Editorが消えないよう、共通`AutoRefresh`はInput / Textarea / Select / contenteditableへフォーカス中、または非表示タブでは更新をスキップします。
 
@@ -111,7 +118,7 @@ Active Suppression数も表示し、通知が抑制されている状態を確�
 
 BackupまたはNotificationのデータ取得に失敗した場合、取得できたサービスは継続表示します。欠損サービスは`Unknown`とし、SidebarでもOnline表示しません。
 
-SLO Policyの取得だけに失敗した場合、既存Reliability指標は継続表示し、SLO / Error Budgetだけを未設定または取得不可として扱います。
+SLO Policyの取得だけに失敗した場合、既存Reliability指標は継続表示し、SLO / Error Budgetカードは`Data unavailable`として扱います。取得失敗を「未設定」と誤認させません。
 
 ## Database
 
@@ -119,8 +126,9 @@ Migrations:
 
 - `202608140001_reliability_slo_policies.sql`
 - `202608140002_reliability_slo_audited_update.sql`
+- `202608140003_reliability_slo_discord_audit_identity.sql`
 
-`reliability_slo_policies`はRLSを有効化し、`anon` / `authenticated`のTable権限を剥奪します。読み取りはServer-side Service Roleだけに限定し、更新は監査付きRPCだけを許可します。
+`reliability_slo_policies`はRLSを有効化し、`anon` / `authenticated`のTable権限を剥奪します。読み取りはServer-side Service Roleだけに限定し、更新は監査付きRPCだけを許可します。v1更新RPCはv2導入時に削除します。
 
 ## セキュリティ
 
@@ -129,6 +137,7 @@ Migrations:
 - Secret、Player IP、raw log本文はReliabilityデータへ含めません。
 - SLO Policy更新はSame-Origin + Administrator Roleの二重検証を行います。
 - DB変更はHash chain監査ログ付きRPCで原子的に記録します。
+- 監査主体はEmailまたはDiscord User IDのどちらかを必須とし、役割だけの匿名監査を許可しません。
 
 ## Production確認
 
@@ -141,7 +150,9 @@ PRマージ後は以下を確認します。
 5. AdministratorでPolicyを設定・無効化できること
 6. Viewer / OperatorではPolicy Editorが表示されず、API直接POSTも403になること
 7. Policy更新と`SLO_POLICY_UPDATE`監査ログが対になっていること
-8. `/incidents`とのActive / Recovery / Known Downtime整合性
-9. Coverage不完全時の`≤` / `≥`表示
-10. `/notifications`とのDispatcher / Queue状態整合性
-11. Backup Telemetry導入後のBackup Protection反映
+8. Discord管理者の更新で`metadata.discordUserId`が記録されること
+9. `/incidents`とのActive / Recovery / Known Downtime整合性
+10. Coverage不完全時の`≤` / `≥`表示
+11. SLO Policy取得障害時に`Data unavailable`となること
+12. `/notifications`とのDispatcher / Queue状態整合性
+13. Backup Telemetry導入後のBackup Protection反映

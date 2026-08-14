@@ -122,6 +122,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       enabled: parsedEnabled,
       requestId: randomUUID(),
       actorEmail: session.email,
+      actorDiscordUserId: session.discordUserId,
       actorRole,
     });
     return wantsJson(request)
