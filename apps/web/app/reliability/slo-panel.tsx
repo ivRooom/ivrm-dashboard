@@ -53,8 +53,9 @@ function percent(value: number | null, digits = 3): string {
 }
 
 function target(budget: ReliabilitySloBudget): string {
-  if (budget.state === "data_unavailable") return "—";
-  if (budget.targetPercent === null) return "未設定";
+  if (budget.targetPercent === null) {
+    return budget.state === "data_unavailable" ? "—" : "未設定";
+  }
   const value = percent(budget.targetPercent, 4);
   return budget.enabled ? value : `${value} / 無効`;
 }
