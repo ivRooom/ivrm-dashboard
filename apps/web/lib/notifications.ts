@@ -1,7 +1,7 @@
 import "server-only";
 
 export type NotificationSeverity = "info" | "warning" | "critical" | "recovery";
-export type NotificationSource = "host" | "container" | "backup";
+export type NotificationSource = "host" | "container" | "backup" | "reliability";
 export type NotificationStatus = "pending" | "sending" | "sent" | "retry" | "failed" | "suppressed";
 export type NotificationTransition = "opened" | "escalated" | "recovered" | "event";
 
@@ -64,7 +64,7 @@ export type NotificationDelivery = {
 
 export type NotificationSuppression = {
   rowId: number;
-  scopeType: "global" | "host" | "container" | "backup" | "signal";
+  scopeType: "global" | "host" | "container" | "backup" | "reliability" | "signal";
   scopeKey: string;
   reason: string;
   startsAt: string;
@@ -79,11 +79,11 @@ export type NotificationCenterSnapshot = {
 };
 
 type Row = Record<string, unknown>;
-const SOURCES = new Set<NotificationSource>(["host", "container", "backup"]);
+const SOURCES = new Set<NotificationSource>(["host", "container", "backup", "reliability"]);
 const SEVERITIES = new Set<NotificationSeverity>(["info", "warning", "critical", "recovery"]);
 const STATUSES = new Set<NotificationStatus>(["pending", "sending", "sent", "retry", "failed", "suppressed"]);
 const TRANSITIONS = new Set<NotificationTransition>(["opened", "escalated", "recovered", "event"]);
-const SUPPRESSION_SCOPES = new Set(["global", "host", "container", "backup", "signal"] as const);
+const SUPPRESSION_SCOPES = new Set(["global", "host", "container", "backup", "reliability", "signal"] as const);
 
 function requireEnvironment(name: string): string {
   const value = process.env[name]?.trim();
