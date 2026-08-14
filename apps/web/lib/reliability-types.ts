@@ -18,6 +18,12 @@ export type ReliabilityBurnRateState =
   | "critical"
   | "coverage_unknown"
   | "data_unavailable";
+export type ReliabilityBurnReconcilerHealth =
+  | "operational"
+  | "degraded"
+  | "critical"
+  | "disabled"
+  | "unknown";
 export type ReliabilityMaintenanceScopeType = "service" | "host" | "container" | "backup";
 export type ReliabilityBackupType = "world" | "config" | "permissions" | "full";
 
@@ -137,6 +143,39 @@ export type ReliabilityBurnRateService = {
   windows: ReliabilityBurnRateWindow[];
 };
 
+export type ReliabilityBurnReconcilerState = {
+  dataAvailable: boolean;
+  health: ReliabilityBurnReconcilerHealth;
+  reason: string;
+  enabled: boolean | null;
+  endpointConfigured: boolean | null;
+  lastInvokedAt: string | null;
+  lastSuccessAt: string | null;
+  lastErrorAt: string | null;
+  lastErrorCode: string | null;
+  lastEvaluatedCount: number | null;
+};
+
+export type ReliabilityBurnRateHistoryPoint = {
+  serviceId: ReliabilitySloServiceId;
+  bucketStartedAt: string;
+  observedAt: string;
+  state: ReliabilityBurnRateState;
+  targetPercent: number | null;
+  burnRate1h: number | null;
+  burnRate6h: number | null;
+  burnRate24h: number | null;
+  exact1h: boolean;
+  exact6h: boolean;
+  exact24h: boolean;
+};
+
+export type ReliabilityBurnRateHistory = {
+  dataAvailable: boolean;
+  bucketMinutes: 5 | 30 | 120;
+  points: ReliabilityBurnRateHistoryPoint[];
+};
+
 export type NotificationReliability = {
   enabled: boolean | null;
   configured: boolean | null;
@@ -174,5 +213,7 @@ export type ReliabilitySnapshot = {
   services: ReliabilityService[];
   sloBudgets: ReliabilitySloBudget[];
   burnRates: ReliabilityBurnRateService[];
+  burnReconciler: ReliabilityBurnReconcilerState;
+  burnHistory: ReliabilityBurnRateHistory;
   notifications: NotificationReliability;
 };
