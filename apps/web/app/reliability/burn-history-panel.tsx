@@ -111,6 +111,28 @@ function stateTone(state: ReliabilityBurnRateState | null): string {
   }
 }
 
+function emptyHistoryMessage(
+  points: ReliabilityBurnRateHistoryPoint[],
+  hasBurnValue: boolean,
+): string | null {
+  if (points.length === 0) {
+    return "履歴を収集中です。Phase 4デプロイ後のReconcileから5分バケットへ蓄積します。";
+  }
+  if (hasBurnValue) return null;
+
+  const states = new Set(points.map((point) => point.state));
+  if (states.has("data_unavailable")) {
+    return "SLO PolicyまたはMaintenanceデータを取得できない期間があります。Burn値を推測せず、Data unavailableとして履歴を保持しています。";
+  }
+  if (states.has("coverage_unknown")) {
+    return "Telemetry Coverageを確定できない期間があります。Burn値を正常扱いせず、Coverage不明として履歴を保持しています。";
+  }
+  if ([...states].every((state) => state === "unconfigured")) {
+    return "SLO Policyが未設定のためBurn値はまだありません。SLO未設定の状態履歴だけを保持しています。";
+  }
+  return "この期間はBurn値を確定できません。上段の現在値と履歴Stateをあわせて確認してください。";
+}
+
 function seriesValue(point: ReliabilityBurnRateHistoryPoint, key: SeriesKey): number | null {
   const value = point[key];
   return value !== null && Number.isFinite(value) && value >= 0 ? value : null;
@@ -259,6 +281,7 @@ export function ReliabilityBurnHistoryPanel({ generatedAt, history, reconciler }
             const hasBurnValue = points.some((point) =>
               [point.burnRate1h, point.burnRate6h, point.burnRate24h].some((value) => value !== null),
             );
+            const emptyMessage = emptyHistoryMessage(points, hasBurnValue);
             return (
               <article className={historyStyles.historyCard} key={serviceId}>
                 <div className={historyStyles.historyHead}>
@@ -272,10 +295,8 @@ export function ReliabilityBurnHistoryPanel({ generatedAt, history, reconciler }
                   <div><span>6H PEAK</span><strong>{latestBucket ? rate(latestBucket.burnRate6h, latestBucket.exact6h) : "—"}</strong></div>
                   <div><span>24H PEAK</span><strong>{latestBucket ? rate(latestBucket.burnRate24h, latestBucket.exact24h) : "—"}</strong></div>
                 </div>
-                {points.length === 0 ? (
-                  <p className={historyStyles.historyEmpty}>履歴を収集中です。Phase 4デプロイ後のReconcileから5分バケットへ蓄積します。</p>
-                ) : !hasBurnValue ? (
-                  <p className={historyStyles.historyEmpty}>SLO Policyが未設定のためBurn値はまだありません。稼働状態の履歴だけを保持しています。</p>
+                {emptyMessage ? (
+                  <p className={historyStyles.historyEmpty}>{emptyMessage}</p>
                 ) : (
                   <BurnChart points={points} bucketMinutes={history.bucketMinutes} label={SERVICE_LABELS[serviceId]} />
                 )}
