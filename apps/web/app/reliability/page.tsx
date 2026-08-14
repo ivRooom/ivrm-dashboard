@@ -10,6 +10,7 @@ import {
   type ReliabilityHealth,
 } from "../../lib/reliability";
 import { getReliabilityMaintenanceTargets } from "../../lib/reliability-maintenance";
+import { ReliabilityBurnRatePanel } from "./burn-rate-panel";
 import { ReliabilityMaintenancePanel } from "./maintenance-panel";
 import { ReliabilityNotificationPanel } from "./notification-panel";
 import { ReliabilityServiceCard } from "./service-card";
@@ -116,9 +117,9 @@ export default async function ReliabilityPage({ searchParams }: PageProps) {
       <section className={`content ${styles.content}`}>
         <header className={styles.header}>
           <div>
-            <p className={styles.eyebrow}>RELIABILITY / SLO / MAINTENANCE</p>
+            <p className={styles.eyebrow}>RELIABILITY / SLO / BURN RATE / MAINTENANCE</p>
             <h1>Service Reliability Center</h1>
-            <p>Host・Container・Backup・Notificationを横断し、Raw Incident、明示SLO、スコープ付き計画停止から稼働品質とError Budgetを確認します。</p>
+            <p>Host・Container・Backup・Notificationを横断し、Raw Incident、明示SLO、Burn Rate、スコープ付き計画停止から稼働品質とError Budgetを確認します。</p>
           </div>
           <div className={styles.actions}>
             <a href={`/incidents?range=${range}`}>Incident Center</a>
@@ -174,12 +175,14 @@ export default async function ReliabilityPage({ searchParams }: PageProps) {
               range={range}
             />
 
+            <ReliabilityBurnRatePanel burnRates={data.burnRates} />
+
             <section>
               <div className={styles.sectionTitle}><div><span>SERVICE SCORECARDS / RAW</span><h2>サービス別信頼性</h2></div><p>現在HealthとRaw Incident実績を表示します。Maintenance WindowはこのScorecardから障害を消さず、SLO計算レイヤーだけに適用されます。</p></div>
               <div className={styles.serviceGrid}>{data.services.map((service) => <ReliabilityServiceCard key={service.id} service={service} range={range} />)}</div>
             </section>
             <ReliabilityNotificationPanel data={data} />
-            <section className={styles.notice}><strong>Raw ReliabilityとSLOについて</strong><p>Raw Incident-free ratio / Known DowntimeはMaintenance Windowの有無に関係なく実測障害を保持します。SLOだけがIncidentごとに適用可能な計画停止とのIntersectionを除外し、その残余区間をUnionしてBudget Burnを計算します。開始時刻不明のActive障害は引き続き不確実性として扱います。</p></section>
+            <section className={styles.notice}><strong>Raw Reliability / SLO / Burn Rateについて</strong><p>Raw Incident-free ratio / Known DowntimeはMaintenance Windowの有無に関係なく実測障害を保持します。SLOとBurn RateだけがIncidentごとに適用可能な計画停止とのIntersectionを除外します。Burn Rateは1h / 6h / 24hを独立評価し、Coverage不足では障害なし・復旧済みと推測しません。</p></section>
           </>
         )}
       </section>
