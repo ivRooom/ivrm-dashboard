@@ -96,6 +96,17 @@ function requestHeaders(serviceRoleKey: string): Record<string, string> {
   };
 }
 
+function parseSinglePolicyPayload(payload: unknown, context: string): ReliabilitySloPolicy {
+  if (!Array.isArray(payload) || payload.length !== 1) {
+    throw new Error(`${context}が不正です`);
+  }
+  const row = payload[0];
+  if (typeof row !== "object" || row === null || Array.isArray(row)) {
+    throw new Error(`${context}行が不正です`);
+  }
+  return parsePolicy(row as PolicyRow);
+}
+
 export async function getReliabilitySloPolicies(): Promise<ReliabilitySloPolicy[]> {
   const { url, serviceRoleKey } = supabaseConfiguration();
   const response = await fetch(
@@ -125,6 +136,9 @@ export async function updateReliabilitySloPolicy(input: {
   serviceId: ReliabilitySloServiceId;
   targetPercent: number | null;
   enabled: boolean;
+  requestId: string;
+  actorEmail: string | null;
+  actorRole: "administrator" | "owner";
 }): Promise<ReliabilitySloPolicy> {
   if (!isSloServiceId(input.serviceId)) {
     throw new Error("SLO serviceIdが不正です");
@@ -138,37 +152,32 @@ export async function updateReliabilitySloPolicy(input: {
   if (input.enabled && input.targetPercent === null) {
     throw new Error("有効なSLOにはtargetPercentが必要です");
   }
+  if (!/^[0-9a-f-]{36}$/i.test(input.requestId)) {
+    throw new Error("SLO requestIdが不正です");
+  }
 
   const { url, serviceRoleKey } = supabaseConfiguration();
-  const response = await fetch(
-    `${url}/rest/v1/reliability_slo_policies?service_id=eq.${encodeURIComponent(input.serviceId)}&select=service_id,target_percent,enabled,updated_at`,
-    {
-      method: "PATCH",
-      headers: {
-        ...requestHeaders(serviceRoleKey),
-        Prefer: "return=representation",
-      },
-      body: JSON.stringify({
-        target_percent: input.targetPercent,
-        enabled: input.enabled,
-        updated_at: new Date().toISOString(),
-      }),
-      cache: "no-store",
-      signal: AbortSignal.timeout(5_000),
-    },
-  );
+  const response = await fetch(`${url}/rest/v1/rpc/update_reliability_slo_policy_v1`, {
+    method: "POST",
+    headers: requestHeaders(serviceRoleKey),
+    body: JSON.stringify({
+      p_service_id: input.serviceId,
+      p_target_percent: input.targetPercent,
+      p_enabled: input.enabled,
+      p_request_id: input.requestId,
+      p_actor_email: input.actorEmail,
+      p_actor_role: input.actorRole,
+    }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(5_000),
+  });
   if (!response.ok) {
-    throw new Error(`Reliability SLO Policy更新APIが${response.status}を返しました`);
+    throw new Error(`Reliability SLO Policy更新RPCが${response.status}を返しました`);
   }
-  const payload = (await response.json()) as unknown;
-  if (!Array.isArray(payload) || payload.length !== 1) {
-    throw new Error("Reliability SLO Policy更新結果が不正です");
-  }
-  const row = payload[0];
-  if (typeof row !== "object" || row === null || Array.isArray(row)) {
-    throw new Error("Reliability SLO Policy更新行が不正です");
-  }
-  return parsePolicy(row as PolicyRow);
+  return parseSinglePolicyPayload(
+    (await response.json()) as unknown,
+    "Reliability SLO Policy更新結果",
+  );
 }
 
 function sourceFor(

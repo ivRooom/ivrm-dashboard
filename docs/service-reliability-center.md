@@ -75,6 +75,10 @@ Administrator以上のConsole RoleだけがReliability画面からSLO Policyを�
 - SLOを有効にする場合はTarget必須
 - Service Role KeyはServer側だけで使用
 
+Policy更新はTableへの直接PATCHではなく`update_reliability_slo_policy_v1` RPCを使用します。RPC内でPolicy行を`FOR UPDATE`し、更新と`append_audit_log()`へのHash chain監査ログ追加を同一トランザクションで行います。成功したPolicy変更だけが必ず監査ログと対になります。
+
+RPC導入後はService Roleからも`reliability_slo_policies`の直接UPDATE権限を剥奪し、読み取りはTable SELECT、変更は監査付きRPCへ経路を限定します。監査Metadataには変更前後のTarget / Enabledだけを記録し、Secretや内部情報は含めません。
+
 30秒の自動更新によって入力途中のPolicy Editorが消えないよう、共通`AutoRefresh`はInput / Textarea / Select / contenteditableへフォーカス中、または非表示タブでは更新をスキップします。
 
 ## Maintenanceの扱い
@@ -111,11 +115,12 @@ SLO Policyの取得だけに失敗した場合、既存Reliability指標は継�
 
 ## Database
 
-Migration:
+Migrations:
 
 - `202608140001_reliability_slo_policies.sql`
+- `202608140002_reliability_slo_audited_update.sql`
 
-`reliability_slo_policies`はRLSを有効化し、`anon` / `authenticated`のTable権限を剥奪します。読み書きはServer-side Service Roleだけに限定します。
+`reliability_slo_policies`はRLSを有効化し、`anon` / `authenticated`のTable権限を剥奪します。読み取りはServer-side Service Roleだけに限定し、更新は監査付きRPCだけを許可します。
 
 ## セキュリティ
 
@@ -123,6 +128,7 @@ Migration:
 - Production Service Role KeyをVercel Previewへ配布しません。
 - Secret、Player IP、raw log本文はReliabilityデータへ含めません。
 - SLO Policy更新はSame-Origin + Administrator Roleの二重検証を行います。
+- DB変更はHash chain監査ログ付きRPCで原子的に記録します。
 
 ## Production確認
 
@@ -134,7 +140,8 @@ PRマージ後は以下を確認します。
 4. SLO未設定時にTargetを推測しないこと
 5. AdministratorでPolicyを設定・無効化できること
 6. Viewer / OperatorではPolicy Editorが表示されず、API直接POSTも403になること
-7. `/incidents`とのActive / Recovery / Known Downtime整合性
-8. Coverage不完全時の`≤` / `≥`表示
-9. `/notifications`とのDispatcher / Queue状態整合性
-10. Backup Telemetry導入後のBackup Protection反映
+7. Policy更新と`SLO_POLICY_UPDATE`監査ログが対になっていること
+8. `/incidents`とのActive / Recovery / Known Downtime整合性
+9. Coverage不完全時の`≤` / `≥`表示
+10. `/notifications`とのDispatcher / Queue状態整合性
+11. Backup Telemetry導入後のBackup Protection反映

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { getConsoleSession, hasConsoleRole } from "../../../../lib/console-auth";
 import { updateReliabilitySloPolicy } from "../../../../lib/reliability-slo";
@@ -82,7 +83,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const session = await getConsoleSession();
-  if (!hasConsoleRole(session, "administrator")) {
+  const actorRole = session.role;
+  if (
+    !hasConsoleRole(session, "administrator") ||
+    (actorRole !== "administrator" && actorRole !== "owner")
+  ) {
     return jsonResponse({ error: "administrator_role_required" }, 403);
   }
 
@@ -115,6 +120,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       serviceId: parsedServiceId,
       targetPercent: parsedTarget,
       enabled: parsedEnabled,
+      requestId: randomUUID(),
+      actorEmail: session.email,
+      actorRole,
     });
     return wantsJson(request)
       ? jsonResponse({ policy })
