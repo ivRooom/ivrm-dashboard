@@ -34,6 +34,7 @@ const HEALTH_CRITICAL_AFTER_MS = 180_000;
 type ReconcilerStateRow = {
   enabled: unknown;
   endpoint_configured: unknown;
+  state_updated_at: unknown;
   last_invoked_at: unknown;
   last_success_at: unknown;
   last_error_at: unknown;
@@ -111,6 +112,7 @@ function isBurnState(value: unknown): value is ReliabilityBurnRateState {
 function reconcilerHealth(input: {
   enabled: boolean;
   endpointConfigured: boolean;
+  stateUpdatedAt: string;
   lastInvokedAt: string | null;
   lastSuccessAt: string | null;
   lastErrorAt: string | null;
@@ -124,7 +126,8 @@ function reconcilerHealth(input: {
   }
 
   const referenceMs = Date.parse(input.referenceAt);
-  if (!Number.isFinite(referenceMs)) {
+  const stateUpdatedMs = Date.parse(input.stateUpdatedAt);
+  if (!Number.isFinite(referenceMs) || !Number.isFinite(stateUpdatedMs)) {
     return { health: "unknown", reason: "Reconcilerの基準時刻を判定できません。" };
   }
 
@@ -136,7 +139,10 @@ function reconcilerHealth(input: {
     return { health: "critical", reason: "最新のReconcileが失敗しています。" };
   }
   if (!Number.isFinite(invokedMs)) {
-    return { health: "degraded", reason: "Reconcilerの初回実行を待っています。" };
+    const startupAge = Math.max(0, referenceMs - stateUpdatedMs);
+    return startupAge > HEALTH_CRITICAL_AFTER_MS
+      ? { health: "critical", reason: "Reconciler有効化後3分以上、一度もCron起動を確認できません。" }
+      : { health: "degraded", reason: "Reconcilerの初回実行を待っています。" };
   }
   if (!Number.isFinite(successMs)) {
     const invokedAge = Math.max(0, referenceMs - invokedMs);
@@ -178,7 +184,7 @@ export function unavailableReliabilityBurnReconcilerState(): ReliabilityBurnReco
 export async function getReliabilityBurnReconcilerState(
   referenceAt: string,
 ): Promise<ReliabilityBurnReconcilerState> {
-  const payload = await callRpc("get_reliability_burn_reconcile_state_v1", {});
+  const payload = await callRpc("get_reliability_burn_reconcile_state_v2", {});
   if (!Array.isArray(payload) || payload.length !== 1) {
     throw new Error("Burn Reconciler状態レスポンスが不正です");
   }
@@ -187,6 +193,7 @@ export async function getReliabilityBurnReconcilerState(
     throw new Error("Burn Reconciler状態行が不正です");
   }
   const row = raw as ReconcilerStateRow;
+  const stateUpdatedAt = parseTimestamp(row.state_updated_at);
   const lastInvokedAt = parseNullableTimestamp(row.last_invoked_at);
   const lastSuccessAt = parseNullableTimestamp(row.last_success_at);
   const lastErrorAt = parseNullableTimestamp(row.last_error_at);
@@ -194,6 +201,7 @@ export async function getReliabilityBurnReconcilerState(
   if (
     typeof row.enabled !== "boolean" ||
     typeof row.endpoint_configured !== "boolean" ||
+    !stateUpdatedAt ||
     lastInvokedAt === undefined ||
     lastSuccessAt === undefined ||
     lastErrorAt === undefined ||
@@ -208,6 +216,7 @@ export async function getReliabilityBurnReconcilerState(
   const health = reconcilerHealth({
     enabled: row.enabled,
     endpointConfigured: row.endpoint_configured,
+    stateUpdatedAt,
     lastInvokedAt,
     lastSuccessAt,
     lastErrorAt,
