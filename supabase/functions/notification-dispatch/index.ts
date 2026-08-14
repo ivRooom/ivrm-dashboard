@@ -1,11 +1,13 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
+type NotificationSource = "host" | "container" | "backup" | "reliability";
+
 type DeliveryRow = {
   id: number;
-  source_type: "host" | "container" | "backup";
+  source_type: NotificationSource;
   server_id: string;
-  entity_type: "host" | "container" | "backup";
+  entity_type: NotificationSource;
   entity_name: string;
   transition: "opened" | "escalated" | "recovered" | "event";
   severity: "info" | "warning" | "critical" | "recovery";
@@ -59,7 +61,12 @@ function transitionLabel(transition: DeliveryRow["transition"]): string {
 }
 
 function sourceLabel(source: DeliveryRow["source_type"]): string {
-  return { host: "HOST", container: "CONTAINER", backup: "BACKUP" }[source];
+  return {
+    host: "HOST",
+    container: "CONTAINER",
+    backup: "BACKUP",
+    reliability: "SLO",
+  }[source];
 }
 
 function detailUrl(href: string): string | undefined {
