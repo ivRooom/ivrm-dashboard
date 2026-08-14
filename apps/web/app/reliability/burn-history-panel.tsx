@@ -6,6 +6,7 @@ import type {
   ReliabilityBurnReconcilerState,
   ReliabilitySloServiceId,
 } from "../../lib/reliability";
+import historyStyles from "./burn-history.module.css";
 import styles from "./reliability.module.css";
 
 type Props = {
@@ -47,9 +48,9 @@ const SERIES: ReadonlyArray<{
   label: string;
   className: string;
 }> = [
-  { key: "burnRate1h", exactKey: "exact1h", label: "1H", className: styles.historyLine1h },
-  { key: "burnRate6h", exactKey: "exact6h", label: "6H", className: styles.historyLine6h },
-  { key: "burnRate24h", exactKey: "exact24h", label: "24H", className: styles.historyLine24h },
+  { key: "burnRate1h", exactKey: "exact1h", label: "1H", className: historyStyles.historyLine1h },
+  { key: "burnRate6h", exactKey: "exact6h", label: "6H", className: historyStyles.historyLine6h },
+  { key: "burnRate24h", exactKey: "exact24h", label: "24H", className: historyStyles.historyLine24h },
 ];
 
 const WIDTH = 600;
@@ -87,6 +88,28 @@ function rate(value: number | null, exact: boolean): string {
   if (value === null || !Number.isFinite(value)) return "—";
   const digits = value >= 100 ? 0 : value >= 10 ? 1 : 2;
   return `${exact ? "" : "≥"}${value.toFixed(digits)}x`;
+}
+
+function healthTone(health: ReliabilityBurnReconcilerHealth): string {
+  switch (health) {
+    case "operational": return styles.operational;
+    case "degraded": return styles.degraded;
+    case "critical": return styles.critical;
+    case "disabled": return styles.disabled;
+    case "unknown": return styles.unknown;
+  }
+}
+
+function stateTone(state: ReliabilityBurnRateState | null): string {
+  switch (state) {
+    case "healthy": return styles.operational;
+    case "warning":
+    case "coverage_unknown": return styles.degraded;
+    case "critical":
+    case "data_unavailable": return styles.critical;
+    case "unconfigured": return styles.disabled;
+    case null: return styles.unknown;
+  }
 }
 
 function seriesValue(point: ReliabilityBurnRateHistoryPoint, key: SeriesKey): number | null {
@@ -166,32 +189,36 @@ function BurnChart({
   const xMax = Math.max(...timestamps);
   const rawMax = Math.max(...exactValues);
   const yMax = rawMax <= 0 ? 1 : rawMax * 1.08;
+  const renderedSeries = SERIES.map((series) => ({
+    ...series,
+    segments: chartSegments(points, series.key, series.exactKey, bucketMinutes, xMin, xMax, yMax),
+  }));
+  if (renderedSeries.every((series) => series.segments.length === 0)) return null;
 
+  const serviceId = points[0]?.serviceId ?? "overall";
   return (
     <svg
-      className={styles.historyChart}
+      className={historyStyles.historyChart}
       viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
       role="img"
-      aria-labelledby={`burn-history-${points[0]?.serviceId}-title burn-history-${points[0]?.serviceId}-desc`}
+      aria-labelledby={`burn-history-${serviceId}-title burn-history-${serviceId}-desc`}
     >
-      <title id={`burn-history-${points[0]?.serviceId}-title`}>{label} Burn Rate履歴</title>
-      <desc id={`burn-history-${points[0]?.serviceId}-desc`}>
+      <title id={`burn-history-${serviceId}-title`}>{label} Burn Rate履歴</title>
+      <desc id={`burn-history-${serviceId}-desc`}>
         1時間、6時間、24時間の確定Coverageだけを線で結んだBurn Rate推移です。欠損区間は接続しません。
       </desc>
-      <line className={styles.historyAxis} x1={PADDING_X} y1={HEIGHT - PADDING_Y} x2={WIDTH - PADDING_X} y2={HEIGHT - PADDING_Y} />
-      <line className={styles.historyAxis} x1={PADDING_X} y1={PADDING_Y} x2={PADDING_X} y2={HEIGHT - PADDING_Y} />
-      {SERIES.flatMap((series) =>
-        chartSegments(points, series.key, series.exactKey, bucketMinutes, xMin, xMax, yMax).map(
-          (segment, index) => (
-            <polyline
-              key={`${series.key}-${index}`}
-              className={series.className}
-              points={segment}
-              fill="none"
-              vectorEffect="non-scaling-stroke"
-            />
-          ),
-        ),
+      <line className={historyStyles.historyAxis} x1={PADDING_X} y1={HEIGHT - PADDING_Y} x2={WIDTH - PADDING_X} y2={HEIGHT - PADDING_Y} />
+      <line className={historyStyles.historyAxis} x1={PADDING_X} y1={PADDING_Y} x2={PADDING_X} y2={HEIGHT - PADDING_Y} />
+      {renderedSeries.flatMap((series) =>
+        series.segments.map((segment, index) => (
+          <polyline
+            key={`${series.key}-${index}`}
+            className={series.className}
+            points={segment}
+            fill="none"
+            vectorEffect="non-scaling-stroke"
+          />
+        )),
       )}
     </svg>
   );
@@ -207,12 +234,12 @@ export function ReliabilityBurnHistoryPanel({ generatedAt, history, reconciler }
         <p>Alert評価ジョブの鮮度とBurn Rateの推移を確認します。履歴は観測用で、Alert判定のSource of Truthには使用しません。</p>
       </div>
 
-      <article className={styles.burnOps} aria-label="Burn Reconciler稼働状態">
-        <div className={styles.burnOpsHead}>
+      <article className={historyStyles.burnOps} aria-label="Burn Reconciler稼働状態">
+        <div className={historyStyles.burnOpsHead}>
           <div><span>ONE-MINUTE RECONCILER</span><h3>Burn Alert Evaluator</h3><p>{reconciler.reason}</p></div>
-          <span className={`${styles.badge} ${styles[reconciler.health]}`}>{HEALTH_LABELS[reconciler.health]}</span>
+          <span className={`${styles.badge} ${healthTone(reconciler.health)}`}>{HEALTH_LABELS[reconciler.health]}</span>
         </div>
-        <div className={styles.burnOpsGrid}>
+        <div className={historyStyles.burnOpsGrid}>
           <div><span>ENABLED</span><strong>{reconciler.enabled === null ? "—" : reconciler.enabled ? "ON" : "OFF"}</strong></div>
           <div><span>ENDPOINT</span><strong>{reconciler.endpointConfigured === null ? "—" : reconciler.endpointConfigured ? "Ready" : "Missing"}</strong></div>
           <div><span>LAST SUCCESS</span><strong>{age(reconciler.lastSuccessAt, generatedAt)}</strong><small>{time(reconciler.lastSuccessAt)}</small></div>
@@ -220,13 +247,13 @@ export function ReliabilityBurnHistoryPanel({ generatedAt, history, reconciler }
           <div><span>EVALUATED</span><strong>{reconciler.lastEvaluatedCount ?? "—"}</strong><small>最大4サービス</small></div>
           <div><span>LAST ERROR</span><strong>{reconciler.lastErrorCode ?? "—"}</strong><small>{time(reconciler.lastErrorAt)}</small></div>
         </div>
-        {!reconciler.dataAvailable ? <p className={styles.burnOpsWarning} role="alert">Reconciler状態を取得できないため、画面上では稼働正常性を確定できません。</p> : null}
+        {!reconciler.dataAvailable ? <p className={historyStyles.burnOpsWarning} role="alert">Reconciler状態を取得できないため、画面上では稼働正常性を確定できません。</p> : null}
       </article>
 
       {!history.dataAvailable ? (
-        <div className={styles.historyUnavailable} role="alert"><strong>Burn Rate履歴を取得できません</strong><p>現在値とAlert評価は継続しています。履歴RPCまたはデータ接続を確認してください。</p></div>
+        <div className={historyStyles.historyUnavailable} role="alert"><strong>Burn Rate履歴を取得できません</strong><p>現在値とAlert評価は継続しています。履歴RPCまたはデータ接続を確認してください。</p></div>
       ) : (
-        <div className={styles.historyGrid}>
+        <div className={historyStyles.historyGrid}>
           {serviceIds.map((serviceId) => {
             const points = servicePoints(history, serviceId);
             const latest = points.at(-1) ?? null;
@@ -234,31 +261,31 @@ export function ReliabilityBurnHistoryPanel({ generatedAt, history, reconciler }
               [point.burnRate1h, point.burnRate6h, point.burnRate24h].some((value) => value !== null),
             );
             return (
-              <article className={styles.historyCard} key={serviceId}>
-                <div className={styles.historyHead}>
+              <article className={historyStyles.historyCard} key={serviceId}>
+                <div className={historyStyles.historyHead}>
                   <div><span>{serviceId.toUpperCase()} / TREND</span><h3>{SERVICE_LABELS[serviceId]}</h3></div>
-                  <span className={`${styles.badge} ${latest ? styles[latest.state === "healthy" ? "operational" : latest.state === "warning" || latest.state === "coverage_unknown" ? "degraded" : latest.state === "critical" || latest.state === "data_unavailable" ? "critical" : "disabled"] : styles.unknown}`}>
+                  <span className={`${styles.badge} ${stateTone(latest?.state ?? null)}`}>
                     {latest ? STATE_LABELS[latest.state] : "収集中"}
                   </span>
                 </div>
-                <div className={styles.historyLatest} aria-label={`${SERVICE_LABELS[serviceId]} 最新Burn Rate`}>
+                <div className={historyStyles.historyLatest} aria-label={`${SERVICE_LABELS[serviceId]} 最新Burn Rate`}>
                   <div><span>1H</span><strong>{latest ? rate(latest.burnRate1h, latest.exact1h) : "—"}</strong></div>
                   <div><span>6H</span><strong>{latest ? rate(latest.burnRate6h, latest.exact6h) : "—"}</strong></div>
                   <div><span>24H</span><strong>{latest ? rate(latest.burnRate24h, latest.exact24h) : "—"}</strong></div>
                 </div>
                 {points.length === 0 ? (
-                  <p className={styles.historyEmpty}>履歴を収集中です。Phase 4デプロイ後のReconcileから5分バケットへ蓄積します。</p>
+                  <p className={historyStyles.historyEmpty}>履歴を収集中です。Phase 4デプロイ後のReconcileから5分バケットへ蓄積します。</p>
                 ) : !hasBurnValue ? (
-                  <p className={styles.historyEmpty}>SLO Policyが未設定のためBurn値はまだありません。稼働状態の履歴だけを保持しています。</p>
+                  <p className={historyStyles.historyEmpty}>SLO Policyが未設定のためBurn値はまだありません。稼働状態の履歴だけを保持しています。</p>
                 ) : (
                   <BurnChart points={points} bucketMinutes={history.bucketMinutes} label={SERVICE_LABELS[serviceId]} />
                 )}
-                <div className={styles.historyFoot}>
+                <div className={historyStyles.historyFoot}>
                   <span>{history.bucketMinutes}分粒度 / {points.length} points</span>
                   <span>Latest {latest ? time(latest.observedAt) : "—"}</span>
                 </div>
-                <div className={styles.historyLegend} aria-label="グラフ凡例">
-                  <span className={styles.legend1h}>1H</span><span className={styles.legend6h}>6H</span><span className={styles.legend24h}>24H</span><small>確定Coverageのみ接続</small>
+                <div className={historyStyles.historyLegend} aria-label="グラフ凡例">
+                  <span className={historyStyles.legend1h}>1H</span><span className={historyStyles.legend6h}>6H</span><span className={historyStyles.legend24h}>24H</span><small>確定Coverageのみ接続</small>
                 </div>
               </article>
             );
