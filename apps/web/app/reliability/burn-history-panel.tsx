@@ -45,12 +45,11 @@ const STATE_LABELS: Record<ReliabilityBurnRateState, string> = {
 const SERIES: ReadonlyArray<{
   key: SeriesKey;
   exactKey: ExactKey;
-  label: string;
   className: string;
 }> = [
-  { key: "burnRate1h", exactKey: "exact1h", label: "1H", className: historyStyles.historyLine1h },
-  { key: "burnRate6h", exactKey: "exact6h", label: "6H", className: historyStyles.historyLine6h },
-  { key: "burnRate24h", exactKey: "exact24h", label: "24H", className: historyStyles.historyLine24h },
+  { key: "burnRate1h", exactKey: "exact1h", className: historyStyles.historyLine1h },
+  { key: "burnRate6h", exactKey: "exact6h", className: historyStyles.historyLine6h },
+  { key: "burnRate24h", exactKey: "exact24h", className: historyStyles.historyLine24h },
 ];
 
 const WIDTH = 600;
@@ -205,7 +204,7 @@ function BurnChart({
     >
       <title id={`burn-history-${serviceId}-title`}>{label} Burn Rate履歴</title>
       <desc id={`burn-history-${serviceId}-desc`}>
-        1時間、6時間、24時間の確定Coverageだけを線で結んだBurn Rate推移です。欠損区間は接続しません。
+        各表示バケット内の1時間、6時間、24時間Burn Rate最大値です。確定Coverageの連続バケットだけを線で結び、欠損区間は接続しません。
       </desc>
       <line className={historyStyles.historyAxis} x1={PADDING_X} y1={HEIGHT - PADDING_Y} x2={WIDTH - PADDING_X} y2={HEIGHT - PADDING_Y} />
       <line className={historyStyles.historyAxis} x1={PADDING_X} y1={PADDING_Y} x2={PADDING_X} y2={HEIGHT - PADDING_Y} />
@@ -231,7 +230,7 @@ export function ReliabilityBurnHistoryPanel({ generatedAt, history, reconciler }
     <section id="burn-observability" aria-labelledby="burn-observability-title">
       <div className={styles.sectionTitle}>
         <div><span>BURN OBSERVABILITY</span><h2 id="burn-observability-title">Burn Rate履歴 / Reconciler</h2></div>
-        <p>Alert評価ジョブの鮮度とBurn Rateの推移を確認します。履歴は観測用で、Alert判定のSource of Truthには使用しません。</p>
+        <p>現在値は上段のBurn Rateを参照してください。履歴カードは各表示バケット内のPeak Burn / Worst Stateで、Alert判定のSource of Truthには使用しません。</p>
       </div>
 
       <article className={historyStyles.burnOps} aria-label="Burn Reconciler稼働状態">
@@ -256,7 +255,7 @@ export function ReliabilityBurnHistoryPanel({ generatedAt, history, reconciler }
         <div className={historyStyles.historyGrid}>
           {serviceIds.map((serviceId) => {
             const points = servicePoints(history, serviceId);
-            const latest = points.at(-1) ?? null;
+            const latestBucket = points.at(-1) ?? null;
             const hasBurnValue = points.some((point) =>
               [point.burnRate1h, point.burnRate6h, point.burnRate24h].some((value) => value !== null),
             );
@@ -264,14 +263,14 @@ export function ReliabilityBurnHistoryPanel({ generatedAt, history, reconciler }
               <article className={historyStyles.historyCard} key={serviceId}>
                 <div className={historyStyles.historyHead}>
                   <div><span>{serviceId.toUpperCase()} / TREND</span><h3>{SERVICE_LABELS[serviceId]}</h3></div>
-                  <span className={`${styles.badge} ${stateTone(latest?.state ?? null)}`}>
-                    {latest ? STATE_LABELS[latest.state] : "収集中"}
+                  <span className={`${styles.badge} ${stateTone(latestBucket?.state ?? null)}`}>
+                    {latestBucket ? `Worst: ${STATE_LABELS[latestBucket.state]}` : "収集中"}
                   </span>
                 </div>
-                <div className={historyStyles.historyLatest} aria-label={`${SERVICE_LABELS[serviceId]} 最新Burn Rate`}>
-                  <div><span>1H</span><strong>{latest ? rate(latest.burnRate1h, latest.exact1h) : "—"}</strong></div>
-                  <div><span>6H</span><strong>{latest ? rate(latest.burnRate6h, latest.exact6h) : "—"}</strong></div>
-                  <div><span>24H</span><strong>{latest ? rate(latest.burnRate24h, latest.exact24h) : "—"}</strong></div>
+                <div className={historyStyles.historyLatest} aria-label={`${SERVICE_LABELS[serviceId]} 最新表示バケット内の最大Burn Rate`}>
+                  <div><span>1H PEAK</span><strong>{latestBucket ? rate(latestBucket.burnRate1h, latestBucket.exact1h) : "—"}</strong></div>
+                  <div><span>6H PEAK</span><strong>{latestBucket ? rate(latestBucket.burnRate6h, latestBucket.exact6h) : "—"}</strong></div>
+                  <div><span>24H PEAK</span><strong>{latestBucket ? rate(latestBucket.burnRate24h, latestBucket.exact24h) : "—"}</strong></div>
                 </div>
                 {points.length === 0 ? (
                   <p className={historyStyles.historyEmpty}>履歴を収集中です。Phase 4デプロイ後のReconcileから5分バケットへ蓄積します。</p>
@@ -282,10 +281,10 @@ export function ReliabilityBurnHistoryPanel({ generatedAt, history, reconciler }
                 )}
                 <div className={historyStyles.historyFoot}>
                   <span>{history.bucketMinutes}分粒度 / {points.length} points</span>
-                  <span>Latest {latest ? time(latest.observedAt) : "—"}</span>
+                  <span>Bucket last sample {latestBucket ? time(latestBucket.observedAt) : "—"}</span>
                 </div>
                 <div className={historyStyles.historyLegend} aria-label="グラフ凡例">
-                  <span className={historyStyles.legend1h}>1H</span><span className={historyStyles.legend6h}>6H</span><span className={historyStyles.legend24h}>24H</span><small>確定Coverageのみ接続</small>
+                  <span className={historyStyles.legend1h}>1H</span><span className={historyStyles.legend6h}>6H</span><span className={historyStyles.legend24h}>24H</span><small>表示バケット内Peak / 確定Coverageのみ接続</small>
                 </div>
               </article>
             );
