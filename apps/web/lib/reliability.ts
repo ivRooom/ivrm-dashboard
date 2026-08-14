@@ -10,15 +10,25 @@ import {
   getReliabilitySloPolicies,
 } from "./reliability-slo";
 import { buildReliabilityBurnRates } from "./reliability-burn-rate";
+import {
+  getReliabilityBurnRateHistory,
+  getReliabilityBurnReconcilerState,
+  unavailableReliabilityBurnRateHistory,
+  unavailableReliabilityBurnReconcilerState,
+} from "./reliability-burn-observability";
 import { getReliabilityMaintenanceWindows } from "./reliability-maintenance";
 import { buildReliabilityMaintenanceAdjustments } from "./reliability-maintenance-metrics";
 import type { ReliabilityRange, ReliabilitySnapshot } from "./reliability-types";
 
 export type {
   ReliabilityBackupType,
+  ReliabilityBurnRateHistory,
+  ReliabilityBurnRateHistoryPoint,
   ReliabilityBurnRateService,
   ReliabilityBurnRateState,
   ReliabilityBurnRateWindow,
+  ReliabilityBurnReconcilerHealth,
+  ReliabilityBurnReconcilerState,
   ReliabilityBurnWindowId,
   ReliabilityHealth,
   ReliabilityMaintenanceScopeType,
@@ -64,13 +74,26 @@ export async function getReliabilitySnapshot(
       console.error("Reliability CenterのMaintenance Window取得に失敗しました", error);
       return { ok: false as const, windows: [] };
     });
+  const burnReconcilerPromise = getReliabilityBurnReconcilerState(provisionalGeneratedAt)
+    .catch((error: unknown) => {
+      console.error("Reliability CenterのBurn Reconciler状態取得に失敗しました", error);
+      return unavailableReliabilityBurnReconcilerState();
+    });
+  const burnHistoryPromise = getReliabilityBurnRateHistory(range, provisionalGeneratedAt)
+    .catch((error: unknown) => {
+      console.error("Reliability CenterのBurn Rate履歴取得に失敗しました", error);
+      return unavailableReliabilityBurnRateHistory(range);
+    });
 
-  const [incidents, notification, sloPolicy, maintenance] = await Promise.all([
-    getUnifiedIncidentCenterSnapshot(range),
-    notificationPromise,
-    sloPolicyPromise,
-    maintenancePromise,
-  ]);
+  const [incidents, notification, sloPolicy, maintenance, burnReconciler, burnHistory] =
+    await Promise.all([
+      getUnifiedIncidentCenterSnapshot(range),
+      notificationPromise,
+      sloPolicyPromise,
+      maintenancePromise,
+      burnReconcilerPromise,
+      burnHistoryPromise,
+    ]);
   const set = (type: "host" | "container" | "backup") => ({
     active: incidents.active.filter((item) => item.entityType === type),
     recovered: incidents.recovered.filter((item) => item.entityType === type),
@@ -122,6 +145,8 @@ export async function getReliabilitySnapshot(
       sloPolicy.policies,
       maintenance.ok ? maintenance.windows : null,
     ),
+    burnReconciler,
+    burnHistory,
     notifications: {
       enabled: notification.summary?.channelEnabled ?? null,
       configured: notification.summary?.channelConfigured ?? null,
