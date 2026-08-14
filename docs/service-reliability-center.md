@@ -40,7 +40,7 @@ Notification Deliveryは、期間内に「配送されるべきだった通知�
 
 ## Scoped Maintenance Window
 
-Reliability v2 Phase 2では、計画停止をSLO計算から除外するための`reliability_maintenance_windows`を追加します。
+Reliability v2 Phase 2では、計画停止をSLO計算から除外するための`reliability_maintenance_windows`を使用します。
 
 Maintenance Windowは次の4種類のScopeを持ちます。
 
@@ -49,7 +49,7 @@ Maintenance Windowは次の4種類のScopeを持ちます。
 - `container`: 対象Host上の特定Container Incidentのみ
 - `backup`: Host + Backup Target + Game Mode + Backup Typeが一致するIncidentのみ
 
-`service=overall`は全SLO対象Incidentへ適用される最も広いScopeです。Host Scopeも配下Container / Backupへ適用されるため、UIでは広いScopeとして注意を表示します。
+`service=overall`は全SLO対象Incidentへ適用される最も広いScopeです。Service / Host Scopeは複数Incidentへ適用されるため、UIで広いScopeとして注意を表示し、Container / Backup Targetのような狭いScopeを優先します。
 
 ### SLO停止時間の計算
 
@@ -77,6 +77,12 @@ Raw Incident intervals
 - Maintenance Excluded
 - SLO-counted Downtime
 
+### Maintenance中も除外しない障害
+
+既存監視でMaintenance中もCritical扱いする障害は、SLO Maintenance Windowとも重なっていてもSLO-counted Downtimeへ残します。
+
+現時点ではContainerの`OOMKilled`起因Incidentを非除外対象として扱います。SLO Windowは「計画停止」を表すものであり、計画停止中に発生したOOMを正常な停止として隠しません。
+
 ### 取消
 
 Maintenance Windowの取消は削除ではなく`cancelled_at`を記録します。SLO除外の有効終了時刻は次の早い方です。
@@ -97,13 +103,29 @@ effective end = min(ends_at, cancelled_at)
 
 既存Windowの開始・終了時刻やScopeを直接UPDATEする権限はService Roleにも付与しません。変更が必要な場合は取消して新しいWindowを登録します。
 
+### 作成のIdempotency
+
+Window作成フォームはServer描画時にUUIDの`idempotencyKey`を生成します。APIはこのUUIDを検証し、`create_reliability_maintenance_window_v2`へ渡します。
+
+DBでは`create_request_id`へpartial unique indexを設定しています。同じUUIDの再送は以下のように扱います。
+
+- payloadが同一: 既存Windowを返す
+- payloadが異なる: idempotency conflictとして拒否
+- 同時retry: Unique Index + `ON CONFLICT`で1件だけ作成
+
+レスポンスが失われてブラウザやClientが同じ要求を再送しても、同一Windowが重複作成されません。監査ログも新規Windowを実際に作成した処理だけが追加します。
+
+### Window一覧の完全性
+
+Maintenance Window一覧は200件ずつページングして取得します。現在は最大5,000件まで完全取得し、それを超えた場合は途中までのデータでSLOを計算せず、Maintenanceデータを`Data unavailable`として扱います。
+
+不完全なWindow集合を「全件取得できた」と誤認してSLO-counted Downtimeを過大評価しないためのFail Closedです。
+
 ### 既存Operational Maintenanceとの違い
 
 `container_expectations.maintenance_mode`は監視・運用上のContainer Maintenance状態です。`reliability_maintenance_windows`はSLO計算上の計画停止です。
 
 この2つは自動同期しません。SLO Maintenanceを作成しただけでContainer監視を抑制したり、Container Maintenanceを開始しただけでSLO除外を発生させたりしません。
-
-既存監視でMaintenance中でもCritical扱いするSignalなどの運用ルールはそのまま維持されます。
 
 ## Error Budget
 
@@ -157,18 +179,22 @@ APIは`POST /api/reliability/maintenance`です。
 - Same-Origin POST
 - Server側Console Session再検証
 - Administrator / Ownerのみ
-- request body上限8 KiB
+- request body上限8 KiBを`Content-Length`だけでなく実際に読み込んだbyte数でも強制
+- JSON / `application/x-www-form-urlencoded`を明示parse
 - Scope / TargetをServerとDBの双方で検証
 - datetime-localはJSTとして明示的に解釈
 - 理由は1〜200文字
 - SLO計算だけから除外することへの明示確認checkboxが必須
+- Createはclient UUIDによるidempotency必須
 - 過去5分より前の後付け登録を拒否
 - 最大7日 / 最大365日先
 
 Mutationは次の監査付きRPCだけを許可します。
 
-- `create_reliability_maintenance_window_v1`
+- `create_reliability_maintenance_window_v2`
 - `cancel_reliability_maintenance_window_v1`
+
+非idempotentだったCreate v1は削除済みです。
 
 TableはServer-side Service RoleからSELECTできますが、INSERT / UPDATE / DELETEはできません。作成・取消とHash chain監査ログは同一DBトランザクションです。
 
@@ -178,6 +204,14 @@ TableはServer-side Service RoleからSELECTできますが、INSERT / UPDATE / 
 - Discord Session: `metadata.discordUserId`
 
 自由入力Reasonは監査Metadataへ複製せず、Window本体にだけ保存します。監査MetadataにはScope、対象識別子、開始・終了・取消時刻を保存します。
+
+### Target Catalog
+
+Maintenance作成フォームのHost / Container / Backup Target一覧は`list_reliability_maintenance_targets_v1` Security Definer RPCから取得します。
+
+Backup Policy Tableの直接SELECT権限をService Roleへ追加せず、フォームに必要な有効対象だけを読み取り専用RPCで返します。RPC自体はService Roleだけが実行でき、`anon` / `authenticated`は実行できません。
+
+MutationレスポンスはHost label mapを再取得して`serverId` / `hostDisplayName`を補完します。Host labelの補助取得に失敗してもMutation自体は失敗扱いにせず、IDを保持したレスポンスを返します。
 
 ## Auto Refresh / UX
 
@@ -199,8 +233,9 @@ Reliability CenterはNotification CenterのSummary RPCだけを読み込みま�
 - Backup取得失敗: Backup Raw Reliabilityを`Unknown`
 - Notification取得失敗: Notification Raw Reliabilityを`Unknown`
 - SLO Policy取得失敗: SLOカードを`Data unavailable`
-- Maintenance Window取得失敗: 計画停止を0件と仮定せず、設定済みSLOカードを`Data unavailable`
+- Maintenance Window取得失敗・完全取得不能: 計画停止を0件と仮定せず、設定済みSLOカードを`Data unavailable`
 - Maintenance Target Catalog取得失敗: 既存Window表示・取消は継続し、新規作成フォームだけ無効化
+- Maintenanceデータ自体が取得不能な場合は`ACTIVE 0`等を表示せず、Unknownとして表示する
 
 ## Database
 
@@ -210,8 +245,9 @@ Migrations:
 - `202608140002_reliability_slo_audited_update.sql`
 - `202608140003_reliability_slo_discord_audit_identity.sql`
 - `202608140004_reliability_scoped_maintenance_windows.sql`
+- `202608140005_reliability_maintenance_hardening.sql`
 
-`reliability_maintenance_windows`はRLS / FORCE RLSを有効化し、`anon` / `authenticated` / Service Roleの直接Mutation権限を付与しません。Service RoleはSELECTと監査付きCreate/Cancel RPC実行だけを許可します。
+`reliability_maintenance_windows`はRLS / FORCE RLSを有効化し、`anon` / `authenticated` / Service Roleの直接Mutation権限を付与しません。Service RoleはTable SELECTと、Target Catalog / audited Create / audited Cancel RPC実行だけを許可します。
 
 ## セキュリティ
 
@@ -219,9 +255,12 @@ Migrations:
 - Production Service Role KeyをVercel Previewへ配布しない
 - Secret、Player IP、raw log本文をReliabilityデータへ含めない
 - Same-Origin + Administrator Roleの二重検証
+- request bodyを実測byte数で制限
 - Scope / Target / Timestamp / ReasonをServer・DB両方で検証
 - DB MutationはHash chain監査付きRPCで原子的に記録
 - EmailまたはDiscord User IDの監査主体を必須化
+- client UUID + DB Unique IndexでCreate retryをidempotent化
+- Backup Target CatalogはSecurity Definer RPCで最小限だけ公開
 - 過去障害への恣意的な後付けMaintenance登録を拒否
 
 ## Production確認
@@ -233,13 +272,17 @@ PRマージ後は以下を確認します。
 3. 対象IncidentとMaintenanceが重なる部分だけ`Maintenance Excluded`へ反映されること
 4. 別Host / 別Container / 別Backupの同時障害が除外されないこと
 5. 重複Maintenance Windowでも二重控除されないこと
-6. Window取消後は`cancelled_at`以降が除外されないこと
-7. 過去5分より前のWindow作成がServer / DBで拒否されること
-8. Viewer / Operatorでは作成UI非表示、API直接POSTも403になること
-9. Create / CancelとHash chain Auditが対になること
-10. Discord管理者操作で`metadata.discordUserId`が記録されること
-11. Maintenance取得障害時に設定済みSLOが`Data unavailable`となること
-12. SLO未設定時にTargetを推測しないこと
-13. Coverage不完全時の`≤` / `≥`表示
-14. `/incidents`とのRaw Active / Recovery / Known Downtime整合性
-15. `/notifications`とのDispatcher / Queue状態整合性
+6. OOMKilled IncidentはMaintenanceと重なってもSLO-counted Downtimeへ残ること
+7. Window取消後は`cancelled_at`以降が除外されないこと
+8. 過去5分より前のWindow作成がServer / DBで拒否されること
+9. 同じidempotencyKey + 同じpayloadのretryが同じWindowを返すこと
+10. 同じidempotencyKey + 異なるpayloadが拒否されること
+11. Viewer / Operatorでは作成UI非表示、API直接POSTも403になること
+12. 8 KiB超のchunked POSTでも413になること
+13. Create / CancelとHash chain Auditが対になること
+14. Discord管理者操作で`metadata.discordUserId`が記録されること
+15. Maintenance取得障害時に0件と表示せず、設定済みSLOが`Data unavailable`となること
+16. SLO未設定時にTargetを推測しないこと
+17. Coverage不完全時の`≤` / `≥`表示
+18. `/incidents`とのRaw Active / Recovery / Known Downtime整合性
+19. `/notifications`とのDispatcher / Queue状態整合性
