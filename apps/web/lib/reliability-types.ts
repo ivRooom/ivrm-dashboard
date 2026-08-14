@@ -10,6 +10,14 @@ export type ReliabilitySloBudgetState =
   | "exhausted"
   | "coverage_unknown"
   | "data_unavailable";
+export type ReliabilityBurnWindowId = "1h" | "6h" | "24h";
+export type ReliabilityBurnRateState =
+  | "unconfigured"
+  | "healthy"
+  | "warning"
+  | "critical"
+  | "coverage_unknown"
+  | "data_unavailable";
 export type ReliabilityMaintenanceScopeType = "service" | "host" | "container" | "backup";
 export type ReliabilityBackupType = "world" | "config" | "permissions" | "full";
 
@@ -107,6 +115,28 @@ export type ReliabilitySloBudget = {
   detailHref: string;
 };
 
+export type ReliabilityBurnRateWindow = {
+  windowId: ReliabilityBurnWindowId;
+  label: string;
+  hours: number;
+  rawDowntimeSeconds: number | null;
+  maintenanceExcludedSeconds: number | null;
+  countedDowntimeSeconds: number | null;
+  allowedDowntimeSeconds: number | null;
+  burnRate: number | null;
+  exactCoverage: boolean;
+};
+
+export type ReliabilityBurnRateService = {
+  serviceId: ReliabilitySloServiceId;
+  label: string;
+  state: ReliabilityBurnRateState;
+  targetPercent: number | null;
+  enabled: boolean;
+  reason: string;
+  windows: ReliabilityBurnRateWindow[];
+};
+
 export type NotificationReliability = {
   enabled: boolean | null;
   configured: boolean | null;
@@ -143,5 +173,6 @@ export type ReliabilitySnapshot = {
   };
   services: ReliabilityService[];
   sloBudgets: ReliabilitySloBudget[];
+  burnRates: ReliabilityBurnRateService[];
   notifications: NotificationReliability;
 };
