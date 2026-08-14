@@ -14,6 +14,53 @@
 @media (max-width: 760px) {
   .console-toolbar-desktop { display: none !important; }
 
+  .shell {
+    display: block;
+  }
+
+  .sidebar {
+    position: static;
+    width: 100%;
+    height: auto;
+    min-height: 65px;
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-right: 132px;
+    padding-bottom: 12px;
+    padding-left: max(18px, env(safe-area-inset-left));
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .sidebar nav,
+  .agent {
+    display: none;
+  }
+
+  .brand {
+    min-width: 0;
+    margin: 0;
+  }
+
+  .brand strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .content > header,
+  .heading {
+    display: block;
+  }
+
+  .content > header button {
+    margin-top: 16px;
+  }
+
+  .heading > small {
+    display: block;
+    margin-top: 10px;
+  }
+
   .console-mobile-menu {
     position: fixed;
     z-index: 1400;
@@ -114,8 +161,6 @@
     padding-right: 132px;
     padding-left: max(18px, env(safe-area-inset-left));
   }
-  .brand { min-width: 0; }
-  .brand strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   h1 { font-size: clamp(27px, 9vw, 34px); line-height: 1.08; }
   .empty { padding: 20px; }
 }
