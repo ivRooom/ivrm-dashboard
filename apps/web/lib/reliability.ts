@@ -9,12 +9,17 @@ import {
   buildReliabilitySloBudgets,
   getReliabilitySloPolicies,
 } from "./reliability-slo";
+import { buildReliabilityBurnRates } from "./reliability-burn-rate";
 import { getReliabilityMaintenanceWindows } from "./reliability-maintenance";
 import { buildReliabilityMaintenanceAdjustments } from "./reliability-maintenance-metrics";
 import type { ReliabilityRange, ReliabilitySnapshot } from "./reliability-types";
 
 export type {
   ReliabilityBackupType,
+  ReliabilityBurnRateService,
+  ReliabilityBurnRateState,
+  ReliabilityBurnRateWindow,
+  ReliabilityBurnWindowId,
   ReliabilityHealth,
   ReliabilityMaintenanceScopeType,
   ReliabilityMaintenanceTargetCatalog,
@@ -111,6 +116,11 @@ export async function getReliabilitySnapshot(
       sloPolicy.policies,
       range,
       maintenanceAdjustments,
+    ),
+    burnRates: buildReliabilityBurnRates(
+      incidents,
+      sloPolicy.policies,
+      maintenance.ok ? maintenance.windows : null,
     ),
     notifications: {
       enabled: notification.summary?.channelEnabled ?? null,
