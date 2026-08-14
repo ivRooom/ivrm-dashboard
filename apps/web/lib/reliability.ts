@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getUnifiedIncidentCenterSnapshot } from "./unified-incidents";
+import { getUnifiedIncidentCenterSnapshot, INCIDENT_RANGE_CONFIG } from "./unified-incidents";
 import { getNotificationSummary } from "./notification-summary";
 import { buildIncidentService } from "./reliability-incident-service";
 import { buildNotificationService } from "./reliability-notification-service";
@@ -9,10 +9,16 @@ import {
   buildReliabilitySloBudgets,
   getReliabilitySloPolicies,
 } from "./reliability-slo";
+import { getReliabilityMaintenanceWindows } from "./reliability-maintenance";
+import { buildReliabilityMaintenanceAdjustments } from "./reliability-maintenance-metrics";
 import type { ReliabilityRange, ReliabilitySnapshot } from "./reliability-types";
 
 export type {
+  ReliabilityBackupType,
   ReliabilityHealth,
+  ReliabilityMaintenanceScopeType,
+  ReliabilityMaintenanceTargetCatalog,
+  ReliabilityMaintenanceWindow,
   ReliabilityRange,
   ReliabilityService,
   ReliabilityServiceId,
@@ -26,6 +32,12 @@ export type {
 export async function getReliabilitySnapshot(
   range: ReliabilityRange,
 ): Promise<ReliabilitySnapshot> {
+  const requestedAt = Date.now();
+  const provisionalStart = new Date(
+    requestedAt - INCIDENT_RANGE_CONFIG[range].hours * 3_600_000 - 60_000,
+  ).toISOString();
+  const provisionalGeneratedAt = new Date(requestedAt).toISOString();
+
   const notificationPromise = getNotificationSummary()
     .then((summary) => ({ ok: true as const, summary }))
     .catch((error: unknown) => {
@@ -38,10 +50,21 @@ export async function getReliabilitySnapshot(
       console.error("Reliability CenterのSLO Policy取得に失敗しました", error);
       return { ok: false as const, policies: null };
     });
-  const [incidents, notification, sloPolicy] = await Promise.all([
+  const maintenancePromise = getReliabilityMaintenanceWindows({
+    rangeStart: provisionalStart,
+    generatedAt: provisionalGeneratedAt,
+  })
+    .then((windows) => ({ ok: true as const, windows }))
+    .catch((error: unknown) => {
+      console.error("Reliability CenterのMaintenance Window取得に失敗しました", error);
+      return { ok: false as const, windows: [] };
+    });
+
+  const [incidents, notification, sloPolicy, maintenance] = await Promise.all([
     getUnifiedIncidentCenterSnapshot(range),
     notificationPromise,
     sloPolicyPromise,
+    maintenancePromise,
   ]);
   const set = (type: "host" | "container" | "backup") => ({
     active: incidents.active.filter((item) => item.entityType === type),
@@ -60,6 +83,17 @@ export async function getReliabilitySnapshot(
     buildNotificationService(notification.summary),
   ];
   const overall = buildOverall(incidents, services, range);
+  const rangeEnd = Date.parse(incidents.generatedAt);
+  const rangeStart = rangeEnd - INCIDENT_RANGE_CONFIG[range].hours * 3_600_000;
+  const maintenanceAdjustments = maintenance.ok
+    ? buildReliabilityMaintenanceAdjustments(
+        incidents.active,
+        incidents.recovered,
+        maintenance.windows,
+        rangeStart,
+        rangeEnd,
+      )
+    : null;
 
   return {
     generatedAt: incidents.generatedAt,
@@ -67,6 +101,8 @@ export async function getReliabilitySnapshot(
     backupDataAvailable: incidents.backupDataAvailable,
     notificationDataAvailable: notification.ok,
     sloPolicyDataAvailable: sloPolicy.ok,
+    maintenanceDataAvailable: maintenance.ok,
+    maintenanceWindows: maintenance.windows,
     overall,
     services,
     sloBudgets: buildReliabilitySloBudgets(
@@ -74,6 +110,7 @@ export async function getReliabilitySnapshot(
       overall,
       sloPolicy.policies,
       range,
+      maintenanceAdjustments,
     ),
     notifications: {
       enabled: notification.summary?.channelEnabled ?? null,

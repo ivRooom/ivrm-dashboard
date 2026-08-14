@@ -2,12 +2,12 @@
 .header { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
 .header h1 { margin: 5px 0 8px; }
 .header p { max-width: 820px; }
-.eyebrow, .sectionTitle span, .serviceHead span, .sloHead > div > span { color: #67e8f9; font-size: 11px; font-weight: 900; letter-spacing: .14em; }
+.eyebrow, .sectionTitle span, .serviceHead span, .sloHead > div > span, .maintenanceHead > div > span { color: #67e8f9; font-size: 11px; font-weight: 900; letter-spacing: .14em; }
 .actions, .periods, .serviceActions { display: flex; flex-wrap: wrap; gap: 9px; }
 .actions a, .periods a, .serviceActions a { border: 1px solid rgba(103,232,249,.26); border-radius: 999px; padding: 8px 12px; color: #cffafe; background: rgba(8,145,178,.12); text-decoration: none; font-size: 12px; font-weight: 800; }
 .periods a[aria-current="page"] { background: rgba(6,182,212,.28); border-color: rgba(103,232,249,.65); }
 .overall { display: grid; grid-template-columns: 1.3fr repeat(5,minmax(0,1fr)); gap: 12px; }
-.hero, .metric, .serviceCard, .delivery, .sloCard { border: 1px solid rgba(148,163,184,.18); border-radius: 20px; background: linear-gradient(155deg, rgba(15,27,45,.96), rgba(6,14,28,.9)); }
+.hero, .metric, .serviceCard, .delivery, .sloCard, .maintenanceCard { border: 1px solid rgba(148,163,184,.18); border-radius: 20px; background: linear-gradient(155deg, rgba(15,27,45,.96), rgba(6,14,28,.9)); }
 .hero { padding: 22px; }
 .hero strong { display: block; margin: 8px 0; font-size: clamp(24px,4vw,42px); }
 .hero p { margin: 0; color: #91a4bd; line-height: 1.55; }
@@ -48,6 +48,10 @@
 .sloMetrics div { min-width: 0; padding: 11px; border: 1px solid rgba(148,163,184,.12); border-radius: 13px; background: rgba(2,8,23,.3); }
 .sloMetrics span { display: block; color: #7488a2; font-size: 9px; font-weight: 900; letter-spacing: .07em; }
 .sloMetrics strong { display: block; margin-top: 5px; color: #eef6ff; font-size: 14px; overflow-wrap: anywhere; }
+.sloAdjustment { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; padding-top: 2px; }
+.sloAdjustment div { min-width: 0; padding: 10px 11px; border: 1px dashed rgba(103,232,249,.18); border-radius: 12px; background: rgba(8,47,73,.08); }
+.sloAdjustment span { display: block; color: #6e879f; font-size: 8px; font-weight: 900; letter-spacing: .07em; }
+.sloAdjustment strong { display: block; margin-top: 5px; color: #cfeef7; font-size: 13px; overflow-wrap: anywhere; }
 .sloFooter { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
 .sloFooter a { color: #a5f3fc; font-size: 12px; font-weight: 800; text-decoration: none; }
 .sloFooter a:hover { text-decoration: underline; }
@@ -73,15 +77,62 @@
 .sloNote strong { color: #cffafe; }
 .sloNote p { margin: 7px 0 0; color: #8fa4bf; line-height: 1.6; }
 
+.maintenanceSummary { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 9px; margin-top: 14px; }
+.maintenanceSummary div { min-width: 0; padding: 12px; border: 1px solid rgba(148,163,184,.13); border-radius: 13px; background: rgba(2,8,23,.28); }
+.maintenanceSummary span { display: block; color: #7488a2; font-size: 9px; font-weight: 900; letter-spacing: .08em; }
+.maintenanceSummary strong { display: block; margin-top: 5px; color: #eef6ff; font-size: 15px; overflow-wrap: anywhere; }
+.maintenanceCreate { margin-top: 14px; border: 1px solid rgba(103,232,249,.18); border-radius: 16px; background: rgba(8,47,73,.08); padding: 0 16px 16px; }
+.maintenanceCreate > summary { min-height: 50px; display: flex; align-items: center; width: fit-content; color: #cffafe; cursor: pointer; font-size: 13px; font-weight: 900; }
+.maintenanceForm { display: grid; gap: 14px; border-top: 1px solid rgba(148,163,184,.12); padding-top: 14px; }
+.maintenanceFormGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 11px; }
+.maintenanceForm label { display: grid; gap: 6px; min-width: 0; color: #8fa4bf; font-size: 11px; font-weight: 800; }
+.maintenanceForm select, .maintenanceForm input[type="datetime-local"], .maintenanceForm textarea { width: 100%; min-height: 44px; border: 1px solid rgba(148,163,184,.28); border-radius: 11px; padding: 9px 11px; background: rgba(2,8,23,.72); color: #eef6ff; color-scheme: dark; font: inherit; }
+.maintenanceForm textarea { min-height: 88px; resize: vertical; line-height: 1.5; }
+.maintenanceForm select:disabled { opacity: .58; cursor: not-allowed; }
+.maintenanceWarning { padding: 11px 13px; border-left: 3px solid #f59e0b; background: rgba(120,53,15,.12); color: #fde68a; font-size: 12px; line-height: 1.55; }
+.maintenanceAcknowledge { min-height: 44px; grid-template-columns: auto 1fr !important; align-items: flex-start; gap: 10px !important; padding: 6px 0; line-height: 1.55; }
+.maintenanceAcknowledge input { width: 19px; height: 19px; margin-top: 2px; }
+.maintenanceAcknowledge strong { color: #cffafe; }
+.maintenanceSubmit { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.maintenanceSubmit small { color: #71849d; line-height: 1.45; }
+.maintenanceForm button, .maintenanceCard form button { min-height: 44px; border: 1px solid rgba(103,232,249,.34); border-radius: 11px; padding: 9px 13px; background: rgba(8,145,178,.18); color: #cffafe; cursor: pointer; font: inherit; font-size: 12px; font-weight: 900; }
+.maintenanceForm button:hover, .maintenanceCard form button:hover { background: rgba(8,145,178,.28); }
+.maintenanceForm button:disabled { opacity: .52; cursor: not-allowed; }
+.maintenanceForm select:focus-visible, .maintenanceForm input:focus-visible, .maintenanceForm textarea:focus-visible, .maintenanceForm button:focus-visible, .maintenanceCreate > summary:focus-visible, .maintenanceCard form button:focus-visible { outline: 2px solid #67e8f9; outline-offset: 3px; }
+.maintenanceGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; margin-top: 14px; }
+.maintenanceCard { min-width: 0; padding: 18px; display: grid; gap: 13px; }
+.maintenanceHead { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
+.maintenanceHead h3 { margin: 5px 0 4px; font-size: 16px; overflow-wrap: anywhere; }
+.maintenanceHead small { color: #8294ad; line-height: 1.45; }
+.maintenanceActive { color: #86efac; }
+.maintenanceUpcoming { color: #bfdbfe; }
+.maintenanceEnded { color: #cbd5e1; }
+.maintenanceCancelled { color: #94a3b8; }
+.maintenanceReason { margin: 0; color: #c7d5e6; line-height: 1.55; overflow-wrap: anywhere; }
+.maintenanceTimes { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin: 0; }
+.maintenanceTimes div { padding: 10px; border: 1px solid rgba(148,163,184,.12); border-radius: 11px; background: rgba(2,8,23,.28); }
+.maintenanceTimes dt { color: #7488a2; font-size: 8px; font-weight: 900; letter-spacing: .08em; }
+.maintenanceTimes dd { margin: 5px 0 0; color: #e6f1fb; font-size: 12px; overflow-wrap: anywhere; }
+.maintenanceCard form { display: flex; justify-content: flex-end; border-top: 1px solid rgba(148,163,184,.12); padding-top: 11px; }
+.maintenanceCard form button { border-color: rgba(248,113,113,.28); background: rgba(127,29,29,.12); color: #fecaca; }
+.maintenanceCard form button:hover { background: rgba(127,29,29,.22); }
+.maintenanceEmpty { margin-top: 14px; padding: 20px; border: 1px dashed rgba(148,163,184,.2); border-radius: 16px; text-align: center; }
+.maintenanceEmpty strong { color: #cfe7f8; }
+.maintenanceEmpty p { margin: 7px 0 0; color: #7f93aa; }
+.maintenanceFootnote { margin: 10px 0 0; color: #71849d; font-size: 11px; }
+
 @media (max-width: 1200px) { .overall { grid-template-columns: repeat(3,minmax(0,1fr)); } .hero { grid-column: 1 / -1; } }
-@media (max-width: 900px) { .sloMetrics { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media (max-width: 900px) { .sloMetrics, .sloAdjustment { grid-template-columns: repeat(2,minmax(0,1fr)); } .maintenanceSummary { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @media (max-width: 760px) {
   .header, .sectionTitle { align-items: flex-start; flex-direction: column; }
   .sectionTitle p { text-align: left; }
-  .serviceGrid, .overall, .serviceMetrics, .deliveryGrid, .sloGrid { grid-template-columns: 1fr; }
-  .serviceHead, .sloHead { flex-direction: column; }
+  .serviceGrid, .overall, .serviceMetrics, .deliveryGrid, .sloGrid, .maintenanceGrid, .maintenanceFormGrid { grid-template-columns: 1fr; }
+  .serviceHead, .sloHead, .maintenanceHead { flex-direction: column; }
   .policyEditor form { grid-template-columns: 1fr; align-items: stretch; }
   .policyCheckbox { white-space: normal; }
   .policyEditor button { width: 100%; }
+  .maintenanceSubmit { align-items: stretch; flex-direction: column; }
+  .maintenanceSubmit button, .maintenanceCard form button { width: 100%; }
+  .maintenanceCard form { justify-content: stretch; }
 }
-@media (max-width: 420px) { .sloMetrics { grid-template-columns: 1fr; } }
+@media (max-width: 420px) { .sloMetrics, .sloAdjustment, .maintenanceSummary, .maintenanceTimes { grid-template-columns: 1fr; } }

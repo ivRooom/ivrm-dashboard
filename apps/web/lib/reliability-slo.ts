@@ -5,6 +5,7 @@ import type {
   ReliabilityRange,
   ReliabilityService,
   ReliabilitySloBudget,
+  ReliabilitySloMaintenanceAdjustment,
   ReliabilitySloPolicy,
   ReliabilitySloServiceId,
   ReliabilitySnapshot,
@@ -36,7 +37,9 @@ type PolicyRow = {
 
 type ReliabilitySource = {
   label: string;
+  rawDowntimeSeconds: number | null;
   knownDowntimeSeconds: number | null;
+  maintenanceExcludedSeconds: number | null;
   incidentFreeRatio: number | null;
   exactCoverage: boolean;
   detailHref: string;
@@ -199,23 +202,62 @@ function sourceFor(
   services: ReliabilityService[],
   overall: ReliabilitySnapshot["overall"],
   range: ReliabilityRange,
+  maintenanceAdjustments: ReliabilitySloMaintenanceAdjustment[] | null,
 ): ReliabilitySource | null {
+  const rangeSeconds = INCIDENT_RANGE_CONFIG[range].hours * 3_600;
+  const adjustment = maintenanceAdjustments?.find(
+    (candidate) => candidate.serviceId === serviceId,
+  ) ?? null;
+
   if (serviceId === "overall") {
     return {
       label: SLO_LABELS.overall,
-      knownDowntimeSeconds: overall.knownDowntimeSeconds,
-      incidentFreeRatio: overall.incidentFreeRatio,
-      exactCoverage: overall.exactCoverage,
+      rawDowntimeSeconds: overall.knownDowntimeSeconds,
+      knownDowntimeSeconds:
+        maintenanceAdjustments === null || !adjustment
+          ? null
+          : adjustment.countedDowntimeSeconds,
+      maintenanceExcludedSeconds:
+        maintenanceAdjustments === null || !adjustment
+          ? null
+          : adjustment.excludedMaintenanceSeconds,
+      incidentFreeRatio:
+        maintenanceAdjustments === null || !adjustment
+          ? null
+          : Math.max(0, Math.min(1, 1 - adjustment.countedDowntimeSeconds / rangeSeconds)),
+      exactCoverage:
+        maintenanceAdjustments !== null &&
+        adjustment !== null &&
+        overall.exactCoverage &&
+        adjustment.exactCoverage,
       detailHref: `/incidents?range=${range}`,
     };
   }
+
   const service = services.find((candidate) => candidate.id === serviceId);
   if (!service) return null;
+  const sourceUnavailable = service.knownDowntimeSeconds === null || service.incidentFreeRatio === null;
   return {
     label: service.label,
-    knownDowntimeSeconds: service.knownDowntimeSeconds,
-    incidentFreeRatio: service.incidentFreeRatio,
-    exactCoverage: service.exactCoverage,
+    rawDowntimeSeconds: service.knownDowntimeSeconds,
+    knownDowntimeSeconds:
+      sourceUnavailable || maintenanceAdjustments === null || !adjustment
+        ? null
+        : adjustment.countedDowntimeSeconds,
+    maintenanceExcludedSeconds:
+      sourceUnavailable || maintenanceAdjustments === null || !adjustment
+        ? null
+        : adjustment.excludedMaintenanceSeconds,
+    incidentFreeRatio:
+      sourceUnavailable || maintenanceAdjustments === null || !adjustment
+        ? null
+        : Math.max(0, Math.min(1, 1 - adjustment.countedDowntimeSeconds / rangeSeconds)),
+    exactCoverage:
+      !sourceUnavailable &&
+      maintenanceAdjustments !== null &&
+      adjustment !== null &&
+      service.exactCoverage &&
+      adjustment.exactCoverage,
     detailHref: service.detailHref,
   };
 }
@@ -225,13 +267,20 @@ export function buildReliabilitySloBudgets(
   overall: ReliabilitySnapshot["overall"],
   policies: ReliabilitySloPolicy[] | null,
   range: ReliabilityRange,
+  maintenanceAdjustments: ReliabilitySloMaintenanceAdjustment[] | null,
 ): ReliabilitySloBudget[] {
   const policyByService = new Map((policies ?? []).map((policy) => [policy.serviceId, policy]));
   const rangeSeconds = INCIDENT_RANGE_CONFIG[range].hours * 3_600;
 
   return SLO_SERVICE_IDS.map((serviceId) => {
     const policy = policyByService.get(serviceId) ?? null;
-    const source = sourceFor(serviceId, services, overall, range);
+    const source = sourceFor(
+      serviceId,
+      services,
+      overall,
+      range,
+      maintenanceAdjustments,
+    );
     const observedAvailabilityPercent =
       source?.incidentFreeRatio === null || source?.incidentFreeRatio === undefined
         ? null
@@ -244,7 +293,9 @@ export function buildReliabilitySloBudgets(
       updatedAt: policy?.updatedAt ?? null,
       observedAvailabilityPercent,
       observedExact: source?.exactCoverage ?? false,
+      rawDowntimeSeconds: source?.rawDowntimeSeconds ?? null,
       knownDowntimeSeconds: source?.knownDowntimeSeconds ?? null,
+      maintenanceExcludedSeconds: source?.maintenanceExcludedSeconds ?? null,
       detailHref: source?.detailHref ?? `/reliability?range=${range}`,
     };
 
@@ -272,7 +323,12 @@ export function buildReliabilitySloBudgets(
       };
     }
 
-    if (!source || source.knownDowntimeSeconds === null || source.incidentFreeRatio === null) {
+    if (
+      maintenanceAdjustments === null ||
+      !source ||
+      source.knownDowntimeSeconds === null ||
+      source.incidentFreeRatio === null
+    ) {
       return {
         ...base,
         state: "data_unavailable" as const,

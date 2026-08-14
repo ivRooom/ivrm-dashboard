@@ -9,6 +9,8 @@ import {
   getReliabilitySnapshot,
   type ReliabilityHealth,
 } from "../../lib/reliability";
+import { getReliabilityMaintenanceTargets } from "../../lib/reliability-maintenance";
+import { ReliabilityMaintenancePanel } from "./maintenance-panel";
 import { ReliabilityNotificationPanel } from "./notification-panel";
 import { ReliabilityServiceCard } from "./service-card";
 import { ReliabilitySloPanel } from "./slo-panel";
@@ -55,6 +57,7 @@ export default async function ReliabilityPage({ searchParams }: PageProps) {
   const query = await searchParams;
   const range = parseIncidentRange(first(query.range));
   const policyOutcome = first(query.policy);
+  const maintenanceOutcome = first(query.maintenance);
   const [reliabilityResult, sessionResult] = await Promise.allSettled([
     getReliabilitySnapshot(range),
     getConsoleSession(),
@@ -70,6 +73,25 @@ export default async function ReliabilityPage({ searchParams }: PageProps) {
   }
   if (sessionResult.status === "rejected") {
     console.error("Reliability CenterのSession取得に失敗しました", sessionResult.reason);
+  }
+
+  const maintenanceTargetsResult = canManageSlo
+    ? await Promise.allSettled([getReliabilityMaintenanceTargets()])
+    : null;
+  const maintenanceTargets =
+    maintenanceTargetsResult?.[0]?.status === "fulfilled"
+      ? maintenanceTargetsResult[0].value
+      : null;
+  const maintenanceTargetsDataAvailable =
+    !canManageSlo || maintenanceTargetsResult?.[0]?.status === "fulfilled";
+  if (
+    canManageSlo &&
+    maintenanceTargetsResult?.[0]?.status === "rejected"
+  ) {
+    console.error(
+      "Reliability Maintenance対象一覧の取得に失敗しました",
+      maintenanceTargetsResult[0].reason,
+    );
   }
 
   return (
@@ -94,9 +116,9 @@ export default async function ReliabilityPage({ searchParams }: PageProps) {
       <section className={`content ${styles.content}`}>
         <header className={styles.header}>
           <div>
-            <p className={styles.eyebrow}>RELIABILITY / SLO / ERROR BUDGET</p>
+            <p className={styles.eyebrow}>RELIABILITY / SLO / MAINTENANCE</p>
             <h1>Service Reliability Center</h1>
-            <p>Host・Container・Backup・Notificationを横断し、現在状態、構造化Incident、明示設定されたSLOから稼働品質とError Budgetを確認します。</p>
+            <p>Host・Container・Backup・Notificationを横断し、Raw Incident、明示SLO、スコープ付き計画停止から稼働品質とError Budgetを確認します。</p>
           </div>
           <div className={styles.actions}>
             <a href={`/incidents?range=${range}`}>Incident Center</a>
@@ -118,34 +140,46 @@ export default async function ReliabilityPage({ searchParams }: PageProps) {
           <>
             <section className={styles.overall} aria-label="Overall Reliability">
               <article className={styles.hero}>
-                <span className={styles.eyebrow}>OVERALL HEALTH</span>
+                <span className={styles.eyebrow}>OVERALL HEALTH / RAW</span>
                 <strong className={styles[data.overall.health]}>{healthLabels[data.overall.health]}</strong>
-                <p>{data.overall.exactCoverage ? "選択期間のKnown Downtimeを確定できます。" : "未確定開始時刻または欠損データがあるため比率は上限値です。"}</p>
+                <p>{data.overall.exactCoverage ? "Raw Incidentから選択期間のKnown Downtimeを確定できます。" : "未確定開始時刻または欠損データがあるためRaw比率は上限値です。"}</p>
               </article>
-              <article className={styles.metric}><span>INCIDENT-FREE</span><strong>{ratio(data.overall.incidentFreeRatio, data.overall.exactCoverage)}</strong><small>{INCIDENT_RANGE_CONFIG[range].label}</small></article>
-              <article className={styles.metric}><span>KNOWN DOWNTIME</span><strong>{duration(data.overall.knownDowntimeSeconds)}</strong><small>重複時間はUnion</small></article>
+              <article className={styles.metric}><span>INCIDENT-FREE / RAW</span><strong>{ratio(data.overall.incidentFreeRatio, data.overall.exactCoverage)}</strong><small>{INCIDENT_RANGE_CONFIG[range].label}</small></article>
+              <article className={styles.metric}><span>KNOWN DOWNTIME / RAW</span><strong>{duration(data.overall.knownDowntimeSeconds)}</strong><small>計画停止でも隠さない</small></article>
               <article className={styles.metric}><span>ACTIVE</span><strong>{data.overall.activeIncidentCount}</strong><small>重大 {data.overall.activeCriticalCount}</small></article>
               <article className={styles.metric}><span>MEDIAN RECOVERY</span><strong>{duration(data.overall.medianRecoverySeconds)}</strong><small>Recovered {data.overall.recoveredIncidentCount}</small></article>
               <article className={styles.metric}><span>LONGEST RECOVERY</span><strong>{duration(data.overall.longestRecoverySeconds)}</strong><small>選択期間内の最大復旧時間</small></article>
             </section>
             {!data.backupDataAvailable || !data.notificationDataAvailable ? (
-              <div className={styles.coverage}>一部データソースを取得できないため、取得できたサービスだけで継続表示しています。</div>
+              <div className={styles.coverage}>一部データソースを取得できないため、取得できたサービスだけでRaw Reliabilityを継続表示しています。</div>
             ) : null}
+
+            <ReliabilityMaintenancePanel
+              canManage={canManageSlo}
+              dataAvailable={data.maintenanceDataAvailable}
+              generatedAt={data.generatedAt}
+              outcome={maintenanceOutcome}
+              range={range}
+              targets={maintenanceTargets}
+              targetsDataAvailable={maintenanceTargetsDataAvailable}
+              windows={data.maintenanceWindows}
+            />
 
             <ReliabilitySloPanel
               budgets={data.sloBudgets}
               canManage={canManageSlo}
+              maintenanceDataAvailable={data.maintenanceDataAvailable}
               outcome={policyOutcome}
               policyDataAvailable={data.sloPolicyDataAvailable}
               range={range}
             />
 
             <section>
-              <div className={styles.sectionTitle}><div><span>SERVICE SCORECARDS</span><h2>サービス別信頼性</h2></div><p>現在HealthとIncident実績を表示します。SLO未設定サービスに目標値を補完・推測することはありません。</p></div>
+              <div className={styles.sectionTitle}><div><span>SERVICE SCORECARDS / RAW</span><h2>サービス別信頼性</h2></div><p>現在HealthとRaw Incident実績を表示します。Maintenance WindowはこのScorecardから障害を消さず、SLO計算レイヤーだけに適用されます。</p></div>
               <div className={styles.serviceGrid}>{data.services.map((service) => <ReliabilityServiceCard key={service.id} service={service} range={range} />)}</div>
             </section>
             <ReliabilityNotificationPanel data={data} />
-            <section className={styles.notice}><strong>Incident-free ratioとError Budgetについて</strong><p>Recovery済みIncidentと開始時刻を証明できるActive IncidentだけをDowntimeへ含めます。複数障害の重複時間は1回だけ数えます。開始時刻不明のActive障害がある場合は実際の比率が表示値以下、Error Budget消費とBurnは表示値以上になり得るため、不確実性を記号付きで明示します。</p></section>
+            <section className={styles.notice}><strong>Raw ReliabilityとSLOについて</strong><p>Raw Incident-free ratio / Known DowntimeはMaintenance Windowの有無に関係なく実測障害を保持します。SLOだけがIncidentごとに適用可能な計画停止とのIntersectionを除外し、その残余区間をUnionしてBudget Burnを計算します。開始時刻不明のActive障害は引き続き不確実性として扱います。</p></section>
           </>
         )}
       </section>
