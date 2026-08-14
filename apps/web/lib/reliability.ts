@@ -14,6 +14,7 @@ import { buildReliabilityMaintenanceAdjustments } from "./reliability-maintenanc
 import type { ReliabilityRange, ReliabilitySnapshot } from "./reliability-types";
 
 export type {
+  ReliabilityBackupType,
   ReliabilityHealth,
   ReliabilityMaintenanceScopeType,
   ReliabilityMaintenanceTargetCatalog,

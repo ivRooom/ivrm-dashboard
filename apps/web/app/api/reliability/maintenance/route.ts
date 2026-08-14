@@ -5,7 +5,16 @@ import {
   cancelReliabilityMaintenanceWindow,
   createReliabilityMaintenanceWindow,
 } from "../../../../lib/reliability-maintenance";
+import {
+  RELIABILITY_CONTAINER_NAME_PATTERN,
+  RELIABILITY_TARGET_NAME_PATTERN,
+  RELIABILITY_UUID_PATTERN,
+  isReliabilityBackupType,
+  isReliabilityMaintenanceScopeType,
+  isReliabilitySloServiceId,
+} from "../../../../lib/reliability-maintenance-validation";
 import type {
+  ReliabilityBackupType,
   ReliabilityMaintenanceScopeType,
   ReliabilitySloServiceId,
 } from "../../../../lib/reliability";
@@ -14,22 +23,6 @@ import { parseIncidentRange } from "../../../../lib/unified-incidents";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const SERVICE_IDS = new Set<ReliabilitySloServiceId>([
-  "overall",
-  "host",
-  "container",
-  "backup",
-]);
-const SCOPE_TYPES = new Set<ReliabilityMaintenanceScopeType>([
-  "service",
-  "host",
-  "container",
-  "backup",
-]);
-const BACKUP_TYPES = new Set(["world", "config", "permissions", "full"] as const);
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const CONTAINER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
-const TARGET_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
 const MAX_BODY_BYTES = 8_192;
 const MAX_DURATION_MS = 7 * 86_400_000;
 const JST_OFFSET_MS = 9 * 3_600_000;
@@ -40,8 +33,13 @@ type Target = {
   containerName: string | null;
   backupTarget: string | null;
   gameMode: string | null;
-  backupType: "world" | "config" | "permissions" | "full" | null;
+  backupType: ReliabilityBackupType | null;
 };
+
+type BodyReadResult =
+  | { kind: "ok"; body: Record<string, unknown> }
+  | { kind: "invalid" }
+  | { kind: "too_large" };
 
 function jsonResponse(body: Record<string, unknown>, status = 200): NextResponse {
   return NextResponse.json(body, {
@@ -57,30 +55,86 @@ function wantsJson(request: NextRequest): boolean {
   return request.headers.get("accept")?.includes("application/json") ?? false;
 }
 
-async function readBody(request: NextRequest): Promise<Record<string, unknown> | null> {
-  const contentLength = Number(request.headers.get("content-length") ?? "0");
-  if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) return null;
+async function readLimitedText(request: NextRequest): Promise<string | null | "too_large"> {
+  const contentLengthHeader = request.headers.get("content-length");
+  if (contentLengthHeader) {
+    const contentLength = Number(contentLengthHeader);
+    if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
+      return "too_large";
+    }
+  }
+
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_BODY_BYTES) {
+        await reader.cancel("request_body_too_large").catch(() => undefined);
+        return "too_large";
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return null;
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+}
+
+async function readBody(request: NextRequest): Promise<BodyReadResult> {
+  let text: string | null | "too_large";
+  try {
+    text = await readLimitedText(request);
+  } catch {
+    return { kind: "invalid" };
+  }
+  if (text === "too_large") return { kind: "too_large" };
+  if (text === null) return { kind: "invalid" };
 
   const contentType = request.headers.get("content-type")?.toLowerCase() || "";
   if (contentType.includes("application/json")) {
-    const body = (await request.json().catch(() => null)) as unknown;
-    return typeof body === "object" && body !== null && !Array.isArray(body)
-      ? (body as Record<string, unknown>)
-      : null;
+    try {
+      const body = JSON.parse(text) as unknown;
+      return typeof body === "object" && body !== null && !Array.isArray(body)
+        ? { kind: "ok", body: body as Record<string, unknown> }
+        : { kind: "invalid" };
+    } catch {
+      return { kind: "invalid" };
+    }
   }
-  const form = await request.formData().catch(() => null);
-  if (!form) return null;
-  return {
-    action: form.get("action"),
-    scopeType: form.get("scopeType"),
-    targetKey: form.get("targetKey"),
-    startsAt: form.get("startsAt"),
-    endsAt: form.get("endsAt"),
-    reason: form.get("reason"),
-    acknowledged: form.has("acknowledged"),
-    windowId: form.get("windowId"),
-    range: form.get("range"),
-  };
+
+  if (contentType.includes("application/x-www-form-urlencoded")) {
+    const form = new URLSearchParams(text);
+    return {
+      kind: "ok",
+      body: {
+        action: form.get("action"),
+        scopeType: form.get("scopeType"),
+        targetKey: form.get("targetKey"),
+        startsAt: form.get("startsAt"),
+        endsAt: form.get("endsAt"),
+        reason: form.get("reason"),
+        acknowledged: form.has("acknowledged"),
+        idempotencyKey: form.get("idempotencyKey"),
+        windowId: form.get("windowId"),
+        range: form.get("range"),
+      },
+    };
+  }
+
+  return { kind: "invalid" };
 }
 
 function redirectResult(request: NextRequest, range: string, outcome: string): NextResponse {
@@ -94,9 +148,7 @@ function redirectResult(request: NextRequest, range: string, outcome: string): N
 }
 
 function parseScope(value: unknown): ReliabilityMaintenanceScopeType | null {
-  return typeof value === "string" && SCOPE_TYPES.has(value as ReliabilityMaintenanceScopeType)
-    ? (value as ReliabilityMaintenanceScopeType)
-    : null;
+  return isReliabilityMaintenanceScopeType(value) ? value : null;
 }
 
 function parseTarget(scopeType: ReliabilityMaintenanceScopeType, value: unknown): Target | null {
@@ -104,9 +156,9 @@ function parseTarget(scopeType: ReliabilityMaintenanceScopeType, value: unknown)
   const parts = value.split("/");
 
   if (scopeType === "service") {
-    if (parts.length !== 1 || !SERVICE_IDS.has(value as ReliabilitySloServiceId)) return null;
+    if (parts.length !== 1 || !isReliabilitySloServiceId(value)) return null;
     return {
-      serviceId: value as ReliabilitySloServiceId,
+      serviceId: value,
       hostId: null,
       containerName: null,
       backupTarget: null,
@@ -116,7 +168,7 @@ function parseTarget(scopeType: ReliabilityMaintenanceScopeType, value: unknown)
   }
 
   if (scopeType === "host") {
-    if (parts.length !== 1 || !UUID_PATTERN.test(value)) return null;
+    if (parts.length !== 1 || !RELIABILITY_UUID_PATTERN.test(value)) return null;
     return {
       serviceId: null,
       hostId: value,
@@ -130,8 +182,8 @@ function parseTarget(scopeType: ReliabilityMaintenanceScopeType, value: unknown)
   if (scopeType === "container") {
     if (
       parts.length !== 2 ||
-      !UUID_PATTERN.test(parts[0] ?? "") ||
-      !CONTAINER_PATTERN.test(parts[1] ?? "")
+      !RELIABILITY_UUID_PATTERN.test(parts[0] ?? "") ||
+      !RELIABILITY_CONTAINER_NAME_PATTERN.test(parts[1] ?? "")
     ) return null;
     return {
       serviceId: null,
@@ -145,10 +197,10 @@ function parseTarget(scopeType: ReliabilityMaintenanceScopeType, value: unknown)
 
   if (
     parts.length !== 4 ||
-    !UUID_PATTERN.test(parts[0] ?? "") ||
-    !TARGET_PATTERN.test(parts[1] ?? "") ||
-    !TARGET_PATTERN.test(parts[2] ?? "") ||
-    !BACKUP_TYPES.has(parts[3] as "world" | "config" | "permissions" | "full")
+    !RELIABILITY_UUID_PATTERN.test(parts[0] ?? "") ||
+    !RELIABILITY_TARGET_NAME_PATTERN.test(parts[1] ?? "") ||
+    !RELIABILITY_TARGET_NAME_PATTERN.test(parts[2] ?? "") ||
+    !isReliabilityBackupType(parts[3])
   ) return null;
   return {
     serviceId: null,
@@ -156,7 +208,7 @@ function parseTarget(scopeType: ReliabilityMaintenanceScopeType, value: unknown)
     containerName: null,
     backupTarget: parts[1] ?? null,
     gameMode: parts[2] ?? null,
-    backupType: parts[3] as "world" | "config" | "permissions" | "full",
+    backupType: parts[3] as ReliabilityBackupType,
   };
 }
 
@@ -218,14 +270,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return jsonResponse({ error: "administrator_role_required" }, 403);
   }
 
-  const body = await readBody(request);
-  if (!body) return jsonResponse({ error: "request_body_invalid" }, 400);
+  const bodyResult = await readBody(request);
+  if (bodyResult.kind === "too_large") {
+    return jsonResponse({ error: "request_body_too_large" }, 413);
+  }
+  if (bodyResult.kind === "invalid") {
+    return jsonResponse({ error: "request_body_invalid" }, 400);
+  }
+  const body = bodyResult.body;
   const range = parseIncidentRange(typeof body.range === "string" ? body.range : null);
   const action = body.action;
 
   if (action === "cancel") {
     const windowId = typeof body.windowId === "string" ? body.windowId : "";
-    if (!UUID_PATTERN.test(windowId)) {
+    if (!RELIABILITY_UUID_PATTERN.test(windowId)) {
       return wantsJson(request)
         ? jsonResponse({ error: "window_id_invalid" }, 400)
         : redirectResult(request, range, "window_invalid");
@@ -258,11 +316,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const startsAt = parseDateTime(body.startsAt);
   const endsAt = parseDateTime(body.endsAt);
   const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+  const idempotencyKey =
+    typeof body.idempotencyKey === "string" ? body.idempotencyKey : "";
 
   if (!scopeType || !target) {
     return wantsJson(request)
       ? jsonResponse({ error: "maintenance_target_invalid" }, 400)
       : redirectResult(request, range, "target_invalid");
+  }
+  if (!RELIABILITY_UUID_PATTERN.test(idempotencyKey)) {
+    return wantsJson(request)
+      ? jsonResponse({ error: "maintenance_idempotency_key_invalid" }, 400)
+      : redirectResult(request, range, "idempotency_invalid");
   }
   if (!acknowledgement(body.acknowledged)) {
     return wantsJson(request)
@@ -301,7 +366,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       startsAt,
       endsAt,
       reason,
-      requestId: randomUUID(),
+      idempotencyKey,
       actorEmail: session.email,
       actorDiscordUserId: session.discordUserId,
       actorRole,

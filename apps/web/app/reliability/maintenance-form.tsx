@@ -13,6 +13,7 @@ type Props = {
   range: ReliabilityRange;
   defaultStartsAt: string;
   defaultEndsAt: string;
+  idempotencyKey: string;
 };
 
 type TargetOption = {
@@ -74,6 +75,7 @@ export function ReliabilityMaintenanceForm({
   range,
   defaultStartsAt,
   defaultEndsAt,
+  idempotencyKey,
 }: Props) {
   const [scopeType, setScopeType] = useState<ReliabilityMaintenanceScopeType>(() =>
     initialScope(catalog),
@@ -92,14 +94,13 @@ export function ReliabilityMaintenanceForm({
     setTargetKey(nextOptions[0]?.value ?? "");
   }
 
-  const broadScope =
-    scopeType === "host" ||
-    (scopeType === "service" && (targetKey === "overall" || targetKey === "host"));
+  const broadScope = scopeType === "host" || scopeType === "service";
 
   return (
     <form action="/api/reliability/maintenance" className={styles.maintenanceForm} method="post">
       <input name="action" type="hidden" value="create" />
       <input name="range" type="hidden" value={range} />
+      <input name="idempotencyKey" type="hidden" value={idempotencyKey} />
 
       <div className={styles.maintenanceFormGrid}>
         <label>

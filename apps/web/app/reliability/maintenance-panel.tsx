@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
   ReliabilityMaintenanceTargetCatalog,
   ReliabilityMaintenanceWindow,
@@ -34,6 +35,7 @@ const OUTCOME_MESSAGES: Record<string, string> = {
   time_invalid: "開始・終了日時が不正です。過去5分より前の後付け登録や7日超のWindowは作成できません。",
   reason_invalid: "理由は1〜200文字で入力してください。",
   acknowledgement_required: "SLO計算だけから除外することへの確認が必要です。",
+  idempotency_invalid: "作成要求IDが不正です。画面を再読み込みしてもう一度入力してください。",
   window_invalid: "Maintenance Window IDが不正です。",
   mutation_failed: "Maintenance Windowの更新に失敗しました。DB接続または対象状態を確認してください。",
 };
@@ -50,22 +52,7 @@ function dateTime(value: string): string {
 }
 
 function localDateTimeInput(value: Date): string {
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "Asia/Tokyo",
-  });
-  const parts = Object.fromEntries(
-    formatter
-      .formatToParts(value)
-      .filter((part) => part.type !== "literal")
-      .map((part) => [part.type, part.value]),
-  );
-  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+  return new Date(value.getTime() + 9 * 3_600_000).toISOString().slice(0, 16);
 }
 
 function effectiveEnd(window: ReliabilityMaintenanceWindow): number {
@@ -197,84 +184,89 @@ export function ReliabilityMaintenancePanel({
         </div>
       ) : null}
 
-      <div className={styles.maintenanceSummary}>
-        <div><span>ACTIVE</span><strong>{activeCount}</strong></div>
-        <div><span>UPCOMING</span><strong>{upcomingCount}</strong></div>
-        <div><span>LOADED</span><strong>{windows.length}</strong></div>
-        <div><span>POLICY</span><strong>Scoped only</strong></div>
-      </div>
+      {dataAvailable ? (
+        <>
+          <div className={styles.maintenanceSummary}>
+            <div><span>ACTIVE</span><strong>{activeCount}</strong></div>
+            <div><span>UPCOMING</span><strong>{upcomingCount}</strong></div>
+            <div><span>LOADED</span><strong>{windows.length}</strong></div>
+            <div><span>POLICY</span><strong>Scoped only</strong></div>
+          </div>
 
-      {canManage ? (
-        <details className={styles.maintenanceCreate} open={outcome !== null && outcome !== "cancelled"}>
-          <summary>Maintenance Windowを登録</summary>
-          {!targetsDataAvailable || !targets ? (
-            <div className={styles.coverage} role="status">
-              対象Host / Container / Backup一覧を取得できないため、新規登録フォームを無効化しています。既存Windowの表示・取消には影響しません。
+          {canManage ? (
+            <details className={styles.maintenanceCreate} open={outcome !== null && outcome !== "cancelled"}>
+              <summary>Maintenance Windowを登録</summary>
+              {!targetsDataAvailable || !targets ? (
+                <div className={styles.coverage} role="status">
+                  対象Host / Container / Backup一覧を取得できないため、新規登録フォームを無効化しています。既存Windowの表示・取消には影響しません。
+                </div>
+              ) : (
+                <ReliabilityMaintenanceForm
+                  catalog={targets}
+                  defaultEndsAt={localDateTimeInput(defaultEnd)}
+                  defaultStartsAt={localDateTimeInput(defaultStart)}
+                  idempotencyKey={randomUUID()}
+                  range={range}
+                />
+              )}
+            </details>
+          ) : null}
+
+          {visible.length === 0 ? (
+            <div className={styles.maintenanceEmpty}>
+              <strong>Maintenance Windowはありません</strong>
+              <p>計画停止を登録していない期間は、SLO-counted DowntimeとRaw Downtimeが一致します。</p>
             </div>
           ) : (
-            <ReliabilityMaintenanceForm
-              catalog={targets}
-              defaultEndsAt={localDateTimeInput(defaultEnd)}
-              defaultStartsAt={localDateTimeInput(defaultStart)}
-              range={range}
-            />
+            <div className={styles.maintenanceGrid}>
+              {visible.map((window) => {
+                const status = windowStatus(window, generatedAtMs);
+                const cancellable =
+                  canManage &&
+                  !window.cancelledAt &&
+                  Date.parse(window.endsAt) > generatedAtMs;
+                return (
+                  <article className={styles.maintenanceCard} key={window.id}>
+                    <div className={styles.maintenanceHead}>
+                      <div>
+                        <span>{window.scopeType.toUpperCase()}</span>
+                        <h3>{targetLabel(window)}</h3>
+                        <small>{scopeDescription(window)}</small>
+                      </div>
+                      <span className={`${styles.badge} ${statusClass(status)}`}>
+                        {statusLabel(status)}
+                      </span>
+                    </div>
+
+                    <p className={styles.maintenanceReason}>{window.reason}</p>
+                    <dl className={styles.maintenanceTimes}>
+                      <div><dt>START</dt><dd>{dateTime(window.startsAt)} JST</dd></div>
+                      <div><dt>END</dt><dd>{dateTime(window.endsAt)} JST</dd></div>
+                      {window.cancelledAt ? (
+                        <div><dt>CANCELLED</dt><dd>{dateTime(window.cancelledAt)} JST</dd></div>
+                      ) : null}
+                    </dl>
+
+                    {cancellable ? (
+                      <form action="/api/reliability/maintenance" method="post">
+                        <input name="action" type="hidden" value="cancel" />
+                        <input name="windowId" type="hidden" value={window.id} />
+                        <input name="range" type="hidden" value={range} />
+                        <button type="submit">このWindowを取り消す</button>
+                      </form>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
           )}
-        </details>
-      ) : null}
 
-      {visible.length === 0 ? (
-        <div className={styles.maintenanceEmpty}>
-          <strong>Maintenance Windowはありません</strong>
-          <p>計画停止を登録していない期間は、SLO-counted DowntimeとRaw Downtimeが一致します。</p>
-        </div>
-      ) : (
-        <div className={styles.maintenanceGrid}>
-          {visible.map((window) => {
-            const status = windowStatus(window, generatedAtMs);
-            const cancellable =
-              canManage &&
-              !window.cancelledAt &&
-              Date.parse(window.endsAt) > generatedAtMs;
-            return (
-              <article className={styles.maintenanceCard} key={window.id}>
-                <div className={styles.maintenanceHead}>
-                  <div>
-                    <span>{window.scopeType.toUpperCase()}</span>
-                    <h3>{targetLabel(window)}</h3>
-                    <small>{scopeDescription(window)}</small>
-                  </div>
-                  <span className={`${styles.badge} ${statusClass(status)}`}>
-                    {statusLabel(status)}
-                  </span>
-                </div>
-
-                <p className={styles.maintenanceReason}>{window.reason}</p>
-                <dl className={styles.maintenanceTimes}>
-                  <div><dt>START</dt><dd>{dateTime(window.startsAt)} JST</dd></div>
-                  <div><dt>END</dt><dd>{dateTime(window.endsAt)} JST</dd></div>
-                  {window.cancelledAt ? (
-                    <div><dt>CANCELLED</dt><dd>{dateTime(window.cancelledAt)} JST</dd></div>
-                  ) : null}
-                </dl>
-
-                {cancellable ? (
-                  <form action="/api/reliability/maintenance" method="post">
-                    <input name="action" type="hidden" value="cancel" />
-                    <input name="windowId" type="hidden" value={window.id} />
-                    <input name="range" type="hidden" value={range} />
-                    <button type="submit">このWindowを取り消す</button>
-                  </form>
-                ) : null}
-              </article>
-            );
-          })}
-        </div>
-      )}
-
-      {ordered.length > visible.length ? (
-        <p className={styles.maintenanceFootnote}>
-          表示量を抑えるため最新・進行中の24件を表示しています。SLO計算には取得済みの全Windowを使用します。
-        </p>
+          {ordered.length > visible.length ? (
+            <p className={styles.maintenanceFootnote}>
+              表示量を抑えるため最新・進行中の24件を表示しています。SLO計算には取得済みの全Windowを使用します。
+            </p>
+          ) : null}
+        </>
       ) : null}
     </section>
   );

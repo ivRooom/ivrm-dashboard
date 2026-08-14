@@ -11,6 +11,7 @@ export type ReliabilitySloBudgetState =
   | "coverage_unknown"
   | "data_unavailable";
 export type ReliabilityMaintenanceScopeType = "service" | "host" | "container" | "backup";
+export type ReliabilityBackupType = "world" | "config" | "permissions" | "full";
 
 export type ReliabilityService = {
   id: ReliabilityServiceId;
@@ -48,7 +49,7 @@ export type ReliabilityMaintenanceWindow = {
   containerName: string | null;
   backupTarget: string | null;
   gameMode: string | null;
-  backupType: "world" | "config" | "permissions" | "full" | null;
+  backupType: ReliabilityBackupType | null;
   startsAt: string;
   endsAt: string;
   reason: string;
@@ -74,7 +75,7 @@ export type ReliabilityMaintenanceTargetCatalog = {
     hostDisplayName: string;
     backupTarget: string;
     gameMode: string;
-    backupType: "world" | "config" | "permissions" | "full";
+    backupType: ReliabilityBackupType;
   }>;
 };
 
