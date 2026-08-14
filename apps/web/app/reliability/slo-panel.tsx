@@ -8,6 +8,7 @@ import styles from "./reliability.module.css";
 type Props = {
   budgets: ReliabilitySloBudget[];
   policyDataAvailable: boolean;
+  maintenanceDataAvailable: boolean;
   canManage: boolean;
   range: ReliabilityRange;
   outcome: string | null;
@@ -100,6 +101,7 @@ function updatedAt(value: string | null): string {
 export function ReliabilitySloPanel({
   budgets,
   policyDataAvailable,
+  maintenanceDataAvailable,
   canManage,
   range,
   outcome,
@@ -114,13 +116,18 @@ export function ReliabilitySloPanel({
           <h2 id="slo-budget-title">SLOとError Budget</h2>
         </div>
         <p>
-          SLOは明示設定されたTargetだけを使用します。Coverageが未確定の場合、Budget消費は下限値、残量は上限値として表示します。
+          ObservedとBudget Burnは、Raw Downtimeから該当する計画停止の重複区間だけを除外したSLO-counted Downtimeで計算します。Raw Reliability指標は変更しません。
         </p>
       </div>
 
       {!policyDataAvailable ? (
         <div className={styles.coverage} role="status">
           SLO Policyを取得できないため、SLO / Error BudgetだけをUnknownとして継続表示しています。IncidentベースのReliability指標には影響しません。
+        </div>
+      ) : null}
+      {!maintenanceDataAvailable ? (
+        <div className={styles.coverage} role="status">
+          Maintenance Windowを取得できないため、計画停止を0秒と仮定せず、設定済みSLOをData unavailableにしています。Raw Downtimeは引き続き表示できます。
         </div>
       ) : null}
       {message ? (
@@ -144,15 +151,21 @@ export function ReliabilitySloPanel({
 
             <div className={styles.sloMetrics}>
               <div><span>TARGET</span><strong>{target(budget)}</strong></div>
-              <div><span>OBSERVED</span><strong>{observed(budget)}</strong></div>
+              <div><span>OBSERVED / SLO</span><strong>{observed(budget)}</strong></div>
               <div><span>ERROR BUDGET</span><strong>{duration(budget.allowedDowntimeSeconds)}</strong></div>
               <div><span>USED</span><strong>{used(budget)}</strong></div>
               <div><span>REMAINING</span><strong>{remaining(budget)}</strong></div>
               <div><span>BUDGET BURN</span><strong>{burn(budget)}</strong></div>
             </div>
 
+            <div className={styles.sloAdjustment} aria-label={`${budget.label} SLO停止時間内訳`}>
+              <div><span>RAW DOWNTIME</span><strong>{duration(budget.rawDowntimeSeconds)}</strong></div>
+              <div><span>MAINTENANCE EXCLUDED</span><strong>{duration(budget.maintenanceExcludedSeconds)}</strong></div>
+              <div><span>SLO-COUNTED</span><strong>{duration(budget.knownDowntimeSeconds)}</strong></div>
+            </div>
+
             <div className={styles.sloFooter}>
-              <a href={budget.detailHref}>根拠データを確認</a>
+              <a href={budget.detailHref}>Raw Incidentを確認</a>
               <small>Policy更新: {updatedAt(budget.updatedAt)}</small>
             </div>
 
@@ -189,9 +202,9 @@ export function ReliabilitySloPanel({
       </div>
 
       <div className={styles.sloNote}>
-        <strong>Budget Burnについて</strong>
+        <strong>SLO-counted Downtimeについて</strong>
         <p>
-          選択期間のKnown Downtimeを、その期間で許容されるError Budgetで割った値です。1.00x以上はBudget超過を意味します。開始時刻不明のActive Incidentがある場合、実際のBurnは表示値以上になり得ます。Notificationは配送要求の完全な分母がまだ定義されていないため、SLO対象には含めていません。
+          Raw Incidentの区間ごとに、そのIncidentへ適用されるMaintenance WindowとのIntersectionだけを除外し、残った区間をUnionしてSLO-counted Downtimeを求めます。別Hostや別Targetの同時障害を広い時間帯だけで誤って除外しません。開始時刻不明のActive Incidentがある場合、実際のBurnは表示値以上になり得ます。Notificationは配送要求の完全な分母が未定義のためSLO対象外です。
         </p>
       </div>
     </section>

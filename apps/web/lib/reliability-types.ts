@@ -10,6 +10,7 @@ export type ReliabilitySloBudgetState =
   | "exhausted"
   | "coverage_unknown"
   | "data_unavailable";
+export type ReliabilityMaintenanceScopeType = "service" | "host" | "container" | "backup";
 
 export type ReliabilityService = {
   id: ReliabilityServiceId;
@@ -37,6 +38,54 @@ export type ReliabilitySloPolicy = {
   updatedAt: string;
 };
 
+export type ReliabilityMaintenanceWindow = {
+  id: string;
+  scopeType: ReliabilityMaintenanceScopeType;
+  serviceId: ReliabilitySloServiceId | null;
+  hostId: string | null;
+  serverId: string | null;
+  hostDisplayName: string | null;
+  containerName: string | null;
+  backupTarget: string | null;
+  gameMode: string | null;
+  backupType: "world" | "config" | "permissions" | "full" | null;
+  startsAt: string;
+  endsAt: string;
+  reason: string;
+  cancelledAt: string | null;
+  createdAt: string;
+};
+
+export type ReliabilityMaintenanceTargetCatalog = {
+  hosts: Array<{
+    hostId: string;
+    serverId: string;
+    displayName: string;
+  }>;
+  containers: Array<{
+    hostId: string;
+    serverId: string;
+    hostDisplayName: string;
+    containerName: string;
+  }>;
+  backups: Array<{
+    hostId: string;
+    serverId: string;
+    hostDisplayName: string;
+    backupTarget: string;
+    gameMode: string;
+    backupType: "world" | "config" | "permissions" | "full";
+  }>;
+};
+
+export type ReliabilitySloMaintenanceAdjustment = {
+  serviceId: ReliabilitySloServiceId;
+  rawDowntimeSeconds: number;
+  countedDowntimeSeconds: number;
+  excludedMaintenanceSeconds: number;
+  exactCoverage: boolean;
+};
+
 export type ReliabilitySloBudget = {
   serviceId: ReliabilitySloServiceId;
   label: string;
@@ -46,7 +95,9 @@ export type ReliabilitySloBudget = {
   updatedAt: string | null;
   observedAvailabilityPercent: number | null;
   observedExact: boolean;
+  rawDowntimeSeconds: number | null;
   knownDowntimeSeconds: number | null;
+  maintenanceExcludedSeconds: number | null;
   allowedDowntimeSeconds: number | null;
   remainingBudgetSeconds: number | null;
   remainingExact: boolean;
@@ -75,6 +126,8 @@ export type ReliabilitySnapshot = {
   backupDataAvailable: boolean;
   notificationDataAvailable: boolean;
   sloPolicyDataAvailable: boolean;
+  maintenanceDataAvailable: boolean;
+  maintenanceWindows: ReliabilityMaintenanceWindow[];
   overall: {
     health: ReliabilityHealth;
     activeIncidentCount: number;
