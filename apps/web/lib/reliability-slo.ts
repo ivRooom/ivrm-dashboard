@@ -209,10 +209,10 @@ function sourceFor(
 export function buildReliabilitySloBudgets(
   services: ReliabilityService[],
   overall: ReliabilitySnapshot["overall"],
-  policies: ReliabilitySloPolicy[],
+  policies: ReliabilitySloPolicy[] | null,
   range: ReliabilityRange,
 ): ReliabilitySloBudget[] {
-  const policyByService = new Map(policies.map((policy) => [policy.serviceId, policy]));
+  const policyByService = new Map((policies ?? []).map((policy) => [policy.serviceId, policy]));
   const rangeSeconds = INCIDENT_RANGE_CONFIG[range].hours * 3_600;
 
   return SLO_SERVICE_IDS.map((serviceId) => {
@@ -233,6 +233,18 @@ export function buildReliabilitySloBudgets(
       knownDowntimeSeconds: source?.knownDowntimeSeconds ?? null,
       detailHref: source?.detailHref ?? `/reliability?range=${range}`,
     };
+
+    if (policies === null) {
+      return {
+        ...base,
+        state: "data_unavailable" as const,
+        allowedDowntimeSeconds: null,
+        remainingBudgetSeconds: null,
+        remainingExact: false,
+        budgetUsedPercent: null,
+        burnRate: null,
+      };
+    }
 
     if (!policy || !policy.enabled || policy.targetPercent === null) {
       return {

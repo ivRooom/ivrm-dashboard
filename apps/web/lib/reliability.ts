@@ -36,7 +36,7 @@ export async function getReliabilitySnapshot(
     .then((policies) => ({ ok: true as const, policies }))
     .catch((error: unknown) => {
       console.error("Reliability CenterのSLO Policy取得に失敗しました", error);
-      return { ok: false as const, policies: [] };
+      return { ok: false as const, policies: null };
     });
   const [incidents, notification, sloPolicy] = await Promise.all([
     getUnifiedIncidentCenterSnapshot(range),

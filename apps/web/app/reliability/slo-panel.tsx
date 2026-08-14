@@ -52,6 +52,13 @@ function percent(value: number | null, digits = 3): string {
   return value === null ? "—" : `${value.toFixed(digits)}%`;
 }
 
+function target(budget: ReliabilitySloBudget): string {
+  if (budget.state === "data_unavailable") return "—";
+  if (budget.targetPercent === null) return "未設定";
+  const value = percent(budget.targetPercent, 4);
+  return budget.enabled ? value : `${value} / 無効`;
+}
+
 function observed(budget: ReliabilitySloBudget): string {
   if (budget.observedAvailabilityPercent === null) return "—";
   const value = percent(budget.observedAvailabilityPercent);
@@ -135,7 +142,7 @@ export function ReliabilitySloPanel({
             </div>
 
             <div className={styles.sloMetrics}>
-              <div><span>TARGET</span><strong>{budget.enabled ? percent(budget.targetPercent, 4) : "未設定"}</strong></div>
+              <div><span>TARGET</span><strong>{target(budget)}</strong></div>
               <div><span>OBSERVED</span><strong>{observed(budget)}</strong></div>
               <div><span>ERROR BUDGET</span><strong>{duration(budget.allowedDowntimeSeconds)}</strong></div>
               <div><span>USED</span><strong>{used(budget)}</strong></div>
