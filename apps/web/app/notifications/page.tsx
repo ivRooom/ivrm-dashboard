@@ -4,6 +4,7 @@ import {
   type NotificationDelivery,
   type NotificationSeverity,
   type NotificationSignal,
+  type NotificationSource,
   type NotificationStatus,
 } from "../../lib/notifications";
 import styles from "./notifications.module.css";
@@ -16,12 +17,14 @@ const severityLabels: Record<NotificationSeverity, string> = {
 const statusLabels: Record<NotificationStatus, string> = {
   pending: "待機", sending: "配送中", sent: "送信済み", retry: "再試行", failed: "失敗", suppressed: "抑制",
 };
-const sourceLabels = { host: "HOST", container: "CONTAINER", backup: "BACKUP" } as const;
+const sourceLabels: Record<NotificationSource, string> = {
+  host: "HOST", container: "CONTAINER", backup: "BACKUP", reliability: "SLO",
+};
 const transitionLabels = { opened: "発生", escalated: "重大化", recovered: "復旧", event: "イベント" } as const;
 const signalLabels: Record<string, string> = {
   heartbeat: "Heartbeat", state_changed: "State", health_changed: "Health", exit_code_changed: "ExitCode",
   run_failure: "Backup Run", checksum: "Checksum", backup_age: "Backup Age", remote_sync: "Remote Sync",
-  retention: "Retention", restore_test: "Restore Test",
+  retention: "Retention", restore_test: "Restore Test", slo_burn_rate: "SLO Burn Rate",
 };
 
 function formatDateTime(value: string | null): string {
@@ -114,9 +117,9 @@ export default async function NotificationsPage() {
           <div>
             <p className={styles.eyebrow}>ALERTING / DELIVERY / SUPPRESSION</p>
             <h1>通知センター</h1>
-            <p>Host・Container・Backupの異常をDurable Outboxへ集約し、発生・重大化・復旧・配送結果を同じ画面で追跡します。</p>
+            <p>Host・Container・Backup・SLO Burn Rateの異常をDurable Outboxへ集約し、発生・重大化・復旧・配送結果を同じ画面で追跡します。</p>
           </div>
-          <div className={styles.headerActions}><a href="/incidents" className={styles.secondaryLink}>Incident Center</a><a href="/backups" className={styles.secondaryLink}>Backup Center</a></div>
+          <div className={styles.headerActions}><a href="/incidents" className={styles.secondaryLink}>Incident Center</a><a href="/reliability#burn-rate" className={styles.secondaryLink}>Reliability Center</a><a href="/backups" className={styles.secondaryLink}>Backup Center</a></div>
         </header>
 
         {loadError ? (
@@ -144,8 +147,8 @@ export default async function NotificationsPage() {
             </section>
 
             <section className={styles.sectionBlock}>
-              <div className={styles.sectionHeading}><div><span>ACTIVE SIGNALS</span><h2>現在の通知対象</h2></div><p>同じSignalは重複通知せず、Warning→CriticalだけをEscalationとして追加送信します。</p></div>
-              {signals.length === 0 ? <div className={styles.emptyState}><strong>Active Signalはありません</strong><p>Host Heartbeat・Container Event・Backup SLAは現在通知対象外です。</p></div> : (
+              <div className={styles.sectionHeading}><div><span>ACTIVE SIGNALS</span><h2>現在の通知対象</h2></div><p>同じSignalは重複通知せず、Warning→CriticalだけをEscalationとして追加送信します。SLO Burn RateのCritical→Warningは無音で降格します。</p></div>
+              {signals.length === 0 ? <div className={styles.emptyState}><strong>Active Signalはありません</strong><p>Host Heartbeat・Container Event・Backup SLA・SLO Burn Rateは現在通知対象外です。</p></div> : (
                 <div className={styles.signalGrid}>{signals.map((signal) => (
                   <article className={styles.signalCard} key={signal.signalKey}>
                     <div className={styles.cardHeading}><div><p className={styles.entityType}>{signalKey(signal)}</p><h3>{signal.entityName}</h3><small>{signal.serverId}</small></div><span className={`${styles.badge} ${severityClass(signal.severity)}`}>{severityLabels[signal.severity]}</span></div>
@@ -174,13 +177,13 @@ export default async function NotificationsPage() {
             </section>
 
             <section className={styles.sectionBlock}>
-              <div className={styles.sectionHeading}><div><span>SUPPRESSION</span><h2>通知抑制</h2></div><p>Container Maintenanceに加え、Global / Host / Container / Backup / Signal単位で通知だけを抑制できます。</p></div>
+              <div className={styles.sectionHeading}><div><span>SUPPRESSION</span><h2>通知抑制</h2></div><p>Container Maintenanceに加え、Global / Host / Container / Backup / Reliability / Signal単位で通知だけを抑制できます。</p></div>
               {suppressions.length === 0 ? <div className={styles.emptyState}>明示的な通知抑制ルールはありません。</div> : (
                 <div className={styles.suppressionList}>{suppressions.map((rule) => <article key={rule.rowId}><span>{rule.scopeType.toUpperCase()}</span><strong>{rule.scopeKey}</strong><p>{rule.reason}</p><small>{formatDateTime(rule.startsAt)} → {formatDateTime(rule.endsAt)}</small></article>)}</div>
               )}
             </section>
 
-            <section className={styles.notice}><strong>通知を監視処理から分離</strong><p>Host OfflineはAgent自身ではなくSupabase CronがHeartbeatを再評価するため、Agentが停止した場合でも検知できます。配送はOutboxからClaimして最大5回Retryし、Secret・Webhook URL・生ログ・Player IP・Cookie・Tokenは通知履歴へ保存しません。</p></section>
+            <section className={styles.notice}><strong>通知を監視処理から分離</strong><p>Host OfflineはAgent自身ではなくSupabase CronがHeartbeatを再評価し、SLO Burn Rateは認証付きReconcilerが1h / 6h / 24hの確定Coverageを評価します。配送はOutboxからClaimして最大5回Retryし、Secret・Webhook URL・生ログ・Player IP・Cookie・Tokenは通知履歴へ保存しません。</p></section>
           </>
         ) : null}
       </section>
