@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import {
@@ -6,12 +6,21 @@ import {
   getConsoleSession,
   isPublicConsoleRoute,
 } from "../lib/console-auth";
+import { MobileNavigationLinks } from "./mobile-navigation";
 import { NavigationLinks } from "./navigation-links";
 import "./globals.css";
+import "./responsive.css";
 
 export const metadata: Metadata = {
   title: "IVRM Console",
   description: "IVRMのサービスとインフラを監視する統合運用コンソール",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#090b10",
 };
 
 const navigationLinkStyle = {
@@ -58,6 +67,7 @@ export default async function RootLayout({
       <body>
         <nav
           aria-label="管理コンソール"
+          className="console-toolbar-desktop"
           style={{
             position: "fixed",
             zIndex: 1000,
@@ -112,6 +122,35 @@ export default async function RootLayout({
             </form>
           ) : null}
         </nav>
+
+        <details className="console-mobile-menu">
+          <summary>
+            <span aria-hidden="true" className="console-mobile-menu-icon">☰</span>
+            <span>メニュー</span>
+          </summary>
+          <div className="console-mobile-menu-panel">
+            {session.authProvider === "discord" ? (
+              <div className="console-mobile-session">
+                {session.discordAvatarUrl ? (
+                  <img src={session.discordAvatarUrl} alt="" width={34} height={34} />
+                ) : null}
+                <div>
+                  <strong>{session.displayName || session.discordUsername}</strong>
+                  {session.role ? <small>{roleLabels[session.role]}</small> : null}
+                </div>
+              </div>
+            ) : null}
+            <nav aria-label="モバイル管理コンソール" className="console-mobile-links">
+              <MobileNavigationLinks />
+            </nav>
+            {session.authProvider === "discord" ? (
+              <form action="/api/auth/logout" method="post" className="console-mobile-logout-form">
+                <button type="submit" className="console-mobile-logout">ログアウト</button>
+              </form>
+            ) : null}
+          </div>
+        </details>
+
         {children}
       </body>
     </html>
