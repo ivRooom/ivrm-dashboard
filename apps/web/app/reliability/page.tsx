@@ -1,4 +1,5 @@
 import { AutoRefresh } from "../../components/auto-refresh";
+import { getConsoleSession, hasConsoleRole } from "../../lib/console-auth";
 import {
   INCIDENT_RANGE_CONFIG,
   parseIncidentRange,
@@ -10,6 +11,7 @@ import {
 } from "../../lib/reliability";
 import { ReliabilityNotificationPanel } from "./notification-panel";
 import { ReliabilityServiceCard } from "./service-card";
+import { ReliabilitySloPanel } from "./slo-panel";
 import styles from "./reliability.module.css";
 
 export const dynamic = "force-dynamic";
@@ -52,13 +54,22 @@ function indicatorClass(loadError: boolean, health: ReliabilityHealth | undefine
 export default async function ReliabilityPage({ searchParams }: PageProps) {
   const query = await searchParams;
   const range = parseIncidentRange(first(query.range));
-  let data = null;
-  let loadError = false;
-  try {
-    data = await getReliabilitySnapshot(range);
-  } catch (error) {
-    loadError = true;
-    console.error("Reliability Centerの取得に失敗しました", error);
+  const policyOutcome = first(query.policy);
+  const [reliabilityResult, sessionResult] = await Promise.allSettled([
+    getReliabilitySnapshot(range),
+    getConsoleSession(),
+  ]);
+
+  const data = reliabilityResult.status === "fulfilled" ? reliabilityResult.value : null;
+  const loadError = reliabilityResult.status === "rejected";
+  const canManageSlo =
+    sessionResult.status === "fulfilled" && hasConsoleRole(sessionResult.value, "administrator");
+
+  if (reliabilityResult.status === "rejected") {
+    console.error("Reliability Centerの取得に失敗しました", reliabilityResult.reason);
+  }
+  if (sessionResult.status === "rejected") {
+    console.error("Reliability CenterのSession取得に失敗しました", sessionResult.reason);
   }
 
   return (
@@ -71,7 +82,7 @@ export default async function ReliabilityPage({ searchParams }: PageProps) {
           <a href="/containers">コンテナ</a><a href={`/incidents?range=${range}`}>インシデント</a>
           <a href={`/backups?range=${range}`}>バックアップ</a><a href="/notifications">通知</a>
           <a aria-current="page" href={`/reliability?range=${range}`}>信頼性</a>
-          <a href={`/history?range=${range}`}>履歴グラフ</a>
+          <a href="/capacity">キャパシティ</a><a href={`/history?range=${range}`}>履歴グラフ</a>
         </nav>
         <div className="agent">
           <i className={indicatorClass(loadError, data?.overall.health)} />
@@ -83,12 +94,13 @@ export default async function ReliabilityPage({ searchParams }: PageProps) {
       <section className={`content ${styles.content}`}>
         <header className={styles.header}>
           <div>
-            <p className={styles.eyebrow}>RELIABILITY / HEALTH / RECOVERY</p>
+            <p className={styles.eyebrow}>RELIABILITY / SLO / ERROR BUDGET</p>
             <h1>Service Reliability Center</h1>
-            <p>Host・Container・Backup・Notificationを横断し、現在状態と構造化Incidentから証明できる稼働品質を確認します。</p>
+            <p>Host・Container・Backup・Notificationを横断し、現在状態、構造化Incident、明示設定されたSLOから稼働品質とError Budgetを確認します。</p>
           </div>
           <div className={styles.actions}>
             <a href={`/incidents?range=${range}`}>Incident Center</a>
+            <a href="/capacity">Capacity Forecast</a>
             <a href="/notifications">Notification Center</a>
           </div>
         </header>
@@ -119,12 +131,21 @@ export default async function ReliabilityPage({ searchParams }: PageProps) {
             {!data.backupDataAvailable || !data.notificationDataAvailable ? (
               <div className={styles.coverage}>一部データソースを取得できないため、取得できたサービスだけで継続表示しています。</div>
             ) : null}
+
+            <ReliabilitySloPanel
+              budgets={data.sloBudgets}
+              canManage={canManageSlo}
+              outcome={policyOutcome}
+              policyDataAvailable={data.sloPolicyDataAvailable}
+              range={range}
+            />
+
             <section>
-              <div className={styles.sectionTitle}><div><span>SERVICE SCORECARDS</span><h2>サービス別信頼性</h2></div><p>SLO値は未設定のため仮定せず、実Incidentだけを集計します。</p></div>
+              <div className={styles.sectionTitle}><div><span>SERVICE SCORECARDS</span><h2>サービス別信頼性</h2></div><p>現在HealthとIncident実績を表示します。SLO未設定サービスに目標値を補完・推測することはありません。</p></div>
               <div className={styles.serviceGrid}>{data.services.map((service) => <ReliabilityServiceCard key={service.id} service={service} range={range} />)}</div>
             </section>
             <ReliabilityNotificationPanel data={data} />
-            <section className={styles.notice}><strong>Incident-free ratioについて</strong><p>Recovery済みIncidentと開始時刻を証明できるActive IncidentだけをDowntimeへ含めます。複数障害の重複時間は1回だけ数えます。開始時刻不明のActive障害がある場合は実際の比率が表示値以下となるため「≤」で示します。</p></section>
+            <section className={styles.notice}><strong>Incident-free ratioとError Budgetについて</strong><p>Recovery済みIncidentと開始時刻を証明できるActive IncidentだけをDowntimeへ含めます。複数障害の重複時間は1回だけ数えます。開始時刻不明のActive障害がある場合は実際の比率が表示値以下、Error Budget消費とBurnは表示値以上になり得るため、不確実性を記号付きで明示します。</p></section>
           </>
         )}
       </section>

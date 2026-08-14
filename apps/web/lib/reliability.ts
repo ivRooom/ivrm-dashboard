@@ -5,6 +5,10 @@ import { getNotificationSummary } from "./notification-summary";
 import { buildIncidentService } from "./reliability-incident-service";
 import { buildNotificationService } from "./reliability-notification-service";
 import { buildOverall } from "./reliability-overall-data";
+import {
+  buildReliabilitySloBudgets,
+  getReliabilitySloPolicies,
+} from "./reliability-slo";
 import type { ReliabilityRange, ReliabilitySnapshot } from "./reliability-types";
 
 export type {
@@ -12,6 +16,10 @@ export type {
   ReliabilityRange,
   ReliabilityService,
   ReliabilityServiceId,
+  ReliabilitySloBudget,
+  ReliabilitySloBudgetState,
+  ReliabilitySloPolicy,
+  ReliabilitySloServiceId,
   ReliabilitySnapshot,
 } from "./reliability-types";
 
@@ -24,9 +32,16 @@ export async function getReliabilitySnapshot(
       console.error("Reliability CenterのNotification Summary取得に失敗しました", error);
       return { ok: false as const, summary: null };
     });
-  const [incidents, notification] = await Promise.all([
+  const sloPolicyPromise = getReliabilitySloPolicies()
+    .then((policies) => ({ ok: true as const, policies }))
+    .catch((error: unknown) => {
+      console.error("Reliability CenterのSLO Policy取得に失敗しました", error);
+      return { ok: false as const, policies: null };
+    });
+  const [incidents, notification, sloPolicy] = await Promise.all([
     getUnifiedIncidentCenterSnapshot(range),
     notificationPromise,
+    sloPolicyPromise,
   ]);
   const set = (type: "host" | "container" | "backup") => ({
     active: incidents.active.filter((item) => item.entityType === type),
@@ -44,14 +59,22 @@ export async function getReliabilitySnapshot(
     ),
     buildNotificationService(notification.summary),
   ];
+  const overall = buildOverall(incidents, services, range);
 
   return {
     generatedAt: incidents.generatedAt,
     range,
     backupDataAvailable: incidents.backupDataAvailable,
     notificationDataAvailable: notification.ok,
-    overall: buildOverall(incidents, services, range),
+    sloPolicyDataAvailable: sloPolicy.ok,
+    overall,
     services,
+    sloBudgets: buildReliabilitySloBudgets(
+      services,
+      overall,
+      sloPolicy.policies,
+      range,
+    ),
     notifications: {
       enabled: notification.summary?.channelEnabled ?? null,
       configured: notification.summary?.channelConfigured ?? null,
