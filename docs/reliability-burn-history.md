@@ -41,7 +41,14 @@ Reconciler状態取得に失敗しても、Raw Reliability / SLO / Burn Rate現�
 reliability_burn_rate_samples_5m
 ```
 
-1分ごとのReconcile結果をそのまま全件保存せず、サービスごとに5分バケットへ最新値をUpsertします。
+1分ごとのReconcile結果をそのまま全件保存せず、サービスごとに5分バケットへ圧縮します。同一5分内では、短いFast BurnやCoverage欠損を後続Healthyで消さないよう安全側に統合します。
+
+- Burn Rate: 1h / 6h / 24hそれぞれ最大値
+- state: `critical > warning > data_unavailable > coverage_unknown > healthy > unconfigured` のWorst状態
+- exact coverage: logical AND
+- downtime: 最大値
+- target_percent: 最新観測値
+- observed_at: 最新観測時刻
 
 保存対象:
 
@@ -67,7 +74,7 @@ reliability_burn_rate_samples_5m
 
 長期間表示でDOM/SVG点数が無制限に増えないようにしています。
 
-集約時は各表示バケット内の最大Burn Rateを採用し、短時間の悪化を平均化で隠しません。Coverageは`bool_and`で集約し、1つでも不完全なサンプルがあれば確定Coverageとして線を接続しません。
+表示集約でも各バケット内の最大Burn Rateを採用し、短時間の悪化を平均化で隠しません。Coverageは`bool_and`で集約し、1つでも不完全なサンプルがあれば確定Coverageとして線を接続しません。SLO Targetは最大値ではなく、その表示バケットで最後に観測したPolicy値を表示します。
 
 状態は安全側に次の優先順位で集約します。
 
@@ -139,7 +146,7 @@ Phase 4では履歴記録時のpruneで実装します。将来Reconcilerを長�
 
 ## Production rollout
 
-Migration 008はアプリより先に適用可能です。mainのPhase 3 Reconcilerはrecord RPCを呼ばないため、Migration適用だけでは履歴行は生成されません。
+Migration 008〜010はアプリより先に適用可能です。mainのPhase 3 Reconcilerはrecord RPCを呼ばないため、Migration適用だけでは履歴行は生成されません。
 
 Phase 4マージ後:
 
