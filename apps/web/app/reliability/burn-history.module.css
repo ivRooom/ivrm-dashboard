@@ -1,0 +1,217 @@
+.burnOps {
+  margin-top: 14px;
+  padding: 20px;
+  border: 1px solid rgba(148,163,184,.18);
+  border-radius: 20px;
+  background: linear-gradient(155deg, rgba(15,27,45,.96), rgba(6,14,28,.9));
+}
+
+.burnOpsHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.burnOpsHead > div > span,
+.historyHead > div > span {
+  color: #67e8f9;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .14em;
+}
+
+.burnOpsHead h3,
+.historyHead h3 {
+  margin: 5px 0 0;
+}
+
+.burnOpsHead p {
+  margin: 7px 0 0;
+  color: #8fa4bf;
+  line-height: 1.5;
+}
+
+.burnOpsGrid {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  gap: 9px;
+  margin-top: 16px;
+}
+
+.burnOpsGrid div,
+.historyLatest div {
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid rgba(148,163,184,.12);
+  border-radius: 13px;
+  background: rgba(2,8,23,.3);
+}
+
+.burnOpsGrid span,
+.historyLatest span {
+  display: block;
+  color: #7488a2;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .07em;
+}
+
+.burnOpsGrid strong,
+.historyLatest strong {
+  display: block;
+  margin-top: 5px;
+  color: #eef6ff;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.burnOpsGrid small {
+  display: block;
+  margin-top: 4px;
+  color: #71849d;
+  overflow-wrap: anywhere;
+}
+
+.burnOpsWarning {
+  margin: 14px 0 0;
+  padding: 11px 13px;
+  border-left: 3px solid #f59e0b;
+  background: rgba(120,53,15,.12);
+  color: #fde68a;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.historyUnavailable {
+  margin-top: 14px;
+  padding: 18px;
+  border: 1px solid rgba(248,113,113,.24);
+  border-radius: 16px;
+  background: rgba(127,29,29,.12);
+}
+
+.historyUnavailable strong { color: #fecaca; }
+.historyUnavailable p { margin: 7px 0 0; color: #d6a8ae; line-height: 1.55; }
+
+.historyGrid {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.historyCard {
+  min-width: 0;
+  padding: 18px;
+  display: grid;
+  gap: 13px;
+  border: 1px solid rgba(148,163,184,.18);
+  border-radius: 20px;
+  background: linear-gradient(155deg, rgba(15,27,45,.96), rgba(6,14,28,.9));
+}
+
+.historyHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.historyLatest {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  gap: 8px;
+}
+
+.historyEmpty {
+  margin: 0;
+  min-height: 110px;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  border: 1px dashed rgba(148,163,184,.18);
+  border-radius: 14px;
+  color: #8294ad;
+  text-align: center;
+  line-height: 1.55;
+}
+
+.historyChart {
+  width: 100%;
+  min-height: 150px;
+  border: 1px solid rgba(148,163,184,.1);
+  border-radius: 14px;
+  background: rgba(2,8,23,.32);
+  overflow: visible;
+}
+
+.historyAxis {
+  stroke: rgba(148,163,184,.24);
+  stroke-width: 1;
+}
+
+.historyLine1h,
+.historyLine6h,
+.historyLine24h {
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.historyLine1h { stroke: #67e8f9; }
+.historyLine6h { stroke: #a7f3d0; }
+.historyLine24h { stroke: #c4b5fd; }
+
+.historyFoot,
+.historyLegend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  color: #71849d;
+  font-size: 11px;
+}
+
+.historyFoot { justify-content: space-between; }
+.historyLegend small { margin-left: auto; }
+
+.legend1h,
+.legend6h,
+.legend24h {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #cfe7f8;
+  font-weight: 800;
+}
+
+.legend1h::before,
+.legend6h::before,
+.legend24h::before {
+  content: "";
+  width: 16px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentcolor;
+}
+
+.legend1h { color: #67e8f9; }
+.legend6h { color: #a7f3d0; }
+.legend24h { color: #c4b5fd; }
+
+@media (max-width: 900px) {
+  .burnOpsGrid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+
+@media (max-width: 760px) {
+  .historyGrid,
+  .burnOpsGrid { grid-template-columns: 1fr; }
+  .burnOpsHead,
+  .historyHead { flex-direction: column; }
+  .historyLegend small { margin-left: 0; width: 100%; }
+}
+
+@media (max-width: 420px) {
+  .historyLatest { grid-template-columns: 1fr; }
+}

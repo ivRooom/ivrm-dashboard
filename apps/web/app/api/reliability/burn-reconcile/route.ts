@@ -71,6 +71,7 @@ export async function POST(request: Request): Promise<Response> {
       evaluated: result.evaluated,
       changed: result.changed,
       skipped: result.skipped,
+      historyRecorded: result.historyRecorded,
       generatedAt: result.generatedAt,
     });
   } catch (error) {
