@@ -106,13 +106,13 @@ type minecraftEndpoint struct {
 }
 
 type minecraftPerformance struct {
-	Source        string  `json:"source"`
-	TPS1m         float64 `json:"tps1m"`
-	TPS5m         float64 `json:"tps5m"`
-	TPS15m        float64 `json:"tps15m"`
-	MSPTMedian1m  float64 `json:"msptMedian1m"`
-	MSPTP95_1m    float64 `json:"msptP95_1m"`
-	MSPTMax1m     float64 `json:"msptMax1m"`
+	Source       string  `json:"source"`
+	TPS1m        float64 `json:"tps1m"`
+	TPS5m        float64 `json:"tps5m"`
+	TPS15m       float64 `json:"tps15m"`
+	MSPTMedian1m float64 `json:"msptMedian1m"`
+	MSPTP95_1m   float64 `json:"msptP95_1m"`
+	MSPTMax1m    float64 `json:"msptMax1m"`
 }
 
 type minecraftProbe struct {
@@ -410,6 +410,7 @@ func validateContainerResourceMetrics(container containerMetrics) error {
 		if *value > maxSafeInteger {
 			return errors.New("バイト値がJavaScript安全整数の範囲外です")
 		}
+	}
 	if *container.MemoryUsageBytes > *container.MemoryLimitBytes {
 		return errors.New("メモリ使用量が上限を超えています")
 	}
