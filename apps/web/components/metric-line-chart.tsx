@@ -1,3 +1,4 @@
+import { LatestHorizontalScroller } from "./latest-horizontal-scroller";
 import styles from "./metric-line-chart.module.css";
 
 type MetricChartPoint = {
@@ -213,6 +214,19 @@ export function MetricLineChart({
   const xTicks = [0, 0.25, 0.5, 0.75, 1].map(
     (ratio) => startMilliseconds + duration * ratio,
   );
+  const firstDataTimestamp = visibleSeries.reduce<number | null>(
+    (earliest, item) => {
+      const first = item.points[0]?.timestamp;
+      if (first === undefined) {
+        return earliest;
+      }
+      return earliest === null ? first : Math.min(earliest, first);
+    },
+    null,
+  );
+  const hasLateDataStart =
+    firstDataTimestamp !== null &&
+    firstDataTimestamp - startMilliseconds > expectedIntervalSeconds * 1.5 * 1_000;
 
   return (
     <article className={styles.card}>
@@ -231,7 +245,13 @@ export function MetricLineChart({
         </div>
       ) : (
         <>
-          <div className={styles.scroll}>
+          {hasLateDataStart && firstDataTimestamp !== null ? (
+            <p className={styles.coverageNote}>
+              表示期間内のデータ開始: {formatTime(firstDataTimestamp)}
+            </p>
+          ) : null}
+
+          <LatestHorizontalScroller ariaLabel={title}>
             <svg
               className={styles.chart}
               viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
@@ -403,7 +423,7 @@ export function MetricLineChart({
                 );
               })}
             </svg>
-          </div>
+          </LatestHorizontalScroller>
 
           <div className={styles.legend} aria-label={`${title}の凡例`}>
             {visibleSeries.map((item, index) => {
