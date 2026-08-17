@@ -1,4 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { isIP } from "node:net";
 import {
   getConsoleLogSource,
   isConsoleLogLevel,
@@ -18,6 +19,7 @@ const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g;
 const MINECRAFT_FORMAT_PATTERN = /§[0-9A-FK-ORX]/gi;
 const IPV4_PATTERN = /(?<![0-9.])(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}(?![0-9.])/g;
 const IPV6_PATTERN = /(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{1,4}:){2,7}[0-9A-Fa-f]{0,4}(?![0-9A-Fa-f:])/g;
+const IPV6_CANDIDATE_PATTERN = /(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?![0-9A-Fa-f:])/g;
 const BEARER_PATTERN = /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi;
 const SECRET_QUERY_PATTERN = /([?&](?:access[_-]?token|refresh[_-]?token|token|password|passwd|secret|rcon[_-]?password|forwarding[_-]?secret)=)[^&\s]+/gi;
 const SECRET_ASSIGNMENT_PATTERN = /\b(authorization|access[_-]?token|refresh[_-]?token|token|password|passwd|secret|rcon(?:[._-]?password)?|forwarding(?:[._-]?secret))\b(\s*[:=]\s*|\s+)([^\s,;]+)/gi;
@@ -64,16 +66,24 @@ function hasOnlyKeys(value: Record<string, unknown>, allowed: Set<string>): bool
   return Object.keys(value).every((key) => allowed.has(key));
 }
 
+function redactCompressedIpv6Candidates(message: string): string {
+  return message.replace(IPV6_CANDIDATE_PATTERN, (candidate) =>
+    isIP(candidate) === 6 ? "[REDACTED_IP]" : candidate,
+  );
+}
+
 export function redactConsoleLogMessage(message: string): string {
-  return message
-    .replace(ANSI_PATTERN, "")
-    .replace(MINECRAFT_FORMAT_PATTERN, "")
-    .replace(CONTROL_PATTERN, " ")
-    .replace(BEARER_PATTERN, "Bearer [REDACTED]")
-    .replace(SECRET_QUERY_PATTERN, "$1[REDACTED]")
-    .replace(SECRET_ASSIGNMENT_PATTERN, "$1$2[REDACTED]")
-    .replace(IPV4_PATTERN, "[REDACTED_IP]")
-    .replace(IPV6_PATTERN, "[REDACTED_IP]")
+  return redactCompressedIpv6Candidates(
+    message
+      .replace(ANSI_PATTERN, "")
+      .replace(MINECRAFT_FORMAT_PATTERN, "")
+      .replace(CONTROL_PATTERN, " ")
+      .replace(BEARER_PATTERN, "Bearer [REDACTED]")
+      .replace(SECRET_QUERY_PATTERN, "$1[REDACTED]")
+      .replace(SECRET_ASSIGNMENT_PATTERN, "$1$2[REDACTED]")
+      .replace(IPV4_PATTERN, "[REDACTED_IP]")
+      .replace(IPV6_PATTERN, "[REDACTED_IP]"),
+  )
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, MAX_MESSAGE_CHARACTERS);
