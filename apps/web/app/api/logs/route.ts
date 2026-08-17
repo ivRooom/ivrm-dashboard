@@ -4,7 +4,9 @@ import {
   getConsoleSession,
 } from "../../../lib/console-auth";
 import {
+  getConsoleLogRangeMinutes,
   isConsoleLogLevel,
+  isConsoleLogRange,
   isConsoleLogSourceName,
 } from "../../../lib/console-log-types";
 import { ConsoleLogsError, getConsoleLogs } from "../../../lib/logs";
@@ -13,6 +15,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const DEFAULT_SERVER_ID = "oci-minecraft-01";
+const DEFAULT_RANGE = "24h";
 
 function parseOptionalInteger(value: string | null): number | null {
   if (value === null || value === "") return null;
@@ -42,6 +45,7 @@ export async function GET(request: Request) {
     const serverId = url.searchParams.get("server") || DEFAULT_SERVER_ID;
     const sourceValue = url.searchParams.get("source");
     const levelValue = url.searchParams.get("level");
+    const rangeValue = url.searchParams.get("range") || DEFAULT_RANGE;
     const query = url.searchParams.get("q")?.trim() || null;
     const afterId = parseOptionalInteger(url.searchParams.get("after"));
     const limitValue = parseOptionalInteger(url.searchParams.get("limit"));
@@ -50,8 +54,9 @@ export async function GET(request: Request) {
       !/^[A-Za-z0-9._-]{1,64}$/.test(serverId) ||
       (sourceValue !== null && !isConsoleLogSourceName(sourceValue)) ||
       (levelValue !== null && !isConsoleLogLevel(levelValue)) ||
+      !isConsoleLogRange(rangeValue) ||
       (query !== null && query.length > 80) ||
-      (limitValue !== null && (limitValue < 1 || limitValue > 200))
+      (limitValue !== null && (limitValue < 1 || limitValue > 500))
     ) {
       throw new ConsoleLogsError("invalid_query");
     }
@@ -61,6 +66,7 @@ export async function GET(request: Request) {
       sourceName: sourceValue,
       level: levelValue,
       query,
+      windowMinutes: getConsoleLogRangeMinutes(rangeValue),
       afterId,
       limit: limitValue ?? 200,
     });
