@@ -8,6 +8,7 @@ import {
 } from "./host-monitoring-events";
 import {
   getMonitoringEvents,
+  getMonitoringIncidentContext,
   type MonitoringEvent,
   type MonitoringEventType,
 } from "./monitoring-events";
@@ -283,6 +284,16 @@ function strongestSignalKind(
     if (kind === "error") return "error";
   }
   return signals.size > 0 ? "stale" : null;
+}
+
+function mergeUniqueContainerEvents(
+  contextEvents: MonitoringEvent[],
+  rangeEvents: MonitoringEvent[],
+): MonitoringEvent[] {
+  const byId = new Map<number, MonitoringEvent>();
+  for (const event of contextEvents) byId.set(event.id, event);
+  for (const event of rangeEvents) byId.set(event.id, event);
+  return [...byId.values()];
 }
 
 function groupedContainerEvents(
@@ -663,19 +674,24 @@ function mergeRegions(
 export async function getHistoryStatusOverlays(
   range: HistoryRange,
 ): Promise<HistoryStatusOverlaySnapshot> {
-  const eventRange = contextRange(range);
-  const [snapshot, containerEvents, hostEvents] = await Promise.all([
-    getMonitoringSnapshot(),
-    getMonitoringEvents({ range: eventRange }),
-    getHostMonitoringEvents(eventRange),
-  ]);
-
+  const snapshot = await getMonitoringSnapshot();
   const rangeEndMs = Date.parse(snapshot.generatedAt);
   const rangeStartMs =
     rangeEndMs - HISTORY_RANGE_CONFIG[range].hours * 60 * 60 * 1_000;
   if (!Number.isFinite(rangeStartMs) || !Number.isFinite(rangeEndMs)) {
     throw new Error("履歴Overlayの期間境界が不正です");
   }
+
+  const eventRange = contextRange(range);
+  const [containerEvents, containerContext, hostEvents] = await Promise.all([
+    getMonitoringEvents({ range: eventRange }),
+    getMonitoringIncidentContext(new Date(rangeStartMs).toISOString()),
+    getHostMonitoringEvents(eventRange),
+  ]);
+  const incidentContainerEvents = mergeUniqueContainerEvents(
+    containerContext,
+    containerEvents,
+  );
 
   return {
     generatedAt: snapshot.generatedAt,
@@ -690,7 +706,7 @@ export async function getHistoryStatusOverlays(
     ]),
     containerRegions: mergeRegions([
       ...containerIncidentRegions(
-        containerEvents,
+        incidentContainerEvents,
         snapshot.containers,
         snapshot.generatedAt,
         rangeStartMs,
