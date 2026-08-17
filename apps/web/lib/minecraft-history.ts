@@ -1,4 +1,8 @@
-import type { HistoryDataSource, HistoryRange } from "./history";
+import {
+  callSupabaseRpc,
+  type HistoryDataSource,
+  type HistoryRange,
+} from "./history";
 
 export type MinecraftMetricHistoryPoint = {
   timestamp: string;
@@ -24,21 +28,6 @@ type MinecraftMetricHistoryRow = {
   bucket_seconds: unknown;
   points: unknown;
 };
-
-function requireEnvironment(name: string): string {
-  const value = process.env[name]?.trim();
-  if (!value) {
-    throw new Error(`${name}が設定されていません`);
-  }
-  return value;
-}
-
-function supabaseConfiguration(): { url: string; serviceRoleKey: string } {
-  return {
-    url: requireEnvironment("SUPABASE_URL").replace(/\/$/, ""),
-    serviceRoleKey: requireEnvironment("SUPABASE_SERVICE_ROLE_KEY"),
-  };
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -105,25 +94,11 @@ function parsePoints(value: unknown): MinecraftMetricHistoryPoint[] {
 export async function getMinecraftMetricHistory(
   range: HistoryRange,
 ): Promise<MinecraftMetricHistorySeries[]> {
-  const { url, serviceRoleKey } = supabaseConfiguration();
-  const response = await fetch(`${url}/rest/v1/rpc/get_minecraft_metric_history_v1`, {
-    method: "POST",
-    headers: {
-      apikey: serviceRoleKey,
-      Authorization: `Bearer ${serviceRoleKey}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({ p_range: range }),
-    cache: "no-store",
-    signal: AbortSignal.timeout(10_000),
-  });
+  const payload = await callSupabaseRpc<unknown[]>(
+    "get_minecraft_metric_history_v1",
+    { p_range: range },
+  );
 
-  if (!response.ok) {
-    throw new Error(`get_minecraft_metric_history_v1が${response.status}を返しました`);
-  }
-
-  const payload: unknown = await response.json();
   if (!Array.isArray(payload)) {
     throw new Error("Minecraft履歴RPCが配列以外を返しました");
   }
