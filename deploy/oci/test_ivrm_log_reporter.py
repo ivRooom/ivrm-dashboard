@@ -21,18 +21,21 @@ class LogReporterTests(unittest.TestCase):
 
     def test_redacts_secrets_ip_ansi_and_minecraft_formatting(self):
         value = module.redact_message(
-            "\x1b[31m§cERROR§r\x1b[0m token=abc123456789 password hunter2 from 119.173.40.88 Bearer abcdefghijklmnop"
+            "\x1b[31m§cERROR§r\x1b[0m token=abc123456789 password hunter2 "
+            "from 119.173.40.88 loopback ::1 remote 2001:db8::1 Bearer abcdefghijklmnop"
         )
         self.assertNotIn("abc123456789", value)
         self.assertNotIn("hunter2", value)
         self.assertNotIn("119.173.40.88", value)
+        self.assertNotIn("::1", value)
+        self.assertNotIn("2001:db8::1", value)
         self.assertNotIn("abcdefghijklmnop", value)
         self.assertNotIn("\x1b", value)
         self.assertNotIn("§c", value)
         self.assertNotIn("§r", value)
         self.assertIn("ERROR", value)
         self.assertIn("[REDACTED]", value)
-        self.assertIn("[REDACTED_IP]", value)
+        self.assertGreaterEqual(value.count("[REDACTED_IP]"), 3)
 
     def test_classify_level(self):
         self.assertEqual(module.classify_level("[Server thread/ERROR] failed"), "error")
