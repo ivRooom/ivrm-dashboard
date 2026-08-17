@@ -1,10 +1,17 @@
 import { LogViewer } from "../../components/log-viewer";
 import {
+  CONSOLE_LOG_INITIAL_LIMITS,
   CONSOLE_LOG_LEVELS,
+  CONSOLE_LOG_RANGES,
   CONSOLE_LOG_SOURCES,
+  getConsoleLogRangeMinutes,
   getConsoleLogSource,
+  isConsoleLogInitialLimit,
   isConsoleLogLevel,
+  isConsoleLogRange,
+  type ConsoleLogInitialLimit,
   type ConsoleLogLevel,
+  type ConsoleLogRange,
   type ConsoleLogSourceName,
 } from "../../lib/console-log-types";
 import { getConsoleLogs, type ConsoleLogEntry } from "../../lib/logs";
@@ -13,6 +20,8 @@ import styles from "./logs.module.css";
 export const dynamic = "force-dynamic";
 
 const DEFAULT_SERVER_ID = "oci-minecraft-01";
+const DEFAULT_RANGE: ConsoleLogRange = "24h";
+const DEFAULT_LIMIT: ConsoleLogInitialLimit = 300;
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -34,6 +43,8 @@ export default async function LogsPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const sourceValue = firstValue(params.source);
   const levelValue = firstValue(params.level);
+  const rangeValue = firstValue(params.range) ?? DEFAULT_RANGE;
+  const rawLimit = Number(firstValue(params.limit) ?? DEFAULT_LIMIT);
   const queryValue = firstValue(params.q)?.trim() || null;
   const sourceName: ConsoleLogSourceName | null =
     sourceValue && sourceValue !== "all" && getConsoleLogSource(sourceValue)
@@ -43,7 +54,12 @@ export default async function LogsPage({ searchParams }: PageProps) {
     levelValue && levelValue !== "all" && isConsoleLogLevel(levelValue)
       ? levelValue
       : null;
+  const range: ConsoleLogRange = isConsoleLogRange(rangeValue) ? rangeValue : DEFAULT_RANGE;
+  const initialLimit: ConsoleLogInitialLimit = isConsoleLogInitialLimit(rawLimit)
+    ? rawLimit
+    : DEFAULT_LIMIT;
   const query = queryValue && queryValue.length <= 80 ? queryValue : null;
+  const selectedRange = CONSOLE_LOG_RANGES.find((item) => item.value === range)!;
 
   let entries: ConsoleLogEntry[] = [];
   let loadError = false;
@@ -53,7 +69,8 @@ export default async function LogsPage({ searchParams }: PageProps) {
       sourceName,
       level,
       query,
-      limit: 300,
+      windowMinutes: getConsoleLogRangeMinutes(range),
+      limit: initialLimit,
     });
   } catch (error) {
     loadError = true;
@@ -65,6 +82,7 @@ export default async function LogsPage({ searchParams }: PageProps) {
     ["warning", "error", "critical"].includes(entry.level),
   ).length;
   const latest = entries.at(-1) ?? null;
+  const viewerKey = [sourceName ?? "all", level ?? "all", range, initialLimit, query ?? ""].join(":");
 
   return (
     <main className="shell">
@@ -87,7 +105,7 @@ export default async function LogsPage({ searchParams }: PageProps) {
           <i className={loadError ? "error" : entries.length > 0 ? "online" : "stale"} />
           Read-only Logs
           <br />
-          <small>{loadError ? "取得エラー" : `${entries.length}行を表示`}</small>
+          <small>{loadError ? "取得エラー" : `${entries.length}行 / ${selectedRange.label}`}</small>
         </div>
       </aside>
 
@@ -113,12 +131,12 @@ export default async function LogsPage({ searchParams }: PageProps) {
           <article>
             <span>表示行</span>
             <strong>{loadError ? "—" : entries.length}</strong>
-            <small>初回最大300行 / Follow中最大800行</small>
+            <small>初回最大{initialLimit}行 / Follow中最大800行</small>
           </article>
           <article>
-            <span>Source</span>
-            <strong>{loadError ? "—" : sourceCount}</strong>
-            <small>Server-side allowlistのみ</small>
+            <span>表示期間</span>
+            <strong>{selectedRange.label}</strong>
+            <small>保存期間は最大24時間</small>
           </article>
           <article>
             <span>Warning+</span>
@@ -156,6 +174,26 @@ export default async function LogsPage({ searchParams }: PageProps) {
             </select>
           </label>
           <label>
+            表示期間
+            <select defaultValue={range} name="range">
+              {CONSOLE_LOG_RANGES.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            最新N行
+            <select defaultValue={String(initialLimit)} name="limit">
+              {CONSOLE_LOG_INITIAL_LIMITS.map((item) => (
+                <option key={item} value={item}>
+                  {item}行
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
             本文検索
             <input
               defaultValue={query ?? ""}
@@ -180,8 +218,10 @@ export default async function LogsPage({ searchParams }: PageProps) {
 
         <LogViewer
           initialEntries={entries}
+          key={viewerKey}
           level={level}
           query={query}
+          range={range}
           serverId={DEFAULT_SERVER_ID}
           sourceName={sourceName}
         />
