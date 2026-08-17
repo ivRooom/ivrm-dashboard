@@ -20,17 +20,23 @@ command -v jar >/dev/null 2>&1 || {
 }
 
 mkdir -p \
-  "${BUILD_DIR}/stub/net/fabricmc/api" \
-  "${BUILD_DIR}/classes" \
+  "${BUILD_DIR}/stub/net/neoforged/fml/common" \
+  "${BUILD_DIR}/classes/META-INF" \
   "$(dirname -- "${OUTPUT_PATH}")"
 
-# Compile-time only stub. The class is deliberately removed before packaging;
-# Fabric Loader provides this interface at runtime.
-cat >"${BUILD_DIR}/stub/net/fabricmc/api/ModInitializer.java" <<'JAVA'
-package net.fabricmc.api;
+# Compile-time only stub. NeoForge provides the real @Mod annotation at runtime.
+cat >"${BUILD_DIR}/stub/net/neoforged/fml/common/Mod.java" <<'JAVA'
+package net.neoforged.fml.common;
 
-public interface ModInitializer {
-    void onInitialize();
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+public @interface Mod {
+    String value();
 }
 JAVA
 
@@ -39,26 +45,31 @@ javac \
   -Xlint:all \
   -Werror \
   -d "${BUILD_DIR}/classes" \
-  "${BUILD_DIR}/stub/net/fabricmc/api/ModInitializer.java" \
+  "${BUILD_DIR}/stub/net/neoforged/fml/common/Mod.java" \
   "${SCRIPT_DIR}/src/main/java/jp/ivrm/metrics/IvrmMetricsBridge.java"
 
-rm -rf -- "${BUILD_DIR}/classes/net/fabricmc"
+rm -rf -- "${BUILD_DIR}/classes/net/neoforged"
 cp \
-  "${SCRIPT_DIR}/src/main/resources/fabric.mod.json" \
-  "${BUILD_DIR}/classes/fabric.mod.json"
+  "${SCRIPT_DIR}/src/main/resources/META-INF/neoforge.mods.toml" \
+  "${BUILD_DIR}/classes/META-INF/neoforge.mods.toml"
 
 jar \
   --create \
   --file "${OUTPUT_PATH}" \
   -C "${BUILD_DIR}/classes" .
 
-if jar --list --file "${OUTPUT_PATH}" | grep -q '^net/fabricmc/'; then
-  echo "ERROR: Fabric compile stubが成果物へ混入しました" >&2
+if jar --list --file "${OUTPUT_PATH}" | grep -q '^net/neoforged/'; then
+  echo "ERROR: NeoForge compile stubが成果物へ混入しました" >&2
   exit 1
 fi
 
-if ! jar --list --file "${OUTPUT_PATH}" | grep -q '^fabric.mod.json$'; then
-  echo "ERROR: fabric.mod.jsonが成果物にありません" >&2
+if ! jar --list --file "${OUTPUT_PATH}" | grep -q '^META-INF/neoforge.mods.toml$'; then
+  echo "ERROR: neoforge.mods.tomlが成果物にありません" >&2
+  exit 1
+fi
+
+if jar --list --file "${OUTPUT_PATH}" | grep -q '^fabric.mod.json$'; then
+  echo "ERROR: Fabric metadataが成果物に残っています" >&2
   exit 1
 fi
 
