@@ -21,7 +21,7 @@ export type ConsoleLogSourceName = ConsoleLogSource["name"];
 export type ConsoleLogLevel = (typeof CONSOLE_LOG_LEVELS)[number];
 
 const sourceByName = new Map<ConsoleLogSourceName, ConsoleLogSource>(
-  CONSOLE_LOG_SOURCES.map((source) => [source.name, source]),
+  CONSOLE_LOG_SOURCES.map((source) => [source.name, source] as const),
 );
 const levels = new Set<string>(CONSOLE_LOG_LEVELS);
 
