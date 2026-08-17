@@ -1,6 +1,6 @@
 package jp.ivrm.metrics;
 
-import net.fabricmc.api.ModInitializer;
+import net.neoforged.fml.common.Mod;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
@@ -21,7 +21,9 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
-public final class IvrmMetricsBridge implements ModInitializer {
+@Mod(IvrmMetricsBridge.MOD_ID)
+public final class IvrmMetricsBridge {
+    static final String MOD_ID = "ivrm_metrics_bridge";
     private static final Path OUTPUT_PATH = Path.of("/data/ivrm/metrics.json");
     private static final long INITIAL_DELAY_SECONDS = 15;
     private static final long INTERVAL_SECONDS = 10;
@@ -34,8 +36,8 @@ public final class IvrmMetricsBridge implements ModInitializer {
         daemonThreadFactory()
     );
 
-    @Override
-    public void onInitialize() {
+    public IvrmMetricsBridge() {
+        System.out.println("[ivrm-metrics-bridge] initialized");
         executor.scheduleWithFixedDelay(
             this::collectAndWriteSafely,
             INITIAL_DELAY_SECONDS,
@@ -233,7 +235,7 @@ public final class IvrmMetricsBridge implements ModInitializer {
             );
             Files.setPosixFilePermissions(path, permissions);
         } catch (UnsupportedOperationException ignored) {
-            // Non-POSIX filesystems are not expected in production, but do not block startup.
+            // Production is POSIX, but lack of POSIX attributes must not stop Minecraft.
         }
     }
 
