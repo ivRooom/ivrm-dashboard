@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type {
-  ConsoleLogLevel,
-  ConsoleLogRange,
-  ConsoleLogSourceName,
+import {
+  getConsoleLogRangeMinutes,
+  type ConsoleLogLevel,
+  type ConsoleLogRange,
+  type ConsoleLogSourceName,
 } from "../lib/console-log-types";
 import type { ConsoleLogEntry } from "../lib/logs";
 import styles from "./log-viewer.module.css";
@@ -44,11 +45,21 @@ function isNearBottom(element: HTMLDivElement): boolean {
   return element.scrollHeight - element.scrollTop - element.clientHeight <= BOTTOM_TOLERANCE_PX;
 }
 
-function mergeEntries(current: ConsoleLogEntry[], incoming: ConsoleLogEntry[]): ConsoleLogEntry[] {
-  if (incoming.length === 0) return current;
+function mergeEntries(
+  current: ConsoleLogEntry[],
+  incoming: ConsoleLogEntry[],
+  range: ConsoleLogRange,
+  referenceTime: string,
+): ConsoleLogEntry[] {
+  const referenceMs = Date.parse(referenceTime);
+  const cutoffMs = referenceMs - getConsoleLogRangeMinutes(range) * 60_000;
   const byId = new Map<number, ConsoleLogEntry>();
-  for (const entry of current) byId.set(entry.id, entry);
-  for (const entry of incoming) byId.set(entry.id, entry);
+  for (const entry of current) {
+    if (Date.parse(entry.observedAt) >= cutoffMs) byId.set(entry.id, entry);
+  }
+  for (const entry of incoming) {
+    if (Date.parse(entry.observedAt) >= cutoffMs) byId.set(entry.id, entry);
+  }
   return [...byId.values()]
     .sort((left, right) => left.id - right.id)
     .slice(-MAX_RENDERED_ENTRIES);
@@ -116,15 +127,19 @@ export function LogViewer({
         });
         if (!response.ok) throw new Error("log_poll_failed");
         const payload = (await response.json()) as PollResponse;
-        if (!Array.isArray(payload.entries) || !Number.isSafeInteger(payload.lastId)) {
+        if (
+          !Array.isArray(payload.entries) ||
+          !Number.isSafeInteger(payload.lastId) ||
+          typeof payload.polledAt !== "string" ||
+          !Number.isFinite(Date.parse(payload.polledAt))
+        ) {
           throw new Error("invalid_log_poll_response");
         }
-        if (payload.entries.length > 0) {
-          lastIdRef.current = Math.max(lastIdRef.current, payload.lastId);
-          setEntries((current) => mergeEntries(current, payload.entries));
-          if (autoScroll && shouldStickRef.current) {
-            window.requestAnimationFrame(() => scrollToLatest("auto"));
-          }
+
+        lastIdRef.current = Math.max(lastIdRef.current, payload.lastId);
+        setEntries((current) => mergeEntries(current, payload.entries, range, payload.polledAt));
+        if (payload.entries.length > 0 && autoScroll && shouldStickRef.current) {
+          window.requestAnimationFrame(() => scrollToLatest("auto"));
         }
         setLastPollAt(payload.polledAt);
         setPollError(false);
@@ -155,7 +170,7 @@ export function LogViewer({
   }, []);
 
   const handleAutoScrollToggle = useCallback(() => {
-    if (autoScroll) {
+    if (autoScroll && atBottom) {
       setAutoScroll(false);
       return;
     }
@@ -163,13 +178,18 @@ export function LogViewer({
     setAutoScroll(true);
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     window.requestAnimationFrame(() => scrollToLatest(reducedMotion ? "auto" : "smooth"));
-  }, [autoScroll, scrollToLatest]);
+  }, [atBottom, autoScroll, scrollToLatest]);
 
   const autoScrollStatus = autoScroll
     ? atBottom
       ? "Auto-scroll ON"
       : "Auto-scroll PAUSED"
     : "Auto-scroll OFF";
+  const autoScrollAction = !autoScroll
+    ? "自動スクロール開始"
+    : atBottom
+      ? "自動スクロール停止"
+      : "自動スクロール再開";
 
   return (
     <section className={styles.viewer} aria-label="Console Log Viewer">
@@ -197,12 +217,12 @@ export function LogViewer({
             </button>
           ) : null}
           <button
-            aria-pressed={autoScroll}
+            aria-pressed={autoScroll && atBottom}
             className={autoScroll ? styles.followActive : undefined}
             onClick={handleAutoScrollToggle}
             type="button"
           >
-            {autoScroll ? "自動スクロール停止" : "自動スクロール開始"}
+            {autoScrollAction}
           </button>
           <button
             aria-pressed={follow}
