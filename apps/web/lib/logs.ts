@@ -1,4 +1,5 @@
 import {
+  CONSOLE_LOG_RANGES,
   isConsoleLogLevel,
   isConsoleLogSourceName,
   type ConsoleLogLevel,
@@ -22,8 +23,19 @@ export type ConsoleLogQuery = {
   sourceName?: ConsoleLogSourceName | null;
   level?: ConsoleLogLevel | null;
   query?: string | null;
+  windowMinutes?: number;
   afterId?: number | null;
   limit?: number;
+};
+
+type NormalizedConsoleLogQuery = {
+  serverId: string;
+  sourceName: ConsoleLogSourceName | null;
+  level: ConsoleLogLevel | null;
+  query: string | null;
+  windowMinutes: number;
+  afterId: number | null;
+  limit: number;
 };
 
 type RpcLogRow = {
@@ -50,19 +62,17 @@ function requireEnvironment(name: string): string {
   return value;
 }
 
-function normalizeQuery(input: ConsoleLogQuery): Required<Omit<ConsoleLogQuery, "sourceName" | "level" | "query" | "afterId">> & {
-  sourceName: ConsoleLogSourceName | null;
-  level: ConsoleLogLevel | null;
-  query: string | null;
-  afterId: number | null;
-} {
+function normalizeQuery(input: ConsoleLogQuery): NormalizedConsoleLogQuery {
   const query = input.query?.trim() || null;
   const limit = input.limit ?? 300;
+  const windowMinutes = input.windowMinutes ?? 1440;
+  const validWindow = CONSOLE_LOG_RANGES.some((range) => range.minutes === windowMinutes);
   if (
     !/^[A-Za-z0-9._-]{1,64}$/.test(input.serverId) ||
     (input.sourceName != null && !isConsoleLogSourceName(input.sourceName)) ||
     (input.level != null && !isConsoleLogLevel(input.level)) ||
     (query !== null && query.length > 80) ||
+    !validWindow ||
     (input.afterId != null && (!Number.isSafeInteger(input.afterId) || input.afterId < 0)) ||
     !Number.isInteger(limit) ||
     limit < 1 ||
@@ -76,6 +86,7 @@ function normalizeQuery(input: ConsoleLogQuery): Required<Omit<ConsoleLogQuery, 
     sourceName: input.sourceName ?? null,
     level: input.level ?? null,
     query,
+    windowMinutes,
     afterId: input.afterId ?? null,
     limit,
   };
@@ -127,7 +138,7 @@ export async function getConsoleLogs(input: ConsoleLogQuery): Promise<ConsoleLog
   const query = normalizeQuery(input);
   const url = requireEnvironment("SUPABASE_URL").replace(/\/$/, "");
   const serviceRoleKey = requireEnvironment("SUPABASE_SERVICE_ROLE_KEY");
-  const response = await fetch(`${url}/rest/v1/rpc/get_console_logs_v1`, {
+  const response = await fetch(`${url}/rest/v1/rpc/get_console_logs_v2`, {
     method: "POST",
     headers: {
       apikey: serviceRoleKey,
@@ -139,6 +150,7 @@ export async function getConsoleLogs(input: ConsoleLogQuery): Promise<ConsoleLog
       p_source_name: query.sourceName,
       p_level: query.level,
       p_query: query.query,
+      p_window_minutes: query.windowMinutes,
       p_after_id: query.afterId,
       p_limit: query.limit,
     }),
