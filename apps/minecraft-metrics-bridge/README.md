@@ -94,6 +94,24 @@ bash apps/minecraft-metrics-bridge/test.sh
 - reflectionでTPS/MSPTを実際にpoll可能
 - structured JSON contract
 
+## ProductionのMod source
+
+Productionの`itzg/minecraft-server`構成では、永続Mod sourceの`/mods`が起動時に`/data/mods`へ同期されます。
+
+そのためBridge JARを`/data/mods`へ直接配置しません。`stage-minecraft-metrics-bridge.sh`はDocker mount metadataから`/mods`のHost sourceを解決し、そこへJARを配置します。
+
+```text
+Host persistent mods directory
+        ↓ bind mount
+container /mods
+        ↓ itzg startup sync
+container /data/mods
+        ↓ NeoForge load
+IVRM Metrics Bridge
+```
+
+Host sourceの場所はスクリプトへハードコードしません。build成果物・Host source・container `/mods`のSHA256が一致しない場合はstageを失敗させ、既存JARを復元します。
+
 ## Production rollout
 
 Bridge stagingはMinecraftを自動再起動しません。
@@ -102,7 +120,17 @@ Bridge stagingはMinecraftを自動再起動しません。
 bash deploy/oci/stage-minecraft-metrics-bridge.sh
 ```
 
-その後、通常のメンテナンス手順で`mc-main`を再起動し、server logで`[ivrm-metrics-bridge] initialized`を確認します。15秒以上経過してから以下を確認します。
+stage完了時点では、永続`/mods` sourceにJARがあり、PerformanceはOFFのままです。
+
+その後、通常のメンテナンス手順で`mc-main`を再起動します。起動時同期後に次を確認します。
+
+```bash
+sudo docker exec mc-main test -s /data/mods/ivrm-metrics-bridge.jar
+sudo docker logs mc-main --since 5m 2>&1 \
+  | grep -F '[ivrm-metrics-bridge] initialized'
+```
+
+15秒以上経過してから構造化メトリクスを確認します。
 
 ```bash
 sudo docker exec mc-main cat /data/ivrm/metrics.json \
