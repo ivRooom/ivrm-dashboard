@@ -45,7 +45,8 @@ done
 
 [[ -f "${BRIDGE_DIR}/build.sh" ]] || fail "Metrics Bridge build scriptがありません"
 [[ -f "${BRIDGE_DIR}/src/main/java/jp/ivrm/metrics/IvrmMetricsBridge.java" ]] || fail "Metrics Bridge sourceがありません"
-[[ -f "${BRIDGE_DIR}/src/main/resources/fabric.mod.json" ]] || fail "fabric.mod.jsonがありません"
+[[ -f "${BRIDGE_DIR}/src/main/resources/META-INF/neoforge.mods.toml" ]] \
+  || fail "neoforge.mods.tomlがありません"
 
 if ! git -C "${REPO_ROOT}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   fail "Git checkout内で実行してください"
@@ -56,7 +57,13 @@ if ! sudo docker inspect --format '{{.State.Running}}' "${CONTAINER_NAME}" 2>/de
 fi
 
 if ! sudo docker exec "${CONTAINER_NAME}" test -d "${CONTAINER_MODS_DIR}"; then
-  fail "${CONTAINER_NAME} に ${CONTAINER_MODS_DIR} がありません。Fabric/Mod server構成を確認してください"
+  fail "${CONTAINER_NAME} に ${CONTAINER_MODS_DIR} がありません。NeoForge server構成を確認してください"
+fi
+
+# Productionで実際に利用しているSparkはNeoForge版。Fabric/Forge環境への誤配置を防ぐ。
+if ! sudo docker exec "${CONTAINER_NAME}" sh -c \
+  'find /data/mods -maxdepth 1 -type f -name "spark-*-neoforge.jar" -print -quit | grep -q .'; then
+  fail "NeoForge版Sparkが見つかりません。mc-mainのMod Loaderを確認してください"
 fi
 
 if ! sudo test -f /etc/ivrm-agent/docker.env; then
@@ -76,7 +83,7 @@ printf 'repo=%s\nsha=%s\n' \
   "${REPO_ROOT}" \
   "$(git -C "${REPO_ROOT}" rev-parse HEAD)"
 
-printf '\n==> Metrics Bridgeをビルド\n'
+printf '\n==> NeoForge Metrics Bridgeをビルド\n'
 if local_jdk_usable; then
   printf 'builder=host-jdk\n'
   bash "${BRIDGE_DIR}/build.sh" "${OUTPUT_JAR}"
@@ -105,7 +112,7 @@ else
   printf 'previous_bridge=none\n'
 fi
 
-printf '\n==> mc-mainへBridgeをステージ\n'
+printf '\n==> mc-mainへNeoForge Bridgeをステージ\n'
 if ! sudo docker cp "${OUTPUT_JAR}" "${CONTAINER_NAME}:${CONTAINER_JAR_PATH}"; then
   if [[ -s "${BACKUP_JAR}" ]]; then
     sudo docker cp "${BACKUP_JAR}" "${CONTAINER_NAME}:${CONTAINER_JAR_PATH}" || true
@@ -124,6 +131,7 @@ fi
 
 printf '\n==> ステージ完了\n'
 printf '%s\n' \
+  "NeoForge Bridge JARを配置しました。" \
   "Minecraftは自動再起動していません。" \
   "PerformanceもOFFのままです。" \
-  "次のメンテナンス再起動後、15秒以上待って /data/ivrm/metrics.json を確認してください。"
+  "メンテナンス再起動後、[ivrm-metrics-bridge] initialized と metrics.json を確認してください。"
