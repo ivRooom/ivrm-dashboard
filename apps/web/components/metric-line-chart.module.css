@@ -34,6 +34,54 @@
   font-size: 11px;
 }
 
+.coverageNote {
+  margin: -4px 0 12px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.scrollToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.latestButton {
+  min-height: 30px;
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border: 1px solid rgb(168 255 73 / 35%);
+  border-radius: 999px;
+  background: rgb(168 255 73 / 8%);
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.latestButton:hover:not(:disabled),
+.latestButton:focus-visible:not(:disabled) {
+  border-color: rgb(168 255 73 / 60%);
+  background: rgb(168 255 73 / 14%);
+}
+
+.latestButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.latestButton:disabled {
+  border-color: var(--line);
+  background: var(--panel-2);
+  color: var(--muted);
+  cursor: default;
+}
+
 .empty {
   min-height: 260px;
   display: grid;
@@ -53,6 +101,14 @@
 .scroll {
   overflow-x: auto;
   overscroll-behavior-inline: contain;
+  scroll-behavior: smooth;
+  scrollbar-gutter: stable;
+}
+
+.scroll:focus-visible {
+  outline: 2px solid rgb(168 255 73 / 35%);
+  outline-offset: 3px;
+  border-radius: 6px;
 }
 
 .chart {
@@ -233,6 +289,11 @@
   .heading > span {
     display: inline-block;
     margin-top: 10px;
+  }
+
+  .scrollToolbar {
+    position: sticky;
+    left: 0;
   }
 
   .chart {
