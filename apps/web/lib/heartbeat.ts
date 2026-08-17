@@ -10,6 +10,8 @@ const MAX_CPU_PERCENT = 100_000;
 const MAX_PIDS = 2_147_483_647;
 const MAX_MINECRAFT_PLAYERS = 1_000_000;
 const MAX_MINECRAFT_LATENCY_MS = 60_000;
+const MAX_MINECRAFT_TPS = 1_000;
+const MAX_MINECRAFT_MSPT_MS = 60_000;
 export const MAX_HEARTBEAT_BODY_BYTES = 32 * 1024;
 
 const containerStates = new Set([
@@ -57,12 +59,23 @@ export type MinecraftEndpointHeartbeat = {
   max: number | null;
 };
 
+export type MinecraftPerformanceHeartbeat = {
+  source: "spark";
+  tps1m: number;
+  tps5m: number;
+  tps15m: number;
+  msptMedian1m: number;
+  msptP95_1m: number;
+  msptMax1m: number;
+};
+
 export type MinecraftHeartbeat = {
   publicEndpoint: MinecraftEndpointHeartbeat;
   backend: MinecraftEndpointHeartbeat;
   proxyPortPublished: boolean;
   backendPortPublished: boolean;
   voiceChatPortPublished: boolean;
+  performance: MinecraftPerformanceHeartbeat | null;
 };
 
 export type HeartbeatPayload = {
@@ -338,6 +351,46 @@ function normalizeMinecraftEndpoint(
   };
 }
 
+function normalizeMinecraftPerformance(
+  value: unknown,
+): MinecraftPerformanceHeartbeat | null {
+  if (!isRecord(value) || value.source !== "spark") {
+    return null;
+  }
+
+  const metrics = [
+    value.tps1m,
+    value.tps5m,
+    value.tps15m,
+    value.msptMedian1m,
+    value.msptP95_1m,
+    value.msptMax1m,
+  ];
+  if (
+    metrics.some((metric) => !isFiniteNonNegative(metric)) ||
+    Number(value.tps1m) > MAX_MINECRAFT_TPS ||
+    Number(value.tps5m) > MAX_MINECRAFT_TPS ||
+    Number(value.tps15m) > MAX_MINECRAFT_TPS ||
+    Number(value.msptMedian1m) > MAX_MINECRAFT_MSPT_MS ||
+    Number(value.msptP95_1m) > MAX_MINECRAFT_MSPT_MS ||
+    Number(value.msptMax1m) > MAX_MINECRAFT_MSPT_MS ||
+    Number(value.msptMedian1m) > Number(value.msptP95_1m) ||
+    Number(value.msptP95_1m) > Number(value.msptMax1m)
+  ) {
+    return null;
+  }
+
+  return {
+    source: "spark",
+    tps1m: Number(value.tps1m),
+    tps5m: Number(value.tps5m),
+    tps15m: Number(value.tps15m),
+    msptMedian1m: Number(value.msptMedian1m),
+    msptP95_1m: Number(value.msptP95_1m),
+    msptMax1m: Number(value.msptMax1m),
+  };
+}
+
 function normalizeMinecraft(value: unknown): MinecraftHeartbeat | null {
   if (value === undefined || value === null) {
     return null;
@@ -348,9 +401,14 @@ function normalizeMinecraft(value: unknown): MinecraftHeartbeat | null {
 
   const publicEndpoint = normalizeMinecraftEndpoint(value.publicEndpoint);
   const backend = normalizeMinecraftEndpoint(value.backend);
+  const performanceProvided = value.performance !== undefined && value.performance !== null;
+  const performance = performanceProvided
+    ? normalizeMinecraftPerformance(value.performance)
+    : null;
   if (
     !publicEndpoint ||
     !backend ||
+    (performanceProvided && !performance) ||
     typeof value.proxyPortPublished !== "boolean" ||
     typeof value.backendPortPublished !== "boolean" ||
     typeof value.voiceChatPortPublished !== "boolean"
@@ -364,6 +422,7 @@ function normalizeMinecraft(value: unknown): MinecraftHeartbeat | null {
     proxyPortPublished: value.proxyPortPublished,
     backendPortPublished: value.backendPortPublished,
     voiceChatPortPublished: value.voiceChatPortPublished,
+    performance,
   };
 }
 
@@ -534,7 +593,7 @@ export async function persistHeartbeat(
   bodySha256: string,
 ): Promise<void> {
   const { url, serviceRoleKey } = getSupabaseConfiguration();
-  const response = await fetch(`${url}/rest/v1/rpc/insert_agent_heartbeat_v2`, {
+  const response = await fetch(`${url}/rest/v1/rpc/insert_agent_heartbeat_v3`, {
     method: "POST",
     headers: supabaseHeaders(serviceRoleKey),
     body: JSON.stringify({
