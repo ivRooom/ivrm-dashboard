@@ -92,6 +92,7 @@ export type ObservabilityRetentionState = {
   lastDeletedHeartbeats: number;
   lastDeletedHostRollups: number;
   lastDeletedContainerRollups: number;
+  lastDeletedMinecraftRollups: number;
 };
 
 type HostMetricHistoryRow = {
@@ -124,6 +125,7 @@ type ObservabilityRetentionStateRow = {
   last_deleted_heartbeats: unknown;
   last_deleted_host_rollups: unknown;
   last_deleted_container_rollups: unknown;
+  last_deleted_minecraft_rollups: unknown;
 };
 
 function requireEnvironment(name: string): string {
@@ -187,7 +189,7 @@ export function parseHistoryRange(value: string | null | undefined): HistoryRang
     : "24h";
 }
 
-async function callSupabaseRpc<T>(
+export async function callSupabaseRpc<T>(
   rpcName: string,
   payload: Record<string, unknown> = {},
 ): Promise<T> {
@@ -333,7 +335,7 @@ export async function getContainerMetricHistory(
 
 export async function getObservabilityRetentionState(): Promise<ObservabilityRetentionState> {
   const rows = await callSupabaseRpc<ObservabilityRetentionStateRow[]>(
-    "get_observability_retention_state_v1",
+    "get_observability_retention_state_v2",
   );
   const row = rows[0];
   if (!row || typeof row.enabled !== "boolean") {
@@ -360,5 +362,6 @@ export async function getObservabilityRetentionState(): Promise<ObservabilityRet
     lastDeletedHeartbeats: nonNegativeInteger(row.last_deleted_heartbeats),
     lastDeletedHostRollups: nonNegativeInteger(row.last_deleted_host_rollups),
     lastDeletedContainerRollups: nonNegativeInteger(row.last_deleted_container_rollups),
+    lastDeletedMinecraftRollups: nonNegativeInteger(row.last_deleted_minecraft_rollups),
   };
 }

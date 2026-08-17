@@ -9,6 +9,7 @@ import {
   type HistoryRange,
 } from "../../lib/history";
 import { getHistoryStatusOverlays } from "../../lib/history-status-overlays";
+import { getMinecraftMetricHistory } from "../../lib/minecraft-history";
 import styles from "./history.module.css";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +19,7 @@ type HistoryPageProps = {
 };
 
 const HISTORY_RANGES = Object.keys(HISTORY_RANGE_CONFIG) as HistoryRange[];
+const MINECRAFT_CONTAINER_NAMES = new Set(["ivrm-velocity", "mc-main"]);
 
 function firstValue(value: string | string[] | undefined): string | null {
   if (Array.isArray(value)) {
@@ -62,23 +64,32 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
   const rangeConfig = HISTORY_RANGE_CONFIG[range];
   const requestedAt = new Date().toISOString();
 
-  const [hostResult, containerResult, retentionResult, overlayResult] =
-    await Promise.allSettled([
-      getHostMetricHistory(range),
-      getContainerMetricHistory(range),
-      getObservabilityRetentionState(),
-      getHistoryStatusOverlays(range),
-    ]);
+  const [
+    hostResult,
+    containerResult,
+    minecraftResult,
+    retentionResult,
+    overlayResult,
+  ] = await Promise.allSettled([
+    getHostMetricHistory(range),
+    getContainerMetricHistory(range),
+    getMinecraftMetricHistory(range),
+    getObservabilityRetentionState(),
+    getHistoryStatusOverlays(range),
+  ]);
 
   const hostHistory = hostResult.status === "fulfilled" ? hostResult.value : [];
   const containerHistory =
     containerResult.status === "fulfilled" ? containerResult.value : [];
+  const minecraftHistory =
+    minecraftResult.status === "fulfilled" ? minecraftResult.value : [];
   const retentionState =
     retentionResult.status === "fulfilled" ? retentionResult.value : null;
   const overlayState =
     overlayResult.status === "fulfilled" ? overlayResult.value : null;
   const hostDataError = hostResult.status === "rejected";
   const containerDataError = containerResult.status === "rejected";
+  const minecraftDataError = minecraftResult.status === "rejected";
   const retentionDataError = retentionResult.status === "rejected";
   const overlayDataError = overlayResult.status === "rejected";
 
@@ -87,6 +98,9 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
   }
   if (containerResult.status === "rejected") {
     console.error("Docker監視履歴の取得に失敗しました", containerResult.reason);
+  }
+  if (minecraftResult.status === "rejected") {
+    console.error("Minecraft監視履歴の取得に失敗しました", minecraftResult.reason);
   }
   if (retentionResult.status === "rejected") {
     console.error("監視Retention状態の取得に失敗しました", retentionResult.reason);
@@ -102,6 +116,20 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
   const hostRegions = overlayState?.hostRegions ?? [];
   const containerRegions = overlayState
     ? [...overlayState.hostRegions, ...overlayState.containerRegions]
+    : [];
+  const minecraftHostIds = new Set(minecraftHistory.map((item) => item.hostId));
+  const minecraftRegions = overlayState
+    ? [
+        ...overlayState.hostRegions.filter((region) =>
+          minecraftHostIds.has(region.hostId),
+        ),
+        ...overlayState.containerRegions.filter(
+          (region) =>
+            minecraftHostIds.has(region.hostId) &&
+            region.containerName !== null &&
+            MINECRAFT_CONTAINER_NAMES.has(region.containerName),
+        ),
+      ]
     : [];
 
   const hostLoadSeries = hostHistory.flatMap((item) => [
@@ -148,6 +176,44 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
       value: point.diskPercent,
     })),
   }));
+
+  const minecraftPlayerSeries = minecraftHistory.flatMap((item) => [
+    {
+      id: `${item.hostId}:minecraft-public-online`,
+      label: `${item.hostDisplayName} / Public`,
+      points: item.points.map((point) => ({
+        timestamp: point.timestamp,
+        value: point.publicOnline,
+      })),
+    },
+    {
+      id: `${item.hostId}:minecraft-backend-online`,
+      label: `${item.hostDisplayName} / Backend`,
+      points: item.points.map((point) => ({
+        timestamp: point.timestamp,
+        value: point.backendOnline,
+      })),
+    },
+  ]);
+
+  const minecraftLatencySeries = minecraftHistory.flatMap((item) => [
+    {
+      id: `${item.hostId}:minecraft-public-latency`,
+      label: `${item.hostDisplayName} / Public`,
+      points: item.points.map((point) => ({
+        timestamp: point.timestamp,
+        value: point.publicLatencyMs,
+      })),
+    },
+    {
+      id: `${item.hostId}:minecraft-backend-latency`,
+      label: `${item.hostDisplayName} / Backend`,
+      points: item.points.map((point) => ({
+        timestamp: point.timestamp,
+        value: point.backendLatencyMs,
+      })),
+    },
+  ]);
 
   const containerLabel = (host: string, container: string) =>
     `${container} / ${host}`;
@@ -236,6 +302,11 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
       total + item.points.reduce((sum, point) => sum + point.sampleCount, 0),
     0,
   );
+  const minecraftSampleCount = minecraftHistory.reduce(
+    (total, item) =>
+      total + item.points.reduce((sum, point) => sum + point.sampleCount, 0),
+    0,
+  );
   const sourceLabel =
     range === "7d" || range === "30d"
       ? "5分ロールアップ"
@@ -271,6 +342,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
         <nav aria-label="メインナビゲーション">
           <a href="/#top">概要</a>
           <a href="/minecraft">Minecraft</a>
+          <a href="#minecraft-history">Minecraft履歴</a>
           <a href="/#hosts">ホスト</a>
           <a href="/#containers">コンテナ</a>
           <a aria-current="page" href={`/history?range=${range}`}>
@@ -278,11 +350,17 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
           </a>
         </nav>
         <div className="agent">
-          <i className={hostDataError && containerDataError ? "error" : "online"} />
+          <i
+            className={
+              hostDataError && containerDataError && minecraftDataError
+                ? "error"
+                : "online"
+            }
+          />
           Metrics History
           <br />
           <small>
-            {hostDataError && containerDataError
+            {hostDataError && containerDataError && minecraftDataError
               ? "取得エラー"
               : rangeConfig.aggregationLabel}
           </small>
@@ -294,7 +372,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
           <div>
             <h1>監視履歴</h1>
             <p>
-              ホストとDockerコンテナの負荷・リソース・I/O推移を時系列で確認できます。
+              Minecraft、ホスト、Dockerコンテナの負荷・利用状況・I/O推移を時系列で確認できます。
             </p>
           </div>
           <a className={styles.secondaryLink} href="/">
@@ -329,7 +407,10 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
               H {hostDataError ? "—" : hostSampleCount.toLocaleString("ja-JP")} / C{" "}
               {containerDataError
                 ? "—"
-                : containerSampleCount.toLocaleString("ja-JP")}
+                : containerSampleCount.toLocaleString("ja-JP")} / MC{" "}
+              {minecraftDataError
+                ? "—"
+                : minecraftSampleCount.toLocaleString("ja-JP")}
             </strong>
           </div>
         </section>
@@ -408,7 +489,8 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
                   <span>前回Rollup削除</span>
                   <strong className={styles.retentionCounts}>
                     H {retentionState.lastDeletedHostRollups.toLocaleString("ja-JP")} / C{" "}
-                    {retentionState.lastDeletedContainerRollups.toLocaleString("ja-JP")}
+                    {retentionState.lastDeletedContainerRollups.toLocaleString("ja-JP")} / MC{" "}
+                    {retentionState.lastDeletedMinecraftRollups.toLocaleString("ja-JP")}
                   </strong>
                 </div>
               </div>
@@ -424,6 +506,50 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
             状態期間Overlayを取得できませんでした。メトリクス履歴自体は継続して利用できます。
           </div>
         ) : null}
+
+        <section
+          className={styles.metricSection}
+          id="minecraft-history"
+          aria-labelledby="minecraft-history-title"
+        >
+          <div className={styles.sectionHeading}>
+            <div>
+              <span>MINECRAFT</span>
+              <h2 id="minecraft-history-title">Minecraft履歴</h2>
+            </div>
+            <p>
+              Public / BackendのOnline人数とStatus Probe Latencyを確認します。TPS / MSPTは標準Status Protocolから取得できないため推定せず、サーバー内部メトリクス収集を追加した段階で統合します。
+            </p>
+          </div>
+
+          {minecraftDataError ? (
+            <div className="empty error-panel" role="alert">
+              <strong>Minecraft履歴を取得できませんでした</strong>
+              <p>SupabaseのMinecraft履歴RPCを確認してください。</p>
+            </div>
+          ) : (
+            <div className={styles.chartGrid}>
+              <MetricLineChart
+                {...sharedChartProps}
+                title="Online Players"
+                description="Public EndpointとBackendが返したOnline人数のバケット平均です。"
+                regions={minecraftRegions}
+                series={minecraftPlayerSeries}
+                unit="人"
+                valueDigits={1}
+              />
+              <MetricLineChart
+                {...sharedChartProps}
+                title="Status Probe Latency"
+                description="Public EndpointとBackendへのMinecraft Status応答時間のバケット平均です。"
+                regions={minecraftRegions}
+                series={minecraftLatencySeries}
+                unit=" ms"
+                valueDigits={0}
+              />
+            </div>
+          )}
+        </section>
 
         <section className={styles.metricSection} aria-labelledby="host-history-title">
           <div className={styles.sectionHeading}>
@@ -547,7 +673,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
         <section className={styles.note}>
           <strong>データ保持・状態Overlayについて</strong>
           <p>
-            1時間・6時間・24時間は生データから期間に応じて集約し、7日・30日は5分ロールアップを再集約します。Rawは既定7日、5分Rollupは既定90日保持します。グラフ背景帯はHeartbeat gap、構造化Container Transition、Maintenanceイベントと最新SnapshotからStale・Offline・Error・Maintenanceの継続期間を復元します。
+            1時間・6時間・24時間は生データから期間に応じて集約し、7日・30日は5分ロールアップを再集約します。Rawは既定7日、5分Rollupは既定90日保持します。Minecraft Rawも対応する5分Rollupを確認してから削除します。グラフ背景帯はHeartbeat gap、構造化Container Transition、Maintenanceイベントと最新SnapshotからStale・Offline・Error・Maintenanceの継続期間を復元します。
           </p>
         </section>
       </section>
