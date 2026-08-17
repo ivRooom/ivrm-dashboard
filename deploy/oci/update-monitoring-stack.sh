@@ -167,5 +167,6 @@ sudo systemctl is-active --quiet ivrm-agent-docker-snapshot.timer || fail "Docke
 step "更新完了"
 printf '%s\n' \
   "Performanceは安全のためOFFです。" \
-  "次にRCONのread-only確認(list / spark tps)とRCON port非公開を確認してからONにしてください。"
+  "次にstage-minecraft-metrics-bridge.shでBridgeをステージし、メンテナンス再起動後に構造化metrics JSONを確認してください。" \
+  "metrics.jsonが正常に継続更新されることを確認するまでPerformanceをONにしないでください。"
 sudo journalctl -u ivrm-agent -n 8 --no-pager -l
