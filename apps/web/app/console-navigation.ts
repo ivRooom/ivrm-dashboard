@@ -10,6 +10,7 @@ export const consoleNavigationItems: readonly ConsoleNavigationItem[] = [
   { href: "/minecraft", label: "Minecraft", desktop: false, mobile: true },
   { href: "/hosts", label: "ホスト", desktop: true, mobile: true },
   { href: "/containers", label: "コンテナ", desktop: true, mobile: true },
+  { href: "/logs", label: "ログ", desktop: true, mobile: true },
   { href: "/incidents", label: "インシデント", desktop: true, mobile: true },
   { href: "/backups", label: "バックアップ", desktop: true, mobile: true },
   { href: "/notifications", label: "通知", desktop: true, mobile: true },
