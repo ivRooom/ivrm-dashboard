@@ -215,6 +215,60 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
     },
   ]);
 
+  const minecraftTpsSeries = minecraftHistory.flatMap((item) => [
+    {
+      id: `${item.hostId}:minecraft-tps-1m`,
+      label: `${item.hostDisplayName} / TPS 1m`,
+      points: item.points.map((point) => ({
+        timestamp: point.timestamp,
+        value: point.tps1m,
+      })),
+    },
+    {
+      id: `${item.hostId}:minecraft-tps-5m`,
+      label: `${item.hostDisplayName} / TPS 5m`,
+      points: item.points.map((point) => ({
+        timestamp: point.timestamp,
+        value: point.tps5m,
+      })),
+    },
+    {
+      id: `${item.hostId}:minecraft-tps-15m`,
+      label: `${item.hostDisplayName} / TPS 15m`,
+      points: item.points.map((point) => ({
+        timestamp: point.timestamp,
+        value: point.tps15m,
+      })),
+    },
+  ]);
+
+  const minecraftMsptSeries = minecraftHistory.flatMap((item) => [
+    {
+      id: `${item.hostId}:minecraft-mspt-median`,
+      label: `${item.hostDisplayName} / Median`,
+      points: item.points.map((point) => ({
+        timestamp: point.timestamp,
+        value: point.msptMedian1m,
+      })),
+    },
+    {
+      id: `${item.hostId}:minecraft-mspt-p95`,
+      label: `${item.hostDisplayName} / P95`,
+      points: item.points.map((point) => ({
+        timestamp: point.timestamp,
+        value: point.msptP95_1m,
+      })),
+    },
+    {
+      id: `${item.hostId}:minecraft-mspt-max`,
+      label: `${item.hostDisplayName} / Max`,
+      points: item.points.map((point) => ({
+        timestamp: point.timestamp,
+        value: point.msptMax1m,
+      })),
+    },
+  ]);
+
   const containerLabel = (host: string, container: string) =>
     `${container} / ${host}`;
 
@@ -305,6 +359,15 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
   const minecraftSampleCount = minecraftHistory.reduce(
     (total, item) =>
       total + item.points.reduce((sum, point) => sum + point.sampleCount, 0),
+    0,
+  );
+  const minecraftPerformanceSampleCount = minecraftHistory.reduce(
+    (total, item) =>
+      total +
+      item.points.reduce(
+        (sum, point) => sum + point.performanceSampleCount,
+        0,
+      ),
     0,
   );
   const sourceLabel =
@@ -518,7 +581,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
               <h2 id="minecraft-history-title">Minecraft履歴</h2>
             </div>
             <p>
-              Public / BackendのOnline人数とStatus Probe Latencyを確認します。TPS / MSPTは標準Status Protocolから取得できないため推定せず、サーバー内部メトリクス収集を追加した段階で統合します。
+              Public / BackendのOnline人数・Status Probe Latencyと、Sparkからサーバー内部で実測したTPS / MSPTを同じ時間軸で確認します。Performance未収集区間は0補完せず欠損表示します。Spark Performance集約元: {minecraftPerformanceSampleCount.toLocaleString("ja-JP")}件。
             </p>
           </div>
 
@@ -546,6 +609,24 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
                 series={minecraftLatencySeries}
                 unit=" ms"
                 valueDigits={0}
+              />
+              <MetricLineChart
+                {...sharedChartProps}
+                title="TPS"
+                description="Sparkがサーバー内部で実測した1分・5分・15分rolling TPSです。Performance未収集区間は欠損として表示します。"
+                regions={minecraftRegions}
+                series={minecraftTpsSeries}
+                unit=""
+                valueDigits={2}
+              />
+              <MetricLineChart
+                {...sharedChartProps}
+                title="MSPT"
+                description="Sparkの直近1分Tick durationです。Median / P95はバケット平均、Maxは期間内の最大値を保持します。"
+                regions={minecraftRegions}
+                series={minecraftMsptSeries}
+                unit=" ms"
+                valueDigits={1}
               />
             </div>
           )}
@@ -673,7 +754,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
         <section className={styles.note}>
           <strong>データ保持・状態Overlayについて</strong>
           <p>
-            1時間・6時間・24時間は生データから期間に応じて集約し、7日・30日は5分ロールアップを再集約します。Rawは既定7日、5分Rollupは既定90日保持します。Minecraft Rawも対応する5分Rollupを確認してから削除します。グラフ背景帯はHeartbeat gap、構造化Container Transition、Maintenanceイベントと最新SnapshotからStale・Offline・Error・Maintenanceの継続期間を復元します。
+            1時間・6時間・24時間は生データから期間に応じて集約し、7日・30日は5分ロールアップを再集約します。Rawは既定7日、5分Rollupは既定90日保持します。Minecraft Rawも対応する5分Rollupを確認してから削除します。Spark TPS/MSPTはPerformance取得成功Sampleだけを集約し、MSPT Maxは期間内最大値を維持します。グラフ背景帯はHeartbeat gap、構造化Container Transition、Maintenanceイベントと最新SnapshotからStale・Offline・Error・Maintenanceの継続期間を復元します。
           </p>
         </section>
       </section>
