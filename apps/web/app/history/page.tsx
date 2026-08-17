@@ -8,6 +8,7 @@ import {
   parseHistoryRange,
   type HistoryRange,
 } from "../../lib/history";
+import { getHistoryStatusOverlays } from "../../lib/history-status-overlays";
 import styles from "./history.module.css";
 
 export const dynamic = "force-dynamic";
@@ -59,25 +60,27 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
   const params = await searchParams;
   const range = parseHistoryRange(firstValue(params.range));
   const rangeConfig = HISTORY_RANGE_CONFIG[range];
-  const endAt = new Date();
-  const startAt = new Date(
-    endAt.getTime() - rangeConfig.hours * 60 * 60 * 1_000,
-  );
+  const requestedAt = new Date().toISOString();
 
-  const [hostResult, containerResult, retentionResult] = await Promise.allSettled([
-    getHostMetricHistory(range),
-    getContainerMetricHistory(range),
-    getObservabilityRetentionState(),
-  ]);
+  const [hostResult, containerResult, retentionResult, overlayResult] =
+    await Promise.allSettled([
+      getHostMetricHistory(range),
+      getContainerMetricHistory(range),
+      getObservabilityRetentionState(),
+      getHistoryStatusOverlays(range),
+    ]);
 
   const hostHistory = hostResult.status === "fulfilled" ? hostResult.value : [];
   const containerHistory =
     containerResult.status === "fulfilled" ? containerResult.value : [];
   const retentionState =
     retentionResult.status === "fulfilled" ? retentionResult.value : null;
+  const overlayState =
+    overlayResult.status === "fulfilled" ? overlayResult.value : null;
   const hostDataError = hostResult.status === "rejected";
   const containerDataError = containerResult.status === "rejected";
   const retentionDataError = retentionResult.status === "rejected";
+  const overlayDataError = overlayResult.status === "rejected";
 
   if (hostResult.status === "rejected") {
     console.error("ホスト監視履歴の取得に失敗しました", hostResult.reason);
@@ -88,6 +91,18 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
   if (retentionResult.status === "rejected") {
     console.error("監視Retention状態の取得に失敗しました", retentionResult.reason);
   }
+  if (overlayResult.status === "rejected") {
+    console.error("監視状態Overlayの取得に失敗しました", overlayResult.reason);
+  }
+
+  const chartEndAt = overlayState?.generatedAt ?? requestedAt;
+  const chartStartAt = new Date(
+    Date.parse(chartEndAt) - rangeConfig.hours * 60 * 60 * 1_000,
+  ).toISOString();
+  const hostRegions = overlayState?.hostRegions ?? [];
+  const containerRegions = overlayState
+    ? [...overlayState.hostRegions, ...overlayState.containerRegions]
+    : [];
 
   const hostLoadSeries = hostHistory.flatMap((item) => [
     {
@@ -237,8 +252,8 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
       : styles.retentionPaused;
 
   const sharedChartProps = {
-    startAt: startAt.toISOString(),
-    endAt: endAt.toISOString(),
+    startAt: chartStartAt,
+    endAt: chartEndAt,
     expectedIntervalSeconds: rangeConfig.bucketSeconds,
     aggregationLabel: rangeConfig.aggregationLabel,
     periodLabel: rangeConfig.label,
@@ -333,8 +348,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
             ))}
           </nav>
           <small>
-            {formatPeriod(startAt.toISOString())}〜
-            {formatPeriod(endAt.toISOString())}
+            {formatPeriod(chartStartAt)}〜{formatPeriod(chartEndAt)}
           </small>
         </div>
 
@@ -405,6 +419,12 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
           )}
         </section>
 
+        {overlayDataError ? (
+          <div className={styles.retentionAlert} role="alert">
+            状態期間Overlayを取得できませんでした。メトリクス履歴自体は継続して利用できます。
+          </div>
+        ) : null}
+
         <section className={styles.metricSection} aria-labelledby="host-history-title">
           <div className={styles.sectionHeading}>
             <div>
@@ -425,6 +445,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
                 {...sharedChartProps}
                 title="Load Average"
                 description="1分・5分・15分の平均実行待ち負荷を比較します。"
+                regions={hostRegions}
                 series={hostLoadSeries}
                 unit=""
               />
@@ -432,6 +453,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
                 {...sharedChartProps}
                 title="ホストメモリ使用率"
                 description="総メモリとAvailableから算出した使用率です。"
+                regions={hostRegions}
                 series={hostMemorySeries}
                 unit="%"
                 maximum={100}
@@ -440,6 +462,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
                 {...sharedChartProps}
                 title="ディスク使用率"
                 description="監視対象ファイルシステムの総容量とAvailableから算出します。"
+                regions={hostRegions}
                 series={hostDiskSeries}
                 unit="%"
                 maximum={100}
@@ -470,6 +493,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
                 {...sharedChartProps}
                 title="CPU使用率"
                 description="各コンテナのCPU使用率です。欠損区間は線を接続しません。"
+                regions={containerRegions}
                 series={cpuSeries}
                 unit="%"
               />
@@ -477,6 +501,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
                 {...sharedChartProps}
                 title="メモリ使用率"
                 description="使用量をコンテナのメモリ上限で割った使用率です。"
+                regions={containerRegions}
                 series={memorySeries}
                 unit="%"
                 maximum={100}
@@ -485,6 +510,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
                 {...sharedChartProps}
                 title="PIDs"
                 description="コンテナ内で観測したProcess数の推移です。"
+                regions={containerRegions}
                 series={pidsSeries}
                 unit=""
                 valueDigits={0}
@@ -493,6 +519,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
                 {...sharedChartProps}
                 title="再起動回数"
                 description="Docker RestartCountの最新値を各時間バケットへ保持します。"
+                regions={containerRegions}
                 series={restartSeries}
                 unit=""
                 valueDigits={0}
@@ -501,6 +528,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
                 {...sharedChartProps}
                 title="Network I/O"
                 description="Dockerの累積RX/TX Counterを区間差分からKiB/sへ変換します。Counter resetは欠損扱いです。"
+                regions={containerRegions}
                 series={networkSeries}
                 unit=" KiB/s"
               />
@@ -508,6 +536,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
                 {...sharedChartProps}
                 title="Block I/O"
                 description="Dockerの累積Read/Write Counterを区間差分からKiB/sへ変換します。Counter resetは欠損扱いです。"
+                regions={containerRegions}
                 series={blockSeries}
                 unit=" KiB/s"
               />
@@ -516,9 +545,9 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
         </section>
 
         <section className={styles.note}>
-          <strong>データ保持・集約について</strong>
+          <strong>データ保持・状態Overlayについて</strong>
           <p>
-            1時間・6時間・24時間は生データから期間に応じて集約します。7日・30日は5分ロールアップを30分・1時間へ再集約します。Rawは既定7日、5分Rollupは既定90日保持し、Retentionは6時間ごとに上限制御付きで段階削除するため、長期表示を維持しながらDB肥大化を抑えます。
+            1時間・6時間・24時間は生データから期間に応じて集約し、7日・30日は5分ロールアップを再集約します。Rawは既定7日、5分Rollupは既定90日保持します。グラフ背景帯はHeartbeat gap、構造化Container Transition、Maintenanceイベントと最新SnapshotからStale・Offline・Error・Maintenanceの継続期間を復元します。
           </p>
         </section>
       </section>
