@@ -48,7 +48,11 @@ jobs:
       - name: OCI更新スクリプトの構文を確認
         run: bash -n deploy/oci/update-monitoring-stack.sh
       - name: Metrics Bridgeステージスクリプトの構文を確認
-        run: bash -n deploy/oci/stage-minecraft-metrics-bridge.sh
+        run: |
+          bash -n deploy/oci/stage-minecraft-metrics-bridge.sh
+          bash -n deploy/oci/test_stage_minecraft_metrics_bridge.sh
+      - name: Metrics Bridge永続ステージ契約をテスト
+        run: bash deploy/oci/test_stage_minecraft_metrics_bridge.sh
       - name: Metrics Bridge build/testスクリプトの構文を確認
         run: |
           bash -n apps/minecraft-metrics-bridge/build.sh
