@@ -82,7 +82,7 @@
 
 .filters {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(150px, 0.8fr) minmax(220px, 1.6fr) auto;
+  grid-template-columns: minmax(170px, 1fr) minmax(130px, 0.8fr) minmax(130px, 0.8fr) minmax(120px, 0.7fr);
   gap: 10px;
   align-items: end;
   margin-bottom: 14px;
@@ -101,6 +101,10 @@
   font-weight: 700;
 }
 
+.filters label:last-of-type {
+  grid-column: 1 / span 3;
+}
+
 .filters select,
 .filters input,
 .filters button {
@@ -116,6 +120,7 @@
 }
 
 .filters button {
+  grid-column: 4;
   padding-inline: 16px;
   border-color: rgb(168 255 73 / 34%);
   color: var(--accent);
@@ -160,12 +165,22 @@
   .filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .filters label:last-of-type,
+  .filters button {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 620px) {
   .summaryGrid,
   .filters {
     grid-template-columns: 1fr;
+  }
+
+  .filters label:last-of-type,
+  .filters button {
+    grid-column: auto;
   }
 
   .headerActions {
