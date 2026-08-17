@@ -19,6 +19,7 @@ MAX_COMMAND_OUTPUT_BYTES = 16 * 1024
 MAX_TPS = 1_000.0
 MAX_MSPT_MS = 60_000.0
 COMMAND_TIMEOUT_SECONDS = 5
+SPARK_TPS_COMMAND = "spark tps"
 
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 MINECRAFT_FORMAT = re.compile(r"§[0-9A-FK-ORa-fk-or]")
@@ -117,8 +118,7 @@ def collect_spark_metrics(docker_binary: str) -> dict[str, Any]:
                 "exec",
                 MINECRAFT_BACKEND_CONTAINER,
                 "rcon-cli",
-                "spark",
-                "tps",
+                SPARK_TPS_COMMAND,
             ],
             capture_output=True,
             text=True,
