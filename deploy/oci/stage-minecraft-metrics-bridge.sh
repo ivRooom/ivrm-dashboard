@@ -6,8 +6,10 @@ REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd -P)"
 BRIDGE_DIR="${REPO_ROOT}/apps/minecraft-metrics-bridge"
 BRIDGE_JAR_NAME="ivrm-metrics-bridge.jar"
 CONTAINER_NAME="mc-main"
-CONTAINER_MODS_DIR="/data/mods"
-CONTAINER_JAR_PATH="${CONTAINER_MODS_DIR}/${BRIDGE_JAR_NAME}"
+CONTAINER_MODS_SOURCE_DIR="/mods"
+CONTAINER_DATA_MODS_DIR="/data/mods"
+CONTAINER_SOURCE_JAR_PATH="${CONTAINER_MODS_SOURCE_DIR}/${BRIDGE_JAR_NAME}"
+CONTAINER_DATA_JAR_PATH="${CONTAINER_DATA_MODS_DIR}/${BRIDGE_JAR_NAME}"
 BUILDER_IMAGE="eclipse-temurin:25-jdk"
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ivrm-metrics-bridge-stage.XXXXXX")"
 OUTPUT_JAR="${WORK_DIR}/${BRIDGE_JAR_NAME}"
@@ -39,6 +41,16 @@ local_jdk_usable() {
   (( major >= 21 ))
 }
 
+mods_mount_source() {
+  sudo docker inspect \
+    --format '{{range .Mounts}}{{if eq .Destination "/mods"}}{{.Source}}{{end}}{{end}}' \
+    "${CONTAINER_NAME}"
+}
+
+file_sha256() {
+  sha256sum "$1" | awk '{print $1}'
+}
+
 for command_name in git sudo docker sha256sum; do
   require_command "${command_name}"
 done
@@ -56,9 +68,20 @@ if ! sudo docker inspect --format '{{.State.Running}}' "${CONTAINER_NAME}" 2>/de
   fail "${CONTAINER_NAME} がrunningではありません"
 fi
 
-if ! sudo docker exec "${CONTAINER_NAME}" test -d "${CONTAINER_MODS_DIR}"; then
-  fail "${CONTAINER_NAME} に ${CONTAINER_MODS_DIR} がありません。NeoForge server構成を確認してください"
+if ! sudo docker exec "${CONTAINER_NAME}" test -d "${CONTAINER_MODS_SOURCE_DIR}"; then
+  fail "${CONTAINER_NAME} に ${CONTAINER_MODS_SOURCE_DIR} がありません。永続Mod source mountを確認してください"
 fi
+
+if ! sudo docker exec "${CONTAINER_NAME}" test -d "${CONTAINER_DATA_MODS_DIR}"; then
+  fail "${CONTAINER_NAME} に ${CONTAINER_DATA_MODS_DIR} がありません。NeoForge server構成を確認してください"
+fi
+
+# itzg/minecraft-serverは /mods を /data/mods へ起動時同期する。
+# /data/modsへ直接書くと永続Source-of-Truthを外すため、Host bind mount側へ配置する。
+MODS_SOURCE="$(mods_mount_source)"
+[[ -n "${MODS_SOURCE}" ]] || fail "${CONTAINER_MODS_SOURCE_DIR} のHost mount sourceを特定できません"
+sudo test -d "${MODS_SOURCE}" || fail "Host mods sourceがディレクトリではありません: ${MODS_SOURCE}"
+HOST_JAR_PATH="${MODS_SOURCE}/${BRIDGE_JAR_NAME}"
 
 # Productionで実際に利用しているSparkはNeoForge版。Fabric/Forge環境への誤配置を防ぐ。
 if ! sudo docker exec "${CONTAINER_NAME}" sh -c \
@@ -79,9 +102,10 @@ if [[ "${PERFORMANCE_SETTING,,}" != "false" ]]; then
   fail "PerformanceをfalseにしてからMetrics Bridgeをステージしてください"
 fi
 
-printf 'repo=%s\nsha=%s\n' \
+printf 'repo=%s\nsha=%s\nmods_source=%s\n' \
   "${REPO_ROOT}" \
-  "$(git -C "${REPO_ROOT}" rev-parse HEAD)"
+  "$(git -C "${REPO_ROOT}" rev-parse HEAD)" \
+  "${MODS_SOURCE}"
 
 printf '\n==> NeoForge Metrics Bridgeをビルド\n'
 if local_jdk_usable; then
@@ -102,36 +126,63 @@ else
 fi
 
 [[ -s "${OUTPUT_JAR}" ]] || fail "Metrics Bridge jarを生成できませんでした"
-printf 'sha256=%s\n' "$(sha256sum "${OUTPUT_JAR}" | awk '{print $1}')"
+OUTPUT_SHA="$(file_sha256 "${OUTPUT_JAR}")"
+printf 'sha256=%s\n' "${OUTPUT_SHA}"
 
-printf '\n==> 既存Bridgeを退避\n'
-if sudo docker exec "${CONTAINER_NAME}" test -f "${CONTAINER_JAR_PATH}"; then
-  sudo docker cp "${CONTAINER_NAME}:${CONTAINER_JAR_PATH}" "${BACKUP_JAR}"
+printf '\n==> 永続Mod sourceの既存Bridgeを退避\n'
+if sudo test -f "${HOST_JAR_PATH}"; then
+  sudo cp -a "${HOST_JAR_PATH}" "${BACKUP_JAR}"
   printf 'previous_bridge=backed_up\n'
 else
   printf 'previous_bridge=none\n'
 fi
 
-printf '\n==> mc-mainへNeoForge Bridgeをステージ\n'
-if ! sudo docker cp "${OUTPUT_JAR}" "${CONTAINER_NAME}:${CONTAINER_JAR_PATH}"; then
+rollback_source() {
   if [[ -s "${BACKUP_JAR}" ]]; then
-    sudo docker cp "${BACKUP_JAR}" "${CONTAINER_NAME}:${CONTAINER_JAR_PATH}" || true
+    sudo install -m 0644 "${BACKUP_JAR}" "${HOST_JAR_PATH}" || true
+  else
+    sudo rm -f -- "${HOST_JAR_PATH}" || true
   fi
-  fail "Metrics Bridge jarをステージできませんでした"
+  sudo restorecon -F "${HOST_JAR_PATH}" 2>/dev/null || true
+}
+
+printf '\n==> 永続 /mods sourceへNeoForge Bridgeをステージ\n'
+if ! sudo install -m 0644 "${OUTPUT_JAR}" "${HOST_JAR_PATH}"; then
+  rollback_source
+  fail "Metrics Bridge jarをHost mods sourceへステージできませんでした"
+fi
+sudo restorecon -F "${HOST_JAR_PATH}" 2>/dev/null || true
+
+if ! sudo test -s "${HOST_JAR_PATH}"; then
+  rollback_source
+  fail "Host mods sourceのMetrics Bridge jarを確認できません"
 fi
 
-if ! sudo docker exec "${CONTAINER_NAME}" test -s "${CONTAINER_JAR_PATH}"; then
-  if [[ -s "${BACKUP_JAR}" ]]; then
-    sudo docker cp "${BACKUP_JAR}" "${CONTAINER_NAME}:${CONTAINER_JAR_PATH}" || true
-  else
-    sudo docker exec "${CONTAINER_NAME}" rm -f "${CONTAINER_JAR_PATH}" || true
-  fi
-  fail "ステージ後のMetrics Bridge jarを確認できません"
+HOST_SHA="$(sudo sha256sum "${HOST_JAR_PATH}" | awk '{print $1}')"
+if [[ "${HOST_SHA}" != "${OUTPUT_SHA}" ]]; then
+  rollback_source
+  fail "Host mods sourceのMetrics Bridge SHA256がbuild成果物と一致しません"
+fi
+
+# /modsがbind mountされていることも確認する。ここに見えなければ再起動時同期へ進まない。
+if ! sudo docker exec "${CONTAINER_NAME}" test -s "${CONTAINER_SOURCE_JAR_PATH}"; then
+  rollback_source
+  fail "container ${CONTAINER_MODS_SOURCE_DIR} からMetrics Bridgeを確認できません"
+fi
+
+SOURCE_SHA="$(
+  sudo docker exec "${CONTAINER_NAME}" sha256sum "${CONTAINER_SOURCE_JAR_PATH}" \
+    | awk '{print $1}'
+)"
+if [[ "${SOURCE_SHA}" != "${OUTPUT_SHA}" ]]; then
+  rollback_source
+  fail "container ${CONTAINER_MODS_SOURCE_DIR} のMetrics Bridge SHA256が一致しません"
 fi
 
 printf '\n==> ステージ完了\n'
 printf '%s\n' \
-  "NeoForge Bridge JARを配置しました。" \
+  "NeoForge Bridge JARを永続 /mods sourceへ配置しました。" \
   "Minecraftは自動再起動していません。" \
   "PerformanceもOFFのままです。" \
-  "メンテナンス再起動後、[ivrm-metrics-bridge] initialized と metrics.json を確認してください。"
+  "再起動時に /mods から ${CONTAINER_DATA_MODS_DIR} へ同期されます。" \
+  "メンテナンス再起動後、${CONTAINER_DATA_JAR_PATH} と [ivrm-metrics-bridge] initialized と metrics.json を確認してください。"
