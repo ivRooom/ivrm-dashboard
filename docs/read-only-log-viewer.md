@@ -27,8 +27,10 @@ Supabase console_log_entries
 - ANSI escapeは除去しHTMLへ変換しない。
 - IP / Bearer / token / password / secret / RCON password / forwarding secretはOCIとWebの両方でredactする。
 - 1 requestは64KiB以下、最大120行、1行2048文字以下。
-- Viewer初回300行、Follow中のDOMは最大800行。
-- DB Read RPCは24時間以内、最大500行に固定する。
+- Viewer初回は100 / 300 / 500行から選択し、Follow中のDOMは最大800行。
+- 表示期間は5m / 15m / 1h / 6h / 24hのallowlistだけを許可する。
+- Followと自動スクロールは独立して切替可能。過去ログを読んでいる間は新着取得を継続したままviewportを固定できる。
+- DB Read RPCは24時間Retention内、最大500行に固定する。
 - 24時間Retentionはingest時のbounded pruneに加えてpg_cronで毎時実行する。
 
 ## Allowed sources
@@ -54,7 +56,10 @@ Supabase console_log_entries
 202608180001_console_log_viewer.sql
 202608180002_console_log_retention_schedule.sql
 202608180003_console_log_read_stable_time.sql
+202608180004_console_log_time_window.sql
 ```
+
+v1 Read RPCは互換性のため残し、Webはv2を使用します。v2ではtime windowを5 / 15 / 60 / 360 / 1440分のallowlistに限定します。
 
 確認:
 
@@ -62,12 +67,16 @@ Supabase console_log_entries
 select to_regclass('public.console_log_entries') as entries_table,
        to_regclass('public.console_log_ingest_requests') as requests_table;
 
+select to_regprocedure(
+  'public.get_console_logs_v2(text,text,text,text,integer,bigint,integer)'
+) as log_read_v2;
+
 select jobid, jobname, schedule
 from cron.job
 where jobname = 'ivrm-console-log-retention-v1';
 ```
 
-両Tableがnon-nullで、Retention Jobが1件だけ存在することを確認します。
+両Tableと`get_console_logs_v2`がnon-nullで、Retention Jobが1件だけ存在することを確認します。
 
 ### 2. Web Production
 
@@ -163,9 +172,14 @@ Discord認証済みで `/logs` を開き、次を確認します。
 - Source filter
 - Level filter
 - 本文検索
+- 表示期間 5m / 15m / 1h / 6h / 24h
+- 最新N行 100 / 300 / 500
 - Follow ON/OFF
-- 過去へスクロールしても位置が勝手に戻らない
+- 自動スクロール ON/OFF
+- Follow ON + 自動スクロール OFFで新着取得だけ継続できる
+- 過去へスクロールした場合はAuto-scrollがPAUSEDになり、位置が勝手に戻らない
 - `最新へ`で末尾へ戻れる
+- Filter変更時に変更前ログが残らない
 - IP / Secret類が表示されない
 - Mobileで横・縦スクロールが破綻しない
 
