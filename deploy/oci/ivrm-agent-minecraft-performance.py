@@ -5,6 +5,7 @@ import grp
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -23,6 +24,12 @@ MAX_MSPT_MS = 60_000.0
 MAX_METRICS_AGE_SECONDS = 45.0
 MAX_FUTURE_SKEW_SECONDS = 5.0
 COMMAND_TIMEOUT_SECONDS = 5
+
+RFC3339_TIMESTAMP_PATTERN = re.compile(
+    r"^(?P<date>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})"
+    r"(?:\.(?P<fraction>\d{1,9}))?"
+    r"(?P<timezone>Z|[+-]\d{2}:\d{2})$"
+)
 
 EXPECTED_METRICS_KEYS = {
     "generatedAt",
@@ -52,13 +59,28 @@ def parse_metric_number(value: object, maximum: float) -> float:
 def parse_generated_at(value: object) -> datetime:
     if not isinstance(value, str) or not value:
         raise RuntimeError("Metrics BridgeのgeneratedAtが不正です")
-    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+
+    match = RFC3339_TIMESTAMP_PATTERN.fullmatch(value)
+    if match is None:
+        raise RuntimeError("Metrics BridgeのgeneratedAt形式が不正です")
+
+    fraction = match.group("fraction")
+    fraction_part = ""
+    if fraction is not None:
+        # Java Instant may emit nanoseconds (up to 9 digits), while Python runtimes
+        # used on Production may only accept microseconds. Truncate sub-microsecond
+        # precision; freshness checks operate at second-level tolerances.
+        fraction_part = f".{fraction[:6].ljust(6, '0')}"
+
+    timezone_part = match.group("timezone")
+    if timezone_part == "Z":
+        timezone_part = "+00:00"
+
+    normalized = f"{match.group('date')}{fraction_part}{timezone_part}"
     try:
         parsed = datetime.fromisoformat(normalized)
     except ValueError as exc:
         raise RuntimeError("Metrics BridgeのgeneratedAt形式が不正です") from exc
-    if parsed.tzinfo is None:
-        raise RuntimeError("Metrics BridgeのgeneratedAtにtimezoneがありません")
     return parsed.astimezone(timezone.utc)
 
 

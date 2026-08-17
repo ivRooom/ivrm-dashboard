@@ -52,6 +52,30 @@ class BridgeMetricsParserTest(unittest.TestCase):
             },
         )
 
+    def test_parses_java_instant_nanosecond_timestamp(self) -> None:
+        parsed = collector.parse_generated_at("2026-08-17T13:46:51.450052301Z")
+        self.assertEqual(
+            parsed,
+            datetime(2026, 8, 17, 13, 46, 51, 450052, tzinfo=timezone.utc),
+        )
+
+    def test_parses_fresh_metrics_with_nanosecond_timestamp(self) -> None:
+        now = datetime(2026, 8, 17, 13, 46, 58, tzinfo=timezone.utc)
+        result = collector.parse_bridge_metrics(
+            json.dumps(
+                bridge_document(
+                    generatedAt="2026-08-17T13:46:51.450052301Z",
+                )
+            ),
+            now=now,
+        )
+        self.assertEqual(result["source"], "spark")
+        self.assertEqual(result["tps1m"], 19.98)
+
+    def test_rejects_more_than_nanosecond_precision(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "generatedAt形式"):
+            collector.parse_generated_at("2026-08-17T13:46:51.4500523011Z")
+
     def test_rejects_stale_metrics(self) -> None:
         generated_at = NOW - timedelta(seconds=46)
         with self.assertRaisesRegex(RuntimeError, "古すぎ"):
