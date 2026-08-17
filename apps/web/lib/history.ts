@@ -189,7 +189,7 @@ export function parseHistoryRange(value: string | null | undefined): HistoryRang
     : "24h";
 }
 
-async function callSupabaseRpc<T>(
+export async function callSupabaseRpc<T>(
   rpcName: string,
   payload: Record<string, unknown> = {},
 ): Promise<T> {
