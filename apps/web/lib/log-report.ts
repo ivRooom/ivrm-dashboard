@@ -155,12 +155,15 @@ export function parseLogReport(rawBody: Uint8Array): LogReportPayload {
     throw new LogReportError(400, "invalid_payload");
   }
 
-  const reportedAtMs = Date.parse(value.reportedAt);
+  const serverId = value.serverId;
+  const reportedAt = value.reportedAt;
+  const rawEntries = value.entries;
+  const reportedAtMs = Date.parse(reportedAt);
   if (!Number.isFinite(reportedAtMs) || Math.abs(Date.now() - reportedAtMs) > MAX_CLOCK_SKEW_SECONDS * 1_000) {
     throw new LogReportError(401, "expired_request");
   }
 
-  const entries = value.entries.map((entry) => normalizeEntry(entry, value.reportedAt));
+  const entries = rawEntries.map((entry) => normalizeEntry(entry, reportedAt));
   if (entries.some((entry) => entry === null)) {
     throw new LogReportError(400, "invalid_payload");
   }
@@ -171,8 +174,8 @@ export function parseLogReport(rawBody: Uint8Array): LogReportPayload {
   }
 
   return {
-    serverId: value.serverId,
-    reportedAt: value.reportedAt,
+    serverId,
+    reportedAt,
     entries: [...uniqueEntries.values()],
   };
 }
