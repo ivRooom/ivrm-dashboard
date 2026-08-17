@@ -28,11 +28,13 @@ import (
 )
 
 const (
-	agentVersion              = "0.5.0"
+	agentVersion              = "0.6.0"
 	defaultDockerSnapshotPath = "/run/ivrm-agent/docker-state.json"
 	maxDockerSnapshotAge      = 45 * time.Second
 	maxContainersPerSnapshot  = 20
 	maxMinecraftPlayers       = 1_000_000
+	maxMinecraftTPS           = 1_000.0
+	maxMinecraftMSPT          = 60_000.0
 	maxSafeInteger      uint64 = 9_007_199_254_740_991
 )
 
@@ -103,12 +105,23 @@ type minecraftEndpoint struct {
 	Max       *int    `json:"max"`
 }
 
+type minecraftPerformance struct {
+	Source        string  `json:"source"`
+	TPS1m         float64 `json:"tps1m"`
+	TPS5m         float64 `json:"tps5m"`
+	TPS15m        float64 `json:"tps15m"`
+	MSPTMedian1m  float64 `json:"msptMedian1m"`
+	MSPTP95_1m    float64 `json:"msptP95_1m"`
+	MSPTMax1m     float64 `json:"msptMax1m"`
+}
+
 type minecraftProbe struct {
-	PublicEndpoint          minecraftEndpoint `json:"publicEndpoint"`
-	Backend                 minecraftEndpoint `json:"backend"`
-	ProxyPortPublished     bool              `json:"proxyPortPublished"`
-	BackendPortPublished   bool              `json:"backendPortPublished"`
-	VoiceChatPortPublished bool              `json:"voiceChatPortPublished"`
+	PublicEndpoint          minecraftEndpoint     `json:"publicEndpoint"`
+	Backend                 minecraftEndpoint     `json:"backend"`
+	ProxyPortPublished      bool                  `json:"proxyPortPublished"`
+	BackendPortPublished    bool                  `json:"backendPortPublished"`
+	VoiceChatPortPublished  bool                  `json:"voiceChatPortPublished"`
+	Performance             *minecraftPerformance `json:"performance,omitempty"`
 }
 
 type dockerSnapshot struct {
@@ -212,7 +225,7 @@ func runOnce(ctx context.Context, logger *slog.Logger, cfg config) {
 		logger.Warn("Docker状態スナップショットを利用できません", "error", err)
 		snapshot = dockerSnapshot{Containers: []containerMetrics{}}
 	} else if err := validateSnapshotMinecraft(&snapshot); err != nil {
-		logger.Warn("Minecraft Probeを利用できません", "error", err)
+		logger.Warn("Minecraft Probeの一部を利用できません", "error", err)
 	}
 
 	body, err := json.Marshal(payload{
@@ -264,6 +277,8 @@ func runOnce(ctx context.Context, logger *slog.Logger, cfg config) {
 		len(snapshot.Containers),
 		"minecraft",
 		snapshot.Minecraft != nil,
+		"minecraft_performance",
+		snapshot.Minecraft != nil && snapshot.Minecraft.Performance != nil,
 	)
 }
 
@@ -337,6 +352,12 @@ func validateSnapshotMinecraft(snapshot *dockerSnapshot) error {
 		snapshot.Minecraft = nil
 		return err
 	}
+	if snapshot.Minecraft.Performance != nil {
+		if err := validateMinecraftPerformance(*snapshot.Minecraft.Performance); err != nil {
+			snapshot.Minecraft.Performance = nil
+			return fmt.Errorf("性能メトリクス: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -389,7 +410,6 @@ func validateContainerResourceMetrics(container containerMetrics) error {
 		if *value > maxSafeInteger {
 			return errors.New("バイト値がJavaScript安全整数の範囲外です")
 		}
-	}
 	if *container.MemoryUsageBytes > *container.MemoryLimitBytes {
 		return errors.New("メモリ使用量が上限を超えています")
 	}
@@ -442,6 +462,32 @@ func validateMinecraftEndpoint(endpoint minecraftEndpoint) error {
 	}
 	if *endpoint.Online < 0 || *endpoint.Max < 1 || *endpoint.Max > maxMinecraftPlayers || *endpoint.Online > *endpoint.Max {
 		return errors.New("プレイヤー数が許容範囲外です")
+	}
+	return nil
+}
+
+func validateMinecraftPerformance(performance minecraftPerformance) error {
+	if performance.Source != "spark" {
+		return errors.New("性能メトリクスSourceが不正です")
+	}
+	values := []struct {
+		value   float64
+		maximum float64
+	}{
+		{performance.TPS1m, maxMinecraftTPS},
+		{performance.TPS5m, maxMinecraftTPS},
+		{performance.TPS15m, maxMinecraftTPS},
+		{performance.MSPTMedian1m, maxMinecraftMSPT},
+		{performance.MSPTP95_1m, maxMinecraftMSPT},
+		{performance.MSPTMax1m, maxMinecraftMSPT},
+	}
+	for _, item := range values {
+		if math.IsNaN(item.value) || math.IsInf(item.value, 0) || item.value < 0 || item.value > item.maximum {
+			return errors.New("性能メトリクス値が許容範囲外です")
+		}
+	}
+	if performance.MSPTMedian1m > performance.MSPTP95_1m || performance.MSPTP95_1m > performance.MSPTMax1m {
+		return errors.New("MSPT percentileの順序が不正です")
 	}
 	return nil
 }
