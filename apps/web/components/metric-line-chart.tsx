@@ -18,6 +18,20 @@ export type MetricChartMarker = {
   severity: "info" | "warning" | "critical" | "recovery";
 };
 
+export type MetricChartRegionKind =
+  | "stale"
+  | "offline"
+  | "error"
+  | "maintenance";
+
+export type MetricChartRegion = {
+  id: string;
+  startAt: string;
+  endAt: string;
+  label: string;
+  kind: MetricChartRegionKind;
+};
+
 type MetricLineChartProps = {
   title: string;
   description: string;
@@ -32,6 +46,7 @@ type MetricLineChartProps = {
   valueDigits?: number;
   emptyDescription?: string;
   markers?: MetricChartMarker[];
+  regions?: MetricChartRegion[];
 };
 
 type PositionedPoint = {
@@ -53,6 +68,20 @@ const markerClasses: Record<MetricChartMarker["severity"], string> = {
   warning: styles.markerWarning,
   critical: styles.markerCritical,
   recovery: styles.markerRecovery,
+};
+
+const regionClasses: Record<MetricChartRegionKind, string> = {
+  stale: styles.regionStale,
+  offline: styles.regionOffline,
+  error: styles.regionError,
+  maintenance: styles.regionMaintenance,
+};
+
+const regionLabels: Record<MetricChartRegionKind, string> = {
+  stale: "Stale",
+  offline: "Offline",
+  error: "Error",
+  maintenance: "Maintenance",
 };
 
 function seriesColor(index: number): string {
@@ -119,6 +148,7 @@ export function MetricLineChart({
   valueDigits,
   emptyDescription = "選択期間に有効なサンプルが取得されると自動的に表示されます。",
   markers = [],
+  regions = [],
 }: MetricLineChartProps) {
   const startMilliseconds = Date.parse(startAt);
   const endMilliseconds = Date.parse(endAt);
@@ -153,6 +183,23 @@ export function MetricLineChart({
         marker.time <= endMilliseconds,
     )
     .sort((left, right) => left.time - right.time);
+
+  const visibleRegions = regions
+    .map((region) => ({
+      ...region,
+      start: Math.max(Date.parse(region.startAt), startMilliseconds),
+      end: Math.min(Date.parse(region.endAt), endMilliseconds),
+    }))
+    .filter(
+      (region) =>
+        Number.isFinite(region.start) &&
+        Number.isFinite(region.end) &&
+        region.end > region.start,
+    )
+    .sort((left, right) => left.start - right.start || left.end - right.end);
+  const visibleRegionKinds = [
+    ...new Set(visibleRegions.map((region) => region.kind)),
+  ];
 
   const values = visibleSeries.flatMap((item) =>
     item.points.map((point) => point.value),
@@ -189,9 +236,30 @@ export function MetricLineChart({
               className={styles.chart}
               viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
               role="img"
-              aria-label={`${title}。${visibleSeries.map((item) => item.label).join("、")}の直近${periodLabel}の推移。イベントマーカー${visibleMarkers.length}件`}
+              aria-label={`${title}。${visibleSeries.map((item) => item.label).join("、")}の直近${periodLabel}の推移。状態期間${visibleRegions.length}件、イベントマーカー${visibleMarkers.length}件`}
             >
               <title>{title}</title>
+
+              {visibleRegions.map((region) => {
+                const x =
+                  PADDING.left +
+                  ((region.start - startMilliseconds) / duration) * PLOT_WIDTH;
+                const endX =
+                  PADDING.left +
+                  ((region.end - startMilliseconds) / duration) * PLOT_WIDTH;
+                return (
+                  <g key={region.id}>
+                    <title>{`${region.label} / ${formatTime(region.start)}〜${formatTime(region.end)}`}</title>
+                    <rect
+                      className={`${styles.statusRegion} ${regionClasses[region.kind]}`}
+                      height={PLOT_HEIGHT}
+                      width={Math.max(1.5, endX - x)}
+                      x={x}
+                      y={PADDING.top}
+                    />
+                  </g>
+                );
+              })}
 
               {yTicks.map((tick) => {
                 const y =
@@ -358,6 +426,20 @@ export function MetricLineChart({
               );
             })}
           </div>
+          {visibleRegionKinds.length > 0 ? (
+            <div className={styles.regionLegend} aria-label="状態期間Overlayの凡例">
+              {visibleRegionKinds.map((kind) => (
+                <span key={kind}>
+                  <i
+                    aria-hidden="true"
+                    className={`${styles.regionSwatch} ${regionClasses[kind]}`}
+                  />
+                  {regionLabels[kind]}
+                </span>
+              ))}
+              <small>背景帯は該当状態が継続した期間です。</small>
+            </div>
+          ) : null}
           {visibleMarkers.length > 0 ? (
             <p className={styles.markerHint}>
               縦の破線はState / Health / Restart / OOMなどの監視イベントです（{visibleMarkers.length}件）。
