@@ -6,7 +6,8 @@ REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd -P)"
 BRIDGE_DIR="${REPO_ROOT}/apps/minecraft-metrics-bridge"
 BRIDGE_JAR_NAME="ivrm-metrics-bridge.jar"
 CONTAINER_NAME="mc-main"
-CONTAINER_JAR_PATH="/data/mods/${BRIDGE_JAR_NAME}"
+CONTAINER_MODS_DIR="/data/mods"
+CONTAINER_JAR_PATH="${CONTAINER_MODS_DIR}/${BRIDGE_JAR_NAME}"
 BUILDER_IMAGE="eclipse-temurin:25-jdk"
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ivrm-metrics-bridge-stage.XXXXXX")"
 OUTPUT_JAR="${WORK_DIR}/${BRIDGE_JAR_NAME}"
@@ -30,7 +31,7 @@ for command_name in git sudo docker sha256sum; do
   require_command "${command_name}"
 done
 
-[[ -x "${BRIDGE_DIR}/build.sh" ]] || fail "Metrics Bridge build scriptがありません"
+[[ -f "${BRIDGE_DIR}/build.sh" ]] || fail "Metrics Bridge build scriptがありません"
 [[ -f "${BRIDGE_DIR}/src/main/java/jp/ivrm/metrics/IvrmMetricsBridge.java" ]] || fail "Metrics Bridge sourceがありません"
 [[ -f "${BRIDGE_DIR}/src/main/resources/fabric.mod.json" ]] || fail "fabric.mod.jsonがありません"
 
@@ -40,6 +41,10 @@ fi
 
 if ! sudo docker inspect --format '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null | grep -qx 'true'; then
   fail "${CONTAINER_NAME} がrunningではありません"
+fi
+
+if ! sudo docker exec "${CONTAINER_NAME}" test -d "${CONTAINER_MODS_DIR}"; then
+  fail "${CONTAINER_NAME} に ${CONTAINER_MODS_DIR} がありません。Fabric/Mod server構成を確認してください"
 fi
 
 if ! sudo test -f /etc/ivrm-agent/docker.env; then
@@ -61,7 +66,7 @@ printf 'repo=%s\nsha=%s\n' \
 
 printf '\n==> Metrics Bridgeをビルド\n'
 if command -v javac >/dev/null 2>&1 && command -v jar >/dev/null 2>&1; then
-  "${BRIDGE_DIR}/build.sh" "${OUTPUT_JAR}"
+  bash "${BRIDGE_DIR}/build.sh" "${OUTPUT_JAR}"
 else
   # Build in an isolated JDK container. No network and no Docker socket are exposed.
   sudo docker run --rm \
@@ -101,4 +106,4 @@ printf '\n==> ステージ完了\n'
 printf '%s\n' \
   "Minecraftは自動再起動していません。" \
   "PerformanceもOFFのままです。" \
-  "次のメンテナンス再起動後に /data/ivrm/metrics.json が生成されることを確認してください。"
+  "次のメンテナンス再起動後、15秒以上待って /data/ivrm/metrics.json を確認してください。"
