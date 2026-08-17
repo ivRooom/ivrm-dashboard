@@ -49,6 +49,9 @@ jobs:
         run: |
           bash -n deploy/oci/update-monitoring-stack.sh
           bash -n deploy/oci/stage-log-reporter.sh
+          bash -n deploy/oci/test_stage_log_reporter.sh
+      - name: Log Reporter stageの非干渉契約をテスト
+        run: bash deploy/oci/test_stage_log_reporter.sh
       - name: Metrics Bridgeステージスクリプトの構文を確認
         run: |
           bash -n deploy/oci/stage-minecraft-metrics-bridge.sh
