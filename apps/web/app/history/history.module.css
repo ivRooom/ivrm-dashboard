@@ -94,6 +94,116 @@
   color: var(--accent);
 }
 
+.retentionPanel {
+  margin-bottom: 30px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+}
+
+.retentionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.retentionHeader > div > span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+.retentionHeader h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.retentionStatus {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.retentionActive {
+  border-color: rgb(120 231 154 / 45%);
+  background: rgb(120 231 154 / 10%);
+  color: var(--ok);
+}
+
+.retentionPaused {
+  border-color: rgb(243 199 104 / 45%);
+  background: rgb(243 199 104 / 10%);
+  color: var(--warn);
+}
+
+.retentionError {
+  border-color: rgb(255 119 119 / 45%);
+  background: rgb(255 119 119 / 10%);
+  color: var(--bad);
+}
+
+.retentionGrid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.retentionGrid > div {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+
+.retentionGrid span,
+.retentionGrid strong {
+  display: block;
+}
+
+.retentionGrid span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.retentionGrid strong {
+  margin-top: 10px;
+  font-size: 17px;
+}
+
+.retentionGrid .retentionTime,
+.retentionGrid .retentionCounts {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.retentionMeta {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.retentionAlert {
+  padding: 14px;
+  border: 1px solid rgb(255 119 119 / 35%);
+  border-radius: 10px;
+  background: rgb(255 119 119 / 8%);
+  color: var(--bad);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .metricSection {
   margin-top: 34px;
 }
@@ -157,7 +267,8 @@
 }
 
 @media (max-width: 1280px) {
-  .summary {
+  .summary,
+  .retentionGrid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
@@ -169,7 +280,8 @@
 }
 
 @media (max-width: 900px) {
-  .summary {
+  .summary,
+  .retentionGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -190,9 +302,17 @@
 }
 
 @media (max-width: 620px) {
-  .summary {
+  .summary,
+  .retentionGrid {
     grid-template-columns: 1fr;
+  }
+
+  .summary {
     margin-top: 28px;
+  }
+
+  .retentionHeader {
+    align-items: flex-start;
   }
 
   .secondaryLink {
