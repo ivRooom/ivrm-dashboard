@@ -40,6 +40,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: OCI更新スクリプトの構文を確認
+        run: bash -n deploy/oci/update-monitoring-stack.sh
       - name: Docker Collectorの構文を確認
         run: python3 -m py_compile deploy/oci/ivrm-agent-docker-snapshot.py
       - name: Docker Collectorをテスト
