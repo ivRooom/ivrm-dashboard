@@ -11,7 +11,7 @@ root / systemd timer（10秒）
   ├─ 127.0.0.1:25565 Minecraft Ping
   ├─ mc-main内部IP:25565 Minecraft Ping
   └─ Performance有効時のみ
-       docker exec mc-main rcon-cli spark tps
+       docker exec mc-main rcon-cli "spark tps"
           └─ TPS / MSPTだけ抽出
               └─ /run/ivrm-agent/docker-state.json
                    └─ ivrm-agent（非特権 / 0.6.0+）
@@ -21,6 +21,8 @@ root / systemd timer（10秒）
 Agentを`docker`グループへ追加しません。Docker Socket、環境変数、Mount、内部IP、ログ本文、Secretは外部へ送信しません。Minecraft Probeの接続先・コンテナ名・ネットワーク・ポートはコード内の許可リストへ固定し、環境変数から任意接続先を指定できない設計です。
 
 TPS / MSPT収集では`mc-main`コンテナ内の`rcon-cli`だけを使用します。RCON passwordをホスト側Collector、Go Agent、Console、Supabaseへ渡しません。RCONポートもホストやインターネットへ公開しません。Collectorから実行できる対象は固定`mc-main`、コマンドは固定`spark tps`だけで、shellやユーザー入力は利用しません。
+
+`rcon-cli`はコマンドラインの各引数を別々のRCON commandとして扱うため、複数語の`spark tps`は必ず1引数として渡します。`rcon-cli spark tps`のように分割しません。
 
 ## 収集対象
 
@@ -63,119 +65,77 @@ Performanceを有効化した場合だけ、`spark tps`から次の実測値を�
 - 直近1分のTick duration max
 - Source=`spark`
 
-TPS / MSPTをOnline人数、Status Probe Latency、Docker CPUなどから推定しません。SparkがTick durationを提供しない場合や出力を安全に解釈できない場合はPerformance全体を欠損扱いにします。
+TPS / MSPTをOnline人数、Status Probe Latency、Docker CPU使用率などから推定しません。SparkがTick durationを提供しない場合や出力を安全に解釈できない場合はPerformance全体を欠損扱いにします。
 
 内部IP、プレイヤーIP、RCON password、forwarding secret、PCF secretは収集しません。停止中・未作成のコンテナではリソース値を`null`にします。`docker stats`、Minecraft Ping、Spark Performanceのいずれかだけが失敗しても、取得できた監視情報を継続します。
 
-## 初回配置 / 0.6.0更新
+## 推奨更新手順
 
-リポジトリを取得したディレクトリで、CollectorテストとAgentテストを先に実行します。
-
-```bash
-python3 -m unittest deploy/oci/test_ivrm_agent_docker_snapshot.py
-python3 -m unittest deploy/oci/test_ivrm_agent_minecraft_performance.py
-python3 -m unittest deploy/oci/test_ivrm_backup_reporter.py
-
-cd apps/agent
-go test ./...
-go build -trimpath -ldflags='-s -w' \
-  -o /tmp/ivrm-agent \
-  ./cmd/ivrm-agent
-cd ../..
-```
-
-RuntimeディレクトリとCollectorを配置します。
+相対パスを手作業で順番に実行せず、更新スクリプトを使用します。最初に必ず最新`main`を新しい一時ディレクトリへ取得します。
 
 ```bash
-sudo install -d -o root -g root -m 755 /usr/local/libexec
+set -euo pipefail
 
-sudo install -o root -g root -m 755 \
-  deploy/oci/ivrm-agent-docker-snapshot.py \
-  /usr/local/libexec/ivrm-agent-docker-snapshot
+cd /tmp
+rm -rf ivrm-dashboard
+git clone --depth 1 https://github.com/ivRooom/ivrm-dashboard.git
 
-sudo install -o root -g root -m 755 \
-  deploy/oci/ivrm-agent-minecraft-performance.py \
-  /usr/local/libexec/ivrm-agent-minecraft-performance
-
-sudo install -o root -g root -m 644 \
-  deploy/oci/ivrm-agent-docker-snapshot.service \
-  /etc/systemd/system/ivrm-agent-docker-snapshot.service
-
-sudo install -o root -g root -m 644 \
-  deploy/oci/ivrm-agent-docker-snapshot.timer \
-  /etc/systemd/system/ivrm-agent-docker-snapshot.timer
-
-sudo install -o root -g root -m 644 \
-  deploy/oci/ivrm-agent.tmpfiles.conf \
-  /etc/tmpfiles.d/ivrm-agent.conf
-
-sudo install -o root -g root -m 755 \
-  /tmp/ivrm-agent \
-  /usr/local/bin/ivrm-agent
-
-sudo systemd-tmpfiles --create /etc/tmpfiles.d/ivrm-agent.conf
+git -C /tmp/ivrm-dashboard rev-parse HEAD
+bash /tmp/ivrm-dashboard/deploy/oci/update-monitoring-stack.sh
 ```
 
-Go Agentの環境ファイルにスナップショットパスが無ければ追加します。既存Agent Secretは変更しません。
+`update-monitoring-stack.sh`はスクリプト自身の場所からrepository rootを解決するため、呼び出し元のcurrent directoryに依存しません。
 
-```bash
-sudo python3 - <<'PY'
-from pathlib import Path
+スクリプトは次を順に実施します。
 
-path = Path("/etc/ivrm-agent/agent.env")
-text = path.read_text().rstrip("\n")
-line = "IVRM_AGENT_DOCKER_SNAPSHOT_PATH=/run/ivrm-agent/docker-state.json"
+1. Git checkout・必要コマンド・必要ファイルを検証
+2. Docker / Minecraft Performance Collector / Backup Reporterをテスト
+3. Go Agentをテスト・ビルド
+4. 既存`/etc/ivrm-agent/agent.env`の存在を確認し、Secretを保持
+5. Collector / systemd unit / timer / Agentを配置
+6. `docker.env`を既知設定へ戻し、Performanceを必ずOFFにする
+7. systemd unitを検証
+8. 4コンテナとMinecraft Status Probeを確認
+9. Agentを再起動
 
-if not any(item.startswith("IVRM_AGENT_DOCKER_SNAPSHOT_PATH=") for item in text.splitlines()):
-    text += "\n" + line
+テスト・ビルド・Secret確認のどれかが失敗した場合は新しいAgent binaryをProductionへ配置しません。
 
-path.write_text(text + "\n")
-PY
+更新直後は次の状態が正常です。
 
-sudo chown root:ivrm-agent /etc/ivrm-agent/agent.env
-sudo chmod 640 /etc/ivrm-agent/agent.env
+```text
+Agent: 0.6.0+
+containers: 4
+minecraft: true
+minecraft_performance: false
 ```
-
-最初はPerformanceをOFFのまま配置します。
-
-```bash
-sudo tee /etc/ivrm-agent/docker.env >/dev/null <<'EOF'
-IVRM_DOCKER_CONTAINERS=mc-main,ivrm-velocity,mc-resource,mc-resource-router
-IVRM_DOCKER_SNAPSHOT_PATH=/run/ivrm-agent/docker-state.json
-IVRM_DOCKER_BINARY=/usr/bin/docker
-IVRM_MINECRAFT_PROBE_ENABLED=true
-IVRM_MINECRAFT_PERFORMANCE_ENABLED=false
-EOF
-sudo chown root:root /etc/ivrm-agent/docker.env
-sudo chmod 600 /etc/ivrm-agent/docker.env
-```
-
-systemd unitと既存Status監視を先に確認します。
-
-```bash
-sudo systemctl daemon-reload
-sudo systemd-analyze verify \
-  /etc/systemd/system/ivrm-agent-docker-snapshot.service \
-  /etc/systemd/system/ivrm-agent-docker-snapshot.timer
-sudo systemctl start ivrm-agent-docker-snapshot.service
-sudo python3 -m json.tool /run/ivrm-agent/docker-state.json
-sudo systemctl restart ivrm-agent
-sleep 20
-```
-
-この段階では`minecraft.performance`が無くても正常です。既存Status Probeと4コンテナ監視が継続していることを確認します。
 
 ## Spark / RCON確認とPerformance有効化
 
-PerformanceをONにする前に、`mc-main`内でSparkコマンドが成功することを確認します。
+PerformanceをONにする前に、まずread-onlyのMinecraft commandでRCON応答経路を確認します。
 
 ```bash
-sudo docker exec mc-main rcon-cli spark tps
+sudo docker exec mc-main rcon-cli list
+echo "list_exit=$?"
 ```
 
-期待する内容はTPS 1m / 5m / 15mと、Tick durationsの直近1分値を含むSparkのhealth出力です。RCON passwordをコマンドラインへ付与しないでください。
+`list`の応答が返ることを確認したら、Sparkを**1つのRCON command引数**として実行します。
 
-正常に取得できたらPerformanceをONにします。
+```bash
+sudo docker exec mc-main rcon-cli "spark tps"
+echo "spark_exit=$?"
+```
+
+TPS 1m / 5m / 15mとTick durationsの直近1分値が表示され、`spark_exit=0`になることを確認します。RCON passwordをコマンドラインへ付与しません。
+
+RCON portがホストへ公開されていないことも確認します。標準構成ではRCONはcontainer内`25575/tcp`です。
+
+```bash
+sudo docker port mc-main 25575/tcp || true
+```
+
+何も表示されないことが期待値です。
+
+上記をすべて確認できた場合だけPerformanceをONにします。
 
 ```bash
 sudo sed -i \
@@ -202,7 +162,7 @@ sleep 20
 }
 ```
 
-値は例です。固定値として設定しないでください。
+値は例です。固定値として設定しません。
 
 ## 確認
 
@@ -235,6 +195,7 @@ Performanceが無効・取得不能の場合は`minecraft_performance:false`で�
 sudo docker port ivrm-velocity 25565/tcp
 sudo docker port mc-main 25565/tcp
 sudo docker port mc-main 24454/udp
+sudo docker port mc-main 25575/tcp || true
 ```
 
 期待結果:
@@ -242,7 +203,7 @@ sudo docker port mc-main 24454/udp
 - `ivrm-velocity 25565/tcp`: ホスト`25565`へ公開
 - `mc-main 25565/tcp`: 公開なし
 - `mc-main 24454/udp`: ホスト`24454`へ公開
-- RCONポート: ホストへ公開しない
+- `mc-main 25575/tcp`: 公開なし
 
 ## 障害時の挙動
 
