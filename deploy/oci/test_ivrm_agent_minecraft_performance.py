@@ -6,6 +6,7 @@ import os
 import subprocess
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -17,17 +18,29 @@ if SPEC is None or SPEC.loader is None:
 collector = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(collector)
 
+NOW = datetime(2026, 8, 17, 12, 30, 0, tzinfo=timezone.utc)
 
-class SparkOutputParserTest(unittest.TestCase):
-    def test_parses_tps_and_one_minute_mspt(self) -> None:
-        output = """[⚡] TPS from last 5s, 10s, 1m, 5m, 15m:
-[⚡] *20.0, *20.0, 19.98, 19.95, 19.90
-[⚡]
-[⚡] Tick durations (min/med/95%ile/max ms) from last 10s, 1m:
-[⚡] 2.1/3.0/8.0/20.0; 2.2/3.4/9.8/41.2
-"""
+
+def bridge_document(**overrides: object) -> dict[str, object]:
+    document: dict[str, object] = {
+        "generatedAt": "2026-08-17T12:29:50Z",
+        "source": "spark",
+        "tps1m": 19.98,
+        "tps5m": 19.95,
+        "tps15m": 19.90,
+        "msptMedian1m": 3.4,
+        "msptP95_1m": 9.8,
+        "msptMax1m": 41.2,
+    }
+    document.update(overrides)
+    return document
+
+
+class BridgeMetricsParserTest(unittest.TestCase):
+    def test_parses_fresh_structured_metrics(self) -> None:
+        result = collector.parse_bridge_metrics(json.dumps(bridge_document()), now=NOW)
         self.assertEqual(
-            collector.parse_spark_tps_output(output),
+            result,
             {
                 "source": "spark",
                 "tps1m": 19.98,
@@ -39,63 +52,103 @@ class SparkOutputParserTest(unittest.TestCase):
             },
         )
 
-    def test_ignores_minecraft_and_ansi_format_codes(self) -> None:
-        output = (
-            "§6[⚡] TPS from last 5s, 10s, 1m, 5m, 15m:§r\n"
-            "\x1b[32m[⚡] *20.0, *20.0, *20.0, 20.0, 20.0\x1b[0m\n"
-            "[⚡] Tick durations (min/med/95%ile/max ms) from last 10s, 1m:\n"
-            "[⚡] 1/2/3/4; 1.5/2.5/3.5/4.5\n"
-        )
-        result = collector.parse_spark_tps_output(output)
-        self.assertEqual(result["tps1m"], 20.0)
-        self.assertEqual(result["msptP95_1m"], 3.5)
+    def test_rejects_stale_metrics(self) -> None:
+        generated_at = NOW - timedelta(seconds=46)
+        with self.assertRaisesRegex(RuntimeError, "古すぎ"):
+            collector.parse_bridge_metrics(
+                json.dumps(bridge_document(generatedAt=generated_at.isoformat())),
+                now=NOW,
+            )
 
-    def test_rejects_missing_mspt(self) -> None:
-        with self.assertRaisesRegex(RuntimeError, "認識"):
-            collector.parse_spark_tps_output(
-                "TPS from last 5s, 10s, 1m, 5m, 15m:\n20,20,20,20,20\n"
+    def test_rejects_metrics_too_far_in_future(self) -> None:
+        generated_at = NOW + timedelta(seconds=6)
+        with self.assertRaisesRegex(RuntimeError, "未来"):
+            collector.parse_bridge_metrics(
+                json.dumps(bridge_document(generatedAt=generated_at.isoformat())),
+                now=NOW,
+            )
+
+    def test_rejects_extra_keys(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "key"):
+            collector.parse_bridge_metrics(
+                json.dumps(bridge_document(unexpected="do-not-forward")),
+                now=NOW,
+            )
+
+    def test_rejects_boolean_metric(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "数値形式"):
+            collector.parse_bridge_metrics(
+                json.dumps(bridge_document(tps1m=True)),
+                now=NOW,
             )
 
     def test_rejects_invalid_mspt_order(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "順序"):
-            collector.parse_spark_tps_output(
-                "TPS from last 5s, 10s, 1m, 5m, 15m:\n"
-                "20,20,20,20,20\n"
-                "Tick durations (min/med/95%ile/max ms) from last 10s, 1m:\n"
-                "1/2/3/4; 1/8/7/9\n"
+            collector.parse_bridge_metrics(
+                json.dumps(
+                    bridge_document(
+                        msptMedian1m=10.0,
+                        msptP95_1m=8.0,
+                        msptMax1m=20.0,
+                    )
+                ),
+                now=NOW,
+            )
+
+    def test_rejects_wrong_source(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "source"):
+            collector.parse_bridge_metrics(
+                json.dumps(bridge_document(source="unknown")),
+                now=NOW,
             )
 
 
-class SparkCommandTest(unittest.TestCase):
-    def test_executes_fixed_container_and_single_rcon_command(self) -> None:
+class BridgeCommandTest(unittest.TestCase):
+    def test_reads_fixed_file_from_fixed_container(self) -> None:
         completed = subprocess.CompletedProcess(
             args=[],
             returncode=0,
-            stdout=(
-                "TPS from last 5s, 10s, 1m, 5m, 15m:\n"
-                "20,20,20,20,20\n"
-                "Tick durations (min/med/95%ile/max ms) from last 10s, 1m:\n"
-                "1/2/3/4; 1/2/3/4\n"
-            ),
+            stdout=json.dumps(bridge_document()),
             stderr="",
         )
-        with mock.patch.object(collector.subprocess, "run", return_value=completed) as run:
+        with mock.patch.object(collector.subprocess, "run", return_value=completed) as run, mock.patch.object(
+            collector,
+            "parse_bridge_metrics",
+            return_value={"source": "spark"},
+        ):
             collector.collect_spark_metrics("/usr/bin/docker")
 
         self.assertEqual(
             run.call_args.args[0],
-            ["/usr/bin/docker", "exec", "mc-main", "rcon-cli", "spark tps"],
+            [
+                "/usr/bin/docker",
+                "exec",
+                "mc-main",
+                "cat",
+                "/data/ivrm/metrics.json",
+            ],
         )
         self.assertFalse(run.call_args.kwargs["check"])
         self.assertEqual(run.call_args.kwargs["timeout"], 5)
 
-    def test_translates_timeout_without_exposing_command_output(self) -> None:
+    def test_translates_timeout_without_exposing_file_content(self) -> None:
         with mock.patch.object(
             collector.subprocess,
             "run",
             side_effect=subprocess.TimeoutExpired(["docker", "exec"], 5),
         ):
-            with self.assertRaisesRegex(RuntimeError, "実行できません"):
+            with self.assertRaisesRegex(RuntimeError, "取得できません"):
+                collector.collect_spark_metrics("/usr/bin/docker")
+
+    def test_rejects_failed_cat(self) -> None:
+        completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=1,
+            stdout="",
+            stderr="sensitive diagnostics must not be forwarded",
+        )
+        with mock.patch.object(collector.subprocess, "run", return_value=completed):
+            with self.assertRaisesRegex(RuntimeError, "取得できません"):
                 collector.collect_spark_metrics("/usr/bin/docker")
 
 
