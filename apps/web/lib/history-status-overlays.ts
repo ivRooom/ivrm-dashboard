@@ -52,10 +52,7 @@ const SIGNAL_BY_EVENT = new Map<MonitoringEventType, IncidentSignal>([
 ]);
 
 function contextRange(range: HistoryRange): HistoryRange {
-  if (range === "7d" || range === "30d") {
-    return "30d";
-  }
-  return "7d";
+  return range === "7d" || range === "30d" ? "30d" : "7d";
 }
 
 function entityKey(hostId: string, containerName: string | null = null): string {
@@ -118,9 +115,7 @@ function pushRegion(
   rangeEndMs: number,
 ): void {
   const region = createRegion(input, rangeStartMs, rangeEndMs);
-  if (region) {
-    regions.push(region);
-  }
+  if (region) regions.push(region);
 }
 
 function hostGapRegions(
@@ -140,9 +135,8 @@ function hostGapRegions(
     }
 
     const recoveredMs = Date.parse(event.occurredAt);
-    if (!Number.isFinite(recoveredMs)) {
-      continue;
-    }
+    if (!Number.isFinite(recoveredMs)) continue;
+
     const gapStartMs = recoveredMs - event.numericValue * 1_000;
     const staleStartMs = gapStartMs + ONLINE_THRESHOLD_MS;
     const offlineStartMs = gapStartMs + OFFLINE_THRESHOLD_MS;
@@ -254,18 +248,12 @@ function signalName(event: MonitoringEvent): IncidentSignal | null {
 }
 
 function resolvesSignal(event: MonitoringEvent): boolean {
-  if (event.severity === "recovery") {
-    return true;
-  }
-  if (event.eventType === "health_changed") {
-    return event.toValue === "healthy";
-  }
+  if (event.severity === "recovery") return true;
+  if (event.eventType === "health_changed") return event.toValue === "healthy";
   if (event.eventType === "exit_code_changed") {
     return event.toValue !== null && Number(event.toValue) === 0;
   }
-  if (event.eventType !== "state_changed") {
-    return false;
-  }
+  if (event.eventType !== "state_changed") return false;
   if (
     event.expectedState === "stopped" &&
     (event.toValue === "exited" || event.toValue === "created")
@@ -283,12 +271,8 @@ function resolvesSignal(event: MonitoringEvent): boolean {
 }
 
 function eventOverlayKind(event: MonitoringEvent): IncidentOverlayKind | null {
-  if (event.severity === "critical") {
-    return "error";
-  }
-  if (event.severity === "warning") {
-    return "stale";
-  }
+  if (event.severity === "critical") return "error";
+  if (event.severity === "warning") return "stale";
   return null;
 }
 
@@ -296,9 +280,7 @@ function strongestSignalKind(
   signals: Map<IncidentSignal, IncidentOverlayKind>,
 ): IncidentOverlayKind | null {
   for (const kind of signals.values()) {
-    if (kind === "error") {
-      return "error";
-    }
+    if (kind === "error") return "error";
   }
   return signals.size > 0 ? "stale" : null;
 }
@@ -333,18 +315,13 @@ function containerIncidentRegions(
   const regions: HistoryStatusOverlayRegion[] = [];
   const grouped = groupedContainerEvents(events);
   const currentByKey = new Map(
-    containers.map((container) => [
-      entityKey(container.hostId, container.name),
-      container,
-    ]),
+    containers.map((container) => [entityKey(container.hostId, container.name), container]),
   );
   const generatedMs = Date.parse(generatedAt);
 
   for (const [key, entityEvents] of grouped) {
     const firstEvent = entityEvents[0];
-    if (!firstEvent) {
-      continue;
-    }
+    if (!firstEvent) continue;
 
     const activeSignals = new Map<IncidentSignal, IncidentOverlayKind>();
     let bandKind: IncidentOverlayKind | null = null;
@@ -354,9 +331,7 @@ function containerIncidentRegions(
 
     for (const event of entityEvents) {
       const eventMs = Date.parse(event.occurredAt);
-      if (!Number.isFinite(eventMs)) {
-        continue;
-      }
+      if (!Number.isFinite(eventMs)) continue;
       const previousKind = strongestSignalKind(activeSignals);
 
       if (hasExpectedState && event.expectedState !== expectedState) {
@@ -412,19 +387,32 @@ function containerIncidentRegions(
 
     const current = currentByKey.get(key);
     if (
-      bandKind &&
-      bandStartMs !== null &&
-      current &&
-      !current.maintenanceActive &&
-      (current.status === "error" || current.status === "stale") &&
-      Number.isFinite(generatedMs)
+      !bandKind ||
+      bandStartMs === null ||
+      !current ||
+      current.maintenanceActive ||
+      !Number.isFinite(generatedMs)
     ) {
+      continue;
+    }
+
+    let bandEndMs: number | null = null;
+    if (current.status === "error") {
+      bandEndMs = generatedMs;
+    } else if (current.status === "stale" || current.status === "offline") {
+      const receivedMs = Date.parse(current.receivedAt);
+      if (Number.isFinite(receivedMs)) {
+        bandEndMs = Math.min(generatedMs, receivedMs + ONLINE_THRESHOLD_MS);
+      }
+    }
+
+    if (bandEndMs !== null) {
       pushRegion(
         regions,
         {
           id: `active-container-incident:${key}:${bandStartMs}:${bandKind}`,
           startMs: bandStartMs,
-          endMs: generatedMs,
+          endMs: bandEndMs,
           label: regionLabel(current.hostDisplayName, bandKind, current.name),
           kind: bandKind,
           entityType: "container",
@@ -438,38 +426,28 @@ function containerIncidentRegions(
   }
 
   for (const container of containers) {
-    if (
-      container.maintenanceActive ||
-      (container.status !== "error" && container.status !== "stale")
-    ) {
-      continue;
-    }
+    if (container.maintenanceActive || container.status !== "error") continue;
+
     const key = entityKey(container.hostId, container.name);
     const alreadyCovered = regions.some(
       (region) =>
         region.entityType === "container" &&
         entityKey(region.hostId, region.containerName) === key &&
+        region.kind === "error" &&
         Date.parse(region.endAt) >= Date.parse(generatedAt) - 1_000,
     );
-    if (alreadyCovered) {
-      continue;
-    }
+    if (alreadyCovered) continue;
+
     const receivedMs = Date.parse(container.receivedAt);
-    if (!Number.isFinite(receivedMs) || !Number.isFinite(generatedMs)) {
-      continue;
-    }
+    if (!Number.isFinite(receivedMs) || !Number.isFinite(generatedMs)) continue;
     pushRegion(
       regions,
       {
         id: `active-container-fallback:${key}`,
         startMs: receivedMs,
         endMs: generatedMs,
-        label: regionLabel(
-          container.hostDisplayName,
-          container.status,
-          container.name,
-        ),
-        kind: container.status,
+        label: regionLabel(container.hostDisplayName, "error", container.name),
+        kind: "error",
         entityType: "container",
         hostId: container.hostId,
         containerName: container.name,
@@ -492,13 +470,10 @@ function containerFreshnessRegions(
   const generatedMs = Date.parse(generatedAt);
 
   for (const container of containers) {
-    if (container.status !== "stale" && container.status !== "offline") {
-      continue;
-    }
+    if (container.status !== "stale" && container.status !== "offline") continue;
+
     const receivedMs = Date.parse(container.receivedAt);
-    if (!Number.isFinite(receivedMs) || !Number.isFinite(generatedMs)) {
-      continue;
-    }
+    if (!Number.isFinite(receivedMs) || !Number.isFinite(generatedMs)) continue;
     const staleStartMs = receivedMs + ONLINE_THRESHOLD_MS;
     const offlineStartMs = receivedMs + OFFLINE_THRESHOLD_MS;
 
@@ -528,11 +503,7 @@ function containerFreshnessRegions(
           id: `active-container-offline:${container.hostId}:${container.name}`,
           startMs: offlineStartMs,
           endMs: generatedMs,
-          label: regionLabel(
-            container.hostDisplayName,
-            "offline",
-            container.name,
-          ),
+          label: regionLabel(container.hostDisplayName, "offline", container.name),
           kind: "offline",
           entityType: "container",
           hostId: container.hostId,
@@ -556,27 +527,24 @@ function maintenanceRegions(
 ): HistoryStatusOverlayRegion[] {
   const regions: HistoryStatusOverlayRegion[] = [];
   const grouped = groupedContainerEvents(events);
+  const currentByKey = new Map(
+    containers.map((container) => [entityKey(container.hostId, container.name), container]),
+  );
   const generatedMs = Date.parse(generatedAt);
 
   for (const [key, entityEvents] of grouped) {
     const firstEvent = entityEvents[0];
-    if (!firstEvent) {
-      continue;
-    }
+    if (!firstEvent) continue;
     let startedMs: number | null = null;
 
     for (const event of entityEvents) {
       const eventMs = Date.parse(event.occurredAt);
-      if (!Number.isFinite(eventMs)) {
-        continue;
-      }
+      if (!Number.isFinite(eventMs)) continue;
       if (event.eventType === "maintenance_started") {
         startedMs = startedMs ?? eventMs;
         continue;
       }
-      if (event.eventType !== "maintenance_ended") {
-        continue;
-      }
+      if (event.eventType !== "maintenance_ended") continue;
 
       const safeStartMs = startedMs ?? rangeStartMs;
       pushRegion(
@@ -601,24 +569,15 @@ function maintenanceRegions(
       startedMs = null;
     }
 
-    const current = containers.find(
-      (container) => entityKey(container.hostId, container.name) === key,
-    );
-    if (
-      current?.maintenanceActive &&
-      Number.isFinite(generatedMs)
-    ) {
+    const current = currentByKey.get(key);
+    if (current?.maintenanceActive && Number.isFinite(generatedMs)) {
       pushRegion(
         regions,
         {
           id: `active-maintenance:${key}`,
           startMs: startedMs ?? rangeStartMs,
           endMs: generatedMs,
-          label: regionLabel(
-            current.hostDisplayName,
-            "maintenance",
-            current.name,
-          ),
+          label: regionLabel(current.hostDisplayName, "maintenance", current.name),
           kind: "maintenance",
           entityType: "container",
           hostId: current.hostId,
@@ -631,9 +590,7 @@ function maintenanceRegions(
   }
 
   for (const container of containers) {
-    if (!container.maintenanceActive) {
-      continue;
-    }
+    if (!container.maintenanceActive) continue;
     const key = entityKey(container.hostId, container.name);
     const alreadyCovered = regions.some(
       (region) =>
@@ -641,9 +598,8 @@ function maintenanceRegions(
         entityKey(region.hostId, region.containerName) === key &&
         Date.parse(region.endAt) >= Date.parse(generatedAt) - 1_000,
     );
-    if (alreadyCovered || !Number.isFinite(generatedMs)) {
-      continue;
-    }
+    if (alreadyCovered || !Number.isFinite(generatedMs)) continue;
+
     pushRegion(
       regions,
       {
@@ -721,41 +677,38 @@ export async function getHistoryStatusOverlays(
     throw new Error("履歴Overlayの期間境界が不正です");
   }
 
-  const hostRegions = mergeRegions([
-    ...hostGapRegions(hostEvents, rangeStartMs, rangeEndMs),
-    ...activeHostRegions(
-      snapshot.hosts,
-      snapshot.generatedAt,
-      rangeStartMs,
-      rangeEndMs,
-    ),
-  ]);
-  const containerRegions = mergeRegions([
-    ...containerIncidentRegions(
-      containerEvents,
-      snapshot.containers,
-      snapshot.generatedAt,
-      rangeStartMs,
-      rangeEndMs,
-    ),
-    ...containerFreshnessRegions(
-      snapshot.containers,
-      snapshot.generatedAt,
-      rangeStartMs,
-      rangeEndMs,
-    ),
-    ...maintenanceRegions(
-      containerEvents,
-      snapshot.containers,
-      snapshot.generatedAt,
-      rangeStartMs,
-      rangeEndMs,
-    ),
-  ]);
-
   return {
     generatedAt: snapshot.generatedAt,
-    hostRegions,
-    containerRegions,
+    hostRegions: mergeRegions([
+      ...hostGapRegions(hostEvents, rangeStartMs, rangeEndMs),
+      ...activeHostRegions(
+        snapshot.hosts,
+        snapshot.generatedAt,
+        rangeStartMs,
+        rangeEndMs,
+      ),
+    ]),
+    containerRegions: mergeRegions([
+      ...containerIncidentRegions(
+        containerEvents,
+        snapshot.containers,
+        snapshot.generatedAt,
+        rangeStartMs,
+        rangeEndMs,
+      ),
+      ...containerFreshnessRegions(
+        snapshot.containers,
+        snapshot.generatedAt,
+        rangeStartMs,
+        rangeEndMs,
+      ),
+      ...maintenanceRegions(
+        containerEvents,
+        snapshot.containers,
+        snapshot.generatedAt,
+        rangeStartMs,
+        rangeEndMs,
+      ),
+    ]),
   };
 }
