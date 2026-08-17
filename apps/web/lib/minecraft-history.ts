@@ -130,6 +130,9 @@ export async function getMinecraftMetricHistory(
 
   return payload
     .flatMap((raw): MinecraftMetricHistorySeries[] => {
+      if (!isRecord(raw)) {
+        return [];
+      }
       const row = raw as MinecraftMetricHistoryRow;
       const bucketSeconds = positiveInteger(row.bucket_seconds);
       const source = dataSource(row.data_source);
