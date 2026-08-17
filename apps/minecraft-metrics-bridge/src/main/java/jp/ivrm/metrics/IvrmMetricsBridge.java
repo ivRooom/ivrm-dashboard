@@ -30,12 +30,12 @@ public final class IvrmMetricsBridge implements ModInitializer {
     private static final double MAX_MSPT_MS = 60_000.0;
 
     private final AtomicLong lastWarningEpochSecond = new AtomicLong(Long.MIN_VALUE);
+    private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(
+        daemonThreadFactory()
+    );
 
     @Override
     public void onInitialize() {
-        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(
-            daemonThreadFactory()
-        );
         executor.scheduleWithFixedDelay(
             this::collectAndWriteSafely,
             INITIAL_DELAY_SECONDS,
@@ -48,9 +48,9 @@ public final class IvrmMetricsBridge implements ModInitializer {
         return runnable -> {
             Thread thread = new Thread(runnable, "ivrm-metrics-bridge");
             thread.setDaemon(true);
-            thread.setUncaughtExceptionHandler((ignored, throwable) -> {
-                System.err.println("[ivrm-metrics-bridge] unexpected collector failure");
-            });
+            thread.setUncaughtExceptionHandler((ignored, throwable) ->
+                System.err.println("[ivrm-metrics-bridge] unexpected collector failure")
+            );
             return thread;
         };
     }
@@ -66,14 +66,7 @@ public final class IvrmMetricsBridge implements ModInitializer {
 
     static MetricsSnapshot readSparkMetrics() throws ReflectiveOperationException {
         Class<?> providerClass = Class.forName("me.lucko.spark.api.SparkProvider");
-        Object spark = invokeStaticNoArg(providerClass, "get");
-
-        Object tpsStatistic = invokeNoArg(spark, "tps");
-        Object msptStatistic = invokeNoArg(spark, "mspt");
-        if (tpsStatistic == null || msptStatistic == null) {
-            throw new IllegalStateException("Spark TPS/MSPT statistic is unavailable");
-        }
-
+        Class<?> sparkClass = Class.forName("me.lucko.spark.api.Spark");
         Class<?> tpsWindowClass = Class.forName(
             "me.lucko.spark.api.statistic.StatisticWindow$TicksPerSecond"
         );
@@ -86,6 +79,16 @@ public final class IvrmMetricsBridge implements ModInitializer {
         Class<?> genericStatisticClass = Class.forName(
             "me.lucko.spark.api.statistic.types.GenericStatistic"
         );
+        Class<?> doubleAverageInfoClass = Class.forName(
+            "me.lucko.spark.api.statistic.misc.DoubleAverageInfo"
+        );
+
+        Object spark = invokeStaticNoArg(providerClass, "get");
+        Object tpsStatistic = invokeNoArg(sparkClass, spark, "tps");
+        Object msptStatistic = invokeNoArg(sparkClass, spark, "mspt");
+        if (tpsStatistic == null || msptStatistic == null) {
+            throw new IllegalStateException("Spark TPS/MSPT statistic is unavailable");
+        }
 
         double tps1m = pollDouble(
             doubleStatisticClass,
@@ -112,9 +115,13 @@ public final class IvrmMetricsBridge implements ModInitializer {
             throw new IllegalStateException("Spark one-minute MSPT statistic is unavailable");
         }
 
-        double median = invokeDoubleNoArg(oneMinuteMspt, "median");
-        double percentile95 = invokeDoubleNoArg(oneMinuteMspt, "percentile95th");
-        double maximum = invokeDoubleNoArg(oneMinuteMspt, "max");
+        double median = invokeDoubleNoArg(doubleAverageInfoClass, oneMinuteMspt, "median");
+        double percentile95 = invokeDoubleNoArg(
+            doubleAverageInfoClass,
+            oneMinuteMspt,
+            "percentile95th"
+        );
+        double maximum = invokeDoubleNoArg(doubleAverageInfoClass, oneMinuteMspt, "max");
 
         return MetricsSnapshot.validated(
             Instant.now(),
@@ -136,18 +143,21 @@ public final class IvrmMetricsBridge implements ModInitializer {
         }
     }
 
-    private static Object invokeNoArg(Object target, String methodName)
+    private static Object invokeNoArg(Class<?> publicType, Object target, String methodName)
         throws ReflectiveOperationException {
         try {
-            return target.getClass().getMethod(methodName).invoke(target);
+            return publicType.getMethod(methodName).invoke(target);
         } catch (InvocationTargetException exception) {
             throw unwrap(exception);
         }
     }
 
-    private static double invokeDoubleNoArg(Object target, String methodName)
-        throws ReflectiveOperationException {
-        Object value = invokeNoArg(target, methodName);
+    private static double invokeDoubleNoArg(
+        Class<?> publicType,
+        Object target,
+        String methodName
+    ) throws ReflectiveOperationException {
+        Object value = invokeNoArg(publicType, target, methodName);
         if (!(value instanceof Number number)) {
             throw new IllegalStateException("Spark statistic is not numeric");
         }
