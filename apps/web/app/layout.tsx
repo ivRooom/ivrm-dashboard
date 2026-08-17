@@ -35,6 +35,13 @@ const navigationLinkStyle = {
   backdropFilter: "blur(10px)",
 } as const;
 
+const reportLoginLinkStyle = {
+  ...navigationLinkStyle,
+  border: "1px solid rgba(250, 204, 21, 0.48)",
+  background: "rgba(113, 63, 18, 0.78)",
+  color: "#fef08a",
+} as const;
+
 const roleLabels = {
   viewer: "閲覧者",
   operator: "運用担当",
@@ -61,6 +68,10 @@ export default async function RootLayout({
   if (!canReadConsoleDuringRollout(session)) {
     redirect("/login?error=unauthenticated");
   }
+
+  const showDiscordReportLogin =
+    session.discordMode === "report" && session.authProvider !== "discord";
+  const discordReportLoginHref = "/login?returnTo=%2Fsecurity";
 
   return (
     <html lang="ja">
@@ -106,6 +117,15 @@ export default async function RootLayout({
               ) : null}
             </span>
           ) : null}
+          {showDiscordReportLogin ? (
+            <a
+              href={discordReportLoginHref}
+              style={reportLoginLinkStyle}
+              aria-label="Discord認証をテストする"
+            >
+              Discord認証を確認
+            </a>
+          ) : null}
           <NavigationLinks style={navigationLinkStyle} />
           {session.authProvider === "discord" ? (
             <form action="/api/auth/logout" method="post" style={{ margin: 0 }}>
@@ -139,6 +159,20 @@ export default async function RootLayout({
                   {session.role ? <small>{roleLabels[session.role]}</small> : null}
                 </div>
               </div>
+            ) : null}
+            {showDiscordReportLogin ? (
+              <a
+                href={discordReportLoginHref}
+                style={{
+                  ...reportLoginLinkStyle,
+                  display: "block",
+                  textAlign: "center",
+                  borderRadius: 12,
+                  padding: "10px 12px",
+                }}
+              >
+                Discord認証を確認
+              </a>
             ) : null}
             <nav aria-label="モバイル管理コンソール" className="console-mobile-links">
               <MobileNavigationLinks />
