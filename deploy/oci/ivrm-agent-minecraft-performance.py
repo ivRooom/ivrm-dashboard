@@ -22,6 +22,7 @@ COMMAND_TIMEOUT_SECONDS = 5
 
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 MINECRAFT_FORMAT = re.compile(r"§[0-9A-FK-ORa-fk-or]")
+RESPONSE_PREFIX = re.compile(r"^\[[^\]\r\n]{1,32}\]\s*")
 TPS_HEADER = re.compile(
     r"TPS\s+from\s+last\s+5s,\s*10s,\s*1m,\s*5m,\s*15m:",
     re.IGNORECASE,
@@ -41,6 +42,10 @@ def clean_output(value: str) -> str:
     return MINECRAFT_FORMAT.sub("", ANSI_ESCAPE.sub("", value)).replace("\r", "")
 
 
+def normalize_line(value: str) -> str:
+    return RESPONSE_PREFIX.sub("", value.strip()).strip()
+
+
 def parse_number(value: str, maximum: float) -> float:
     match = NUMBER.fullmatch(value.strip())
     if not match:
@@ -53,14 +58,13 @@ def parse_number(value: str, maximum: float) -> float:
 
 def next_value_line(lines: list[str], start: int) -> str:
     for line in lines[start:]:
-        stripped = line.strip()
-        if stripped:
-            return stripped
+        if line:
+            return line
     raise RuntimeError("Sparkメトリクス値がありません")
 
 
 def parse_spark_tps_output(output: str) -> dict[str, Any]:
-    lines = [line.strip() for line in clean_output(output).splitlines()]
+    lines = [normalize_line(line) for line in clean_output(output).splitlines()]
     tps_line: str | None = None
     mspt_line: str | None = None
 
