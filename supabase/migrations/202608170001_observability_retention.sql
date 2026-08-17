@@ -117,8 +117,7 @@ begin
     v_rollup_days,
     v_batch_size
   from public.observability_retention_state as state
-  where state.singleton_id = 1
-  for update;
+  where state.singleton_id = 1;
 
   if not found then
     raise exception 'observability_retention_state_missing';
