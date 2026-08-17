@@ -29,21 +29,45 @@ JAVA
 cat >"${BUILD_DIR}/src/me/lucko/spark/api/statistic/StatisticWindow.java" <<'JAVA'
 package me.lucko.spark.api.statistic;
 
-public final class StatisticWindow {
-    private StatisticWindow() {}
+import java.time.Duration;
 
-    public enum TicksPerSecond {
-        SECONDS_5,
-        SECONDS_10,
-        MINUTES_1,
-        MINUTES_5,
-        MINUTES_15
+public interface StatisticWindow {
+    Duration length();
+
+    enum TicksPerSecond implements StatisticWindow {
+        SECONDS_5(Duration.ofSeconds(5)),
+        SECONDS_10(Duration.ofSeconds(10)),
+        MINUTES_1(Duration.ofMinutes(1)),
+        MINUTES_5(Duration.ofMinutes(5)),
+        MINUTES_15(Duration.ofMinutes(15));
+
+        private final Duration length;
+
+        TicksPerSecond(Duration length) {
+            this.length = length;
+        }
+
+        @Override
+        public Duration length() {
+            return length;
+        }
     }
 
-    public enum MillisPerTick {
-        SECONDS_10,
-        MINUTES_1,
-        MINUTES_5
+    enum MillisPerTick implements StatisticWindow {
+        SECONDS_10(Duration.ofSeconds(10)),
+        MINUTES_1(Duration.ofMinutes(1)),
+        MINUTES_5(Duration.ofMinutes(5));
+
+        private final Duration length;
+
+        MillisPerTick(Duration length) {
+            this.length = length;
+        }
+
+        @Override
+        public Duration length() {
+            return length;
+        }
     }
 }
 JAVA
@@ -55,15 +79,25 @@ public interface DoubleAverageInfo {
     double mean();
     double max();
     double min();
-    double median();
-    double percentile95th();
+
+    default double median() {
+        return percentile(0.50d);
+    }
+
+    default double percentile95th() {
+        return percentile(0.95d);
+    }
+
+    double percentile(double percentile);
 }
 JAVA
 
 cat >"${BUILD_DIR}/src/me/lucko/spark/api/statistic/types/DoubleStatistic.java" <<'JAVA'
 package me.lucko.spark.api.statistic.types;
 
-public interface DoubleStatistic<W extends Enum<W>> {
+import me.lucko.spark.api.statistic.StatisticWindow;
+
+public interface DoubleStatistic<W extends Enum<W> & StatisticWindow> {
     double poll(W window);
 }
 JAVA
@@ -71,7 +105,9 @@ JAVA
 cat >"${BUILD_DIR}/src/me/lucko/spark/api/statistic/types/GenericStatistic.java" <<'JAVA'
 package me.lucko.spark.api.statistic.types;
 
-public interface GenericStatistic<I, W extends Enum<W>> {
+import me.lucko.spark.api.statistic.StatisticWindow;
+
+public interface GenericStatistic<I, W extends Enum<W> & StatisticWindow> {
     I poll(W window);
 }
 JAVA
@@ -115,8 +151,15 @@ public final class SparkProvider {
                 @Override public double mean() { return 4.1; }
                 @Override public double max() { return 41.2; }
                 @Override public double min() { return 2.2; }
-                @Override public double median() { return 3.4; }
-                @Override public double percentile95th() { return 9.8; }
+                @Override public double percentile(double percentile) {
+                    if (Math.abs(percentile - 0.50d) < 0.000001d) {
+                        return 3.4;
+                    }
+                    if (Math.abs(percentile - 0.95d) < 0.000001d) {
+                        return 9.8;
+                    }
+                    throw new IllegalArgumentException("unexpected percentile=" + percentile);
+                }
             };
         };
 
@@ -175,12 +218,14 @@ public final class IvrmMetricsBridgeTestMain {
 }
 JAVA
 
+mapfile -t TEST_SOURCES < <(find "${BUILD_DIR}/src" -name '*.java' -print | sort)
+
 javac \
   --release 21 \
   -Xlint:all \
   -Werror \
   -d "${BUILD_DIR}/classes" \
-  $(find "${BUILD_DIR}/src" -name '*.java' -print) \
+  "${TEST_SOURCES[@]}" \
   "${SCRIPT_DIR}/src/main/java/jp/ivrm/metrics/IvrmMetricsBridge.java"
 
 java \
