@@ -10,6 +10,13 @@ export type MinecraftMetricHistoryPoint = {
   backendOnline: number | null;
   publicLatencyMs: number | null;
   backendLatencyMs: number | null;
+  tps1m: number | null;
+  tps5m: number | null;
+  tps15m: number | null;
+  msptMedian1m: number | null;
+  msptP95_1m: number | null;
+  msptMax1m: number | null;
+  performanceSampleCount: number;
   sampleCount: number;
 };
 
@@ -82,6 +89,13 @@ function parsePoints(value: unknown): MinecraftMetricHistoryPoint[] {
           backendOnline: nullableNonNegativeNumber(item.backendOnline),
           publicLatencyMs: nullableNonNegativeNumber(item.publicLatencyMs),
           backendLatencyMs: nullableNonNegativeNumber(item.backendLatencyMs),
+          tps1m: nullableNonNegativeNumber(item.tps1m),
+          tps5m: nullableNonNegativeNumber(item.tps5m),
+          tps15m: nullableNonNegativeNumber(item.tps15m),
+          msptMedian1m: nullableNonNegativeNumber(item.msptMedian1m),
+          msptP95_1m: nullableNonNegativeNumber(item.msptP95_1m),
+          msptMax1m: nullableNonNegativeNumber(item.msptMax1m),
+          performanceSampleCount: nonNegativeInteger(item.performanceSampleCount),
           sampleCount: nonNegativeInteger(item.sampleCount),
         },
       ];
