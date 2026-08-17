@@ -43,6 +43,9 @@ IPV4_PATTERN = re.compile(
 IPV6_PATTERN = re.compile(
     r"(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{1,4}:){2,7}[0-9A-Fa-f]{0,4}(?![0-9A-Fa-f:])"
 )
+IPV6_CANDIDATE_PATTERN = re.compile(
+    r"(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?![0-9A-Fa-f:])"
+)
 BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{8,}")
 SECRET_QUERY_PATTERN = re.compile(
     r"(?i)([?&](?:access[_-]?token|refresh[_-]?token|token|password|passwd|secret|rcon[_-]?password|forwarding[_-]?secret)=)[^&\s]+"
@@ -76,6 +79,16 @@ def normalize_rfc3339(value: str) -> str | None:
     return parsed.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
+def redact_ipv6_candidate(match: re.Match[str]) -> str:
+    candidate = match.group(0)
+    try:
+        if ipaddress.ip_address(candidate).version == 6:
+            return "[REDACTED_IP]"
+    except ValueError:
+        pass
+    return candidate
+
+
 def redact_message(message: str) -> str:
     value = ANSI_PATTERN.sub("", message)
     value = MINECRAFT_FORMAT_PATTERN.sub("", value)
@@ -85,6 +98,7 @@ def redact_message(message: str) -> str:
     value = SECRET_ASSIGNMENT_PATTERN.sub(r"\1\2[REDACTED]", value)
     value = IPV4_PATTERN.sub("[REDACTED_IP]", value)
     value = IPV6_PATTERN.sub("[REDACTED_IP]", value)
+    value = IPV6_CANDIDATE_PATTERN.sub(redact_ipv6_candidate, value)
     value = " ".join(value.split())
     if len(value) > MAX_LINE_CHARACTERS:
         suffix = " … [truncated]"
