@@ -36,6 +36,7 @@ CONTAINER_SOURCES = (
 SYSTEMD_SOURCES = ("ivrm-agent",)
 
 ANSI_PATTERN = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+MINECRAFT_FORMAT_PATTERN = re.compile(r"§[0-9A-FK-ORX]", re.IGNORECASE)
 IPV4_PATTERN = re.compile(
     r"(?<![0-9.])(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}(?![0-9.])"
 )
@@ -77,6 +78,7 @@ def normalize_rfc3339(value: str) -> str | None:
 
 def redact_message(message: str) -> str:
     value = ANSI_PATTERN.sub("", message)
+    value = MINECRAFT_FORMAT_PATTERN.sub("", value)
     value = "".join(char if char.isprintable() else " " for char in value)
     value = BEARER_PATTERN.sub("Bearer [REDACTED]", value)
     value = SECRET_QUERY_PATTERN.sub(r"\1[REDACTED]", value)
