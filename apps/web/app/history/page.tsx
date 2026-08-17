@@ -4,6 +4,7 @@ import {
   HISTORY_RANGE_CONFIG,
   getContainerMetricHistory,
   getHostMetricHistory,
+  getObservabilityRetentionState,
   parseHistoryRange,
   type HistoryRange,
 } from "../../lib/history";
@@ -35,6 +36,21 @@ function formatPeriod(timestamp: string): string {
   }).format(new Date(timestamp));
 }
 
+function formatDateTime(timestamp: string | null): string {
+  if (!timestamp) {
+    return "未実行";
+  }
+  return new Intl.DateTimeFormat("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Tokyo",
+  }).format(new Date(timestamp));
+}
+
 function toKiBPerSecond(value: number | null): number | null {
   return value === null ? null : value / 1_024;
 }
@@ -48,22 +64,29 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
     endAt.getTime() - rangeConfig.hours * 60 * 60 * 1_000,
   );
 
-  const [hostResult, containerResult] = await Promise.allSettled([
+  const [hostResult, containerResult, retentionResult] = await Promise.allSettled([
     getHostMetricHistory(range),
     getContainerMetricHistory(range),
+    getObservabilityRetentionState(),
   ]);
 
   const hostHistory = hostResult.status === "fulfilled" ? hostResult.value : [];
   const containerHistory =
     containerResult.status === "fulfilled" ? containerResult.value : [];
+  const retentionState =
+    retentionResult.status === "fulfilled" ? retentionResult.value : null;
   const hostDataError = hostResult.status === "rejected";
   const containerDataError = containerResult.status === "rejected";
+  const retentionDataError = retentionResult.status === "rejected";
 
   if (hostResult.status === "rejected") {
     console.error("ホスト監視履歴の取得に失敗しました", hostResult.reason);
   }
   if (containerResult.status === "rejected") {
     console.error("Docker監視履歴の取得に失敗しました", containerResult.reason);
+  }
+  if (retentionResult.status === "rejected") {
+    console.error("監視Retention状態の取得に失敗しました", retentionResult.reason);
   }
 
   const hostLoadSeries = hostHistory.flatMap((item) => [
@@ -202,6 +225,16 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
     range === "7d" || range === "30d"
       ? "5分ロールアップ"
       : "生データ";
+  const retentionStatusLabel = retentionDataError
+    ? "取得エラー"
+    : retentionState?.enabled
+      ? "稼働中"
+      : "停止中";
+  const retentionStatusClass = retentionDataError
+    ? styles.retentionError
+    : retentionState?.enabled
+      ? styles.retentionActive
+      : styles.retentionPaused;
 
   const sharedChartProps = {
     startAt: startAt.toISOString(),
@@ -305,6 +338,73 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
           </small>
         </div>
 
+        <section
+          className={styles.retentionPanel}
+          aria-labelledby="retention-health-title"
+        >
+          <div className={styles.retentionHeader}>
+            <div>
+              <span>RETENTION</span>
+              <h2 id="retention-health-title">データ保持 Health</h2>
+            </div>
+            <strong
+              className={`${styles.retentionStatus} ${retentionStatusClass}`}
+              role="status"
+            >
+              {retentionStatusLabel}
+            </strong>
+          </div>
+
+          {retentionDataError || !retentionState ? (
+            <div className={styles.retentionAlert} role="alert">
+              Retention状態を取得できませんでした。履歴グラフ自体は継続して利用できます。
+            </div>
+          ) : (
+            <>
+              <div className={styles.retentionGrid}>
+                <div>
+                  <span>Raw保持</span>
+                  <strong>{retentionState.rawRetentionDays}日</strong>
+                </div>
+                <div>
+                  <span>5分Rollup保持</span>
+                  <strong>{retentionState.rollupRetentionDays}日</strong>
+                </div>
+                <div>
+                  <span>1回の削除上限</span>
+                  <strong>
+                    {retentionState.batchSize.toLocaleString("ja-JP")}件
+                  </strong>
+                </div>
+                <div>
+                  <span>前回実行</span>
+                  <strong className={styles.retentionTime}>
+                    {formatDateTime(retentionState.lastRunAt)}
+                  </strong>
+                </div>
+                <div>
+                  <span>前回Raw削除</span>
+                  <strong className={styles.retentionCounts}>
+                    H {retentionState.lastDeletedHeartbeats.toLocaleString("ja-JP")} / C{" "}
+                    {retentionState.lastDeletedContainerSamples.toLocaleString("ja-JP")} / MC{" "}
+                    {retentionState.lastDeletedMinecraftSamples.toLocaleString("ja-JP")}
+                  </strong>
+                </div>
+                <div>
+                  <span>前回Rollup削除</span>
+                  <strong className={styles.retentionCounts}>
+                    H {retentionState.lastDeletedHostRollups.toLocaleString("ja-JP")} / C{" "}
+                    {retentionState.lastDeletedContainerRollups.toLocaleString("ja-JP")}
+                  </strong>
+                </div>
+              </div>
+              <p className={styles.retentionMeta}>
+                Retentionの設定変更・削除実行はDB管理者に限定されています。Consoleは状態確認のみ行います。
+              </p>
+            </>
+          )}
+        </section>
+
         <section className={styles.metricSection} aria-labelledby="host-history-title">
           <div className={styles.sectionHeading}>
             <div>
@@ -361,7 +461,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
 
           {containerDataError ? (
             <div className="empty error-panel" role="alert">
-              <strong>Docker履歴を取得できませんでした</strong>
+              <strong>Docker監視履歴を取得できませんでした</strong>
               <p>SupabaseのDocker履歴RPCを確認してください。</p>
             </div>
           ) : (
@@ -418,7 +518,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
         <section className={styles.note}>
           <strong>データ保持・集約について</strong>
           <p>
-            1時間・6時間・24時間は生データから期間に応じて集約します。7日・30日は5分ロールアップを30分・1時間へ再集約するため、長期間表示で15秒生データを毎回全走査しません。今回の変更では生データを削除せず、Retentionは別タスクで検証後に導入します。
+            1時間・6時間・24時間は生データから期間に応じて集約します。7日・30日は5分ロールアップを30分・1時間へ再集約します。Rawは既定7日、5分Rollupは既定90日保持し、Retentionは6時間ごとに上限制御付きで段階削除するため、長期表示を維持しながらDB肥大化を抑えます。
           </p>
         </section>
       </section>

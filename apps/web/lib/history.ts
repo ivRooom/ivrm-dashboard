@@ -79,6 +79,21 @@ export type ContainerMetricHistorySeries = {
   points: ContainerMetricHistoryPoint[];
 };
 
+export type ObservabilityRetentionState = {
+  enabled: boolean;
+  rawRetentionDays: number;
+  rollupRetentionDays: number;
+  batchSize: number;
+  lastRunAt: string | null;
+  lastRawCutoff: string | null;
+  lastRollupCutoff: string | null;
+  lastDeletedContainerSamples: number;
+  lastDeletedMinecraftSamples: number;
+  lastDeletedHeartbeats: number;
+  lastDeletedHostRollups: number;
+  lastDeletedContainerRollups: number;
+};
+
 type HostMetricHistoryRow = {
   host_id: string;
   host_display_name: string;
@@ -94,6 +109,21 @@ type ContainerMetricHistoryRow = {
   data_source: string;
   bucket_seconds: number;
   points: unknown;
+};
+
+type ObservabilityRetentionStateRow = {
+  enabled: unknown;
+  raw_retention_days: unknown;
+  rollup_retention_days: unknown;
+  batch_size: unknown;
+  last_run_at: unknown;
+  last_raw_cutoff: unknown;
+  last_rollup_cutoff: unknown;
+  last_deleted_container_samples: unknown;
+  last_deleted_minecraft_samples: unknown;
+  last_deleted_heartbeats: unknown;
+  last_deleted_host_rollups: unknown;
+  last_deleted_container_rollups: unknown;
 };
 
 function requireEnvironment(name: string): string {
@@ -131,6 +161,11 @@ function nonNegativeInteger(value: unknown): number {
   return parsed;
 }
 
+function requiredPositiveInteger(value: unknown): number | null {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 function dataSource(value: unknown): HistoryDataSource {
   return value === "rollup_5m" ? "rollup_5m" : "raw";
 }
@@ -142,13 +177,20 @@ function timestamp(value: unknown): string | null {
   return value;
 }
 
+function nullableTimestamp(value: unknown): string | null {
+  return value === null || value === undefined ? null : timestamp(value);
+}
+
 export function parseHistoryRange(value: string | null | undefined): HistoryRange {
   return value && Object.hasOwn(HISTORY_RANGE_CONFIG, value)
     ? (value as HistoryRange)
     : "24h";
 }
 
-async function callHistoryRpc<T>(rpcName: string, range: HistoryRange): Promise<T> {
+async function callSupabaseRpc<T>(
+  rpcName: string,
+  payload: Record<string, unknown> = {},
+): Promise<T> {
   const { url, serviceRoleKey } = supabaseConfiguration();
   const response = await fetch(`${url}/rest/v1/rpc/${rpcName}`, {
     method: "POST",
@@ -158,7 +200,7 @@ async function callHistoryRpc<T>(rpcName: string, range: HistoryRange): Promise<
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({ p_range: range }),
+    body: JSON.stringify(payload),
     cache: "no-store",
     signal: AbortSignal.timeout(10_000),
   });
@@ -233,9 +275,9 @@ function parseContainerPoints(value: unknown): ContainerMetricHistoryPoint[] {
 export async function getHostMetricHistory(
   range: HistoryRange,
 ): Promise<HostMetricHistorySeries[]> {
-  const rows = await callHistoryRpc<HostMetricHistoryRow[]>(
+  const rows = await callSupabaseRpc<HostMetricHistoryRow[]>(
     "get_host_metric_history_v3",
-    range,
+    { p_range: range },
   );
 
   return rows
@@ -260,9 +302,9 @@ export async function getHostMetricHistory(
 export async function getContainerMetricHistory(
   range: HistoryRange,
 ): Promise<ContainerMetricHistorySeries[]> {
-  const rows = await callHistoryRpc<ContainerMetricHistoryRow[]>(
+  const rows = await callSupabaseRpc<ContainerMetricHistoryRow[]>(
     "get_container_metric_history_v3",
-    range,
+    { p_range: range },
   );
 
   return rows
@@ -287,4 +329,36 @@ export async function getContainerMetricHistory(
         "ja",
       ),
     );
+}
+
+export async function getObservabilityRetentionState(): Promise<ObservabilityRetentionState> {
+  const rows = await callSupabaseRpc<ObservabilityRetentionStateRow[]>(
+    "get_observability_retention_state_v1",
+  );
+  const row = rows[0];
+  if (!row || typeof row.enabled !== "boolean") {
+    throw new Error("Retention状態の応答形式が不正です");
+  }
+
+  const rawRetentionDays = requiredPositiveInteger(row.raw_retention_days);
+  const rollupRetentionDays = requiredPositiveInteger(row.rollup_retention_days);
+  const batchSize = requiredPositiveInteger(row.batch_size);
+  if (rawRetentionDays === null || rollupRetentionDays === null || batchSize === null) {
+    throw new Error("Retention設定値の応答形式が不正です");
+  }
+
+  return {
+    enabled: row.enabled,
+    rawRetentionDays,
+    rollupRetentionDays,
+    batchSize,
+    lastRunAt: nullableTimestamp(row.last_run_at),
+    lastRawCutoff: nullableTimestamp(row.last_raw_cutoff),
+    lastRollupCutoff: nullableTimestamp(row.last_rollup_cutoff),
+    lastDeletedContainerSamples: nonNegativeInteger(row.last_deleted_container_samples),
+    lastDeletedMinecraftSamples: nonNegativeInteger(row.last_deleted_minecraft_samples),
+    lastDeletedHeartbeats: nonNegativeInteger(row.last_deleted_heartbeats),
+    lastDeletedHostRollups: nonNegativeInteger(row.last_deleted_host_rollups),
+    lastDeletedContainerRollups: nonNegativeInteger(row.last_deleted_container_rollups),
+  };
 }
