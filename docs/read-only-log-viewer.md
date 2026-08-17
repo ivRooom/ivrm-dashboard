@@ -29,6 +29,7 @@ Supabase console_log_entries
 - 1 requestは64KiB以下、最大120行、1行2048文字以下。
 - Viewer初回300行、Follow中のDOMは最大800行。
 - DB Read RPCは24時間以内、最大500行に固定する。
+- 24時間Retentionはingest時のbounded pruneに加えてpg_cronで毎時実行する。
 
 ## Allowed sources
 
@@ -47,16 +48,26 @@ Supabase console_log_entries
 
 ### 1. Migration
 
-`supabase/migrations/202608180001_console_log_viewer.sql` をProductionへ適用します。
+次のMigrationを順番にProductionへ適用します。
+
+```text
+202608180001_console_log_viewer.sql
+202608180002_console_log_retention_schedule.sql
+202608180003_console_log_read_stable_time.sql
+```
 
 確認:
 
 ```sql
 select to_regclass('public.console_log_entries') as entries_table,
        to_regclass('public.console_log_ingest_requests') as requests_table;
+
+select jobid, jobname, schedule
+from cron.job
+where jobname = 'ivrm-console-log-retention-v1';
 ```
 
-両方non-nullであることを確認します。
+両Tableがnon-nullで、Retention Jobが1件だけ存在することを確認します。
 
 ### 2. Web Production
 
@@ -64,18 +75,22 @@ PR merge後のmainがVercel ProductionでREADYになり、匿名アクセスが�
 
 Reporterはまだ有効にしません。
 
-### 3. OCI updater
+### 3. OCI Log Reporterだけをstage
 
-最新mainをcloneして実行します。
+最新mainをcloneし、**通常のmonitoring updaterではなくLog専用stage script**を実行します。
 
 ```bash
-bash /tmp/ivrm-dashboard/deploy/oci/update-monitoring-stack.sh
+bash /tmp/ivrm-dashboard/deploy/oci/stage-log-reporter.sh
 ```
+
+このscriptはMinecraft、IVRM Agent、Docker Snapshot、TPS/MSPT Performanceを再起動・変更しません。既存のPerformanceを維持したままLog ReporterだけをOFF状態で配置します。
 
 期待値:
 
 ```text
 logReporting=false
+logEndpoint=https://console.ivrm.jp/api/agent/logs
+Minecraft / Agent / Performanceは再起動・変更していません。
 ```
 
 確認:
@@ -95,6 +110,8 @@ active
 ```
 
 TimerはactiveでもReporterはOFFなのでDocker/Journaldを収集・送信しません。
+
+`update-monitoring-stack.sh`にもLog Reporter配置は含まれますが、同scriptは既存仕様どおりMinecraft Performanceも安全のためOFFへ戻すため、Log Viewer単独rolloutでは使用しません。
 
 ### 4. Enable
 
