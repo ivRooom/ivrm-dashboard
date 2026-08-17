@@ -1,6 +1,8 @@
 # IVRM Minecraft Metrics Bridge
 
-`mc-main`内でSparkの公開APIをpollし、IVRM Agentが安全に読み取れる最小の構造化JSONへ変換するFabric server modです。
+`mc-main`内でSparkの公開APIをpollし、IVRM Agentが安全に読み取れる最小の構造化JSONへ変換するNeoForge server modです。
+
+Production `mc-main`はNeoForgeで動作しており、Sparkも`*-neoforge.jar`としてロードされています。Bridgeも同じNeoForge `javafml` entrypointとしてロードします。
 
 ## 目的
 
@@ -34,6 +36,18 @@ Online人数、Ping、Docker CPUなどからTPS/MSPTを推定しません。
 
 Host側`ivrm-agent-minecraft-performance.py`はこの8 key以外を拒否し、45秒を超えたファイルもstaleとして拒否します。
 
+## NeoForge entrypoint
+
+JARは`META-INF/neoforge.mods.toml`を持ち、`javafml`の`@Mod("ivrm_metrics_bridge")` entrypointで起動します。
+
+BridgeはMinecraft/NeoForgeのgame APIへ依存せず、NeoForgeはentrypoint起動にだけ利用します。公開constructorは引数なし1つだけです。
+
+起動できた場合、server logへ次の汎用行を1回だけ出します。
+
+```text
+[ivrm-metrics-bridge] initialized
+```
+
 ## Spark API
 
 BridgeはSpark API jarを成果物へ同梱しません。
@@ -64,7 +78,7 @@ bash apps/minecraft-metrics-bridge/build.sh
 apps/minecraft-metrics-bridge/build/ivrm-metrics-bridge.jar
 ```
 
-Fabric APIそのものへのruntime dependencyはありません。`ModInitializer`のcompile-time stubはbuild後に成果物から削除し、runtimeではFabric Loaderが提供するclassを使用します。
+NeoForge API jarそのものへのruntime同梱はありません。`@Mod`のcompile-time stubはbuild後に成果物から削除し、runtimeではNeoForge/FMLが提供するannotationを使用します。
 
 ## Test
 
@@ -72,7 +86,13 @@ Fabric APIそのものへのruntime dependencyはありません。`ModInitializ
 bash apps/minecraft-metrics-bridge/test.sh
 ```
 
-テストではSpark公開APIと同じgeneric bound / method erasureを持つfake APIを構築し、reflectionでTPS/MSPTを実際にpollできることを確認します。
+テストでは次を確認します。
+
+- NeoForge `@Mod` annotationとmod id
+- public no-arg constructorが1つだけ
+- Spark公開APIと同じgeneric bound / method erasure
+- reflectionでTPS/MSPTを実際にpoll可能
+- structured JSON contract
 
 ## Production rollout
 
@@ -82,7 +102,7 @@ Bridge stagingはMinecraftを自動再起動しません。
 bash deploy/oci/stage-minecraft-metrics-bridge.sh
 ```
 
-その後、通常のメンテナンス手順でMinecraftを再起動し、15秒以上経過してから以下を確認します。
+その後、通常のメンテナンス手順で`mc-main`を再起動し、server logで`[ivrm-metrics-bridge] initialized`を確認します。15秒以上経過してから以下を確認します。
 
 ```bash
 sudo docker exec mc-main cat /data/ivrm/metrics.json \

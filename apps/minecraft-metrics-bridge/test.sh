@@ -10,7 +10,7 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p \
-  "${BUILD_DIR}/src/net/fabricmc/api" \
+  "${BUILD_DIR}/src/net/neoforged/fml/common" \
   "${BUILD_DIR}/src/me/lucko/spark/api/statistic/types" \
   "${BUILD_DIR}/src/me/lucko/spark/api/statistic/misc" \
   "${BUILD_DIR}/src/me/lucko/spark/api/statistic" \
@@ -18,11 +18,18 @@ mkdir -p \
   "${BUILD_DIR}/src/jp/ivrm/metrics" \
   "${BUILD_DIR}/classes"
 
-cat >"${BUILD_DIR}/src/net/fabricmc/api/ModInitializer.java" <<'JAVA'
-package net.fabricmc.api;
+cat >"${BUILD_DIR}/src/net/neoforged/fml/common/Mod.java" <<'JAVA'
+package net.neoforged.fml.common;
 
-public interface ModInitializer {
-    void onInitialize();
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+public @interface Mod {
+    String value();
 }
 JAVA
 
@@ -185,10 +192,24 @@ JAVA
 cat >"${BUILD_DIR}/src/jp/ivrm/metrics/IvrmMetricsBridgeTestMain.java" <<'JAVA'
 package jp.ivrm.metrics;
 
+import net.neoforged.fml.common.Mod;
+
 public final class IvrmMetricsBridgeTestMain {
     private IvrmMetricsBridgeTestMain() {}
 
     public static void main(String[] args) throws Exception {
+        Mod mod = IvrmMetricsBridge.class.getAnnotation(Mod.class);
+        require(mod != null, "NeoForge @Mod annotation is missing");
+        require(IvrmMetricsBridge.MOD_ID.equals(mod.value()), "NeoForge mod id does not match");
+        require(
+            IvrmMetricsBridge.class.getConstructors().length == 1,
+            "NeoForge entrypoint must expose exactly one public constructor"
+        );
+        require(
+            IvrmMetricsBridge.class.getConstructors()[0].getParameterCount() == 0,
+            "NeoForge entrypoint constructor must remain no-arg"
+        );
+
         IvrmMetricsBridge.MetricsSnapshot snapshot = IvrmMetricsBridge.readSparkMetrics();
         assertClose(snapshot.tps1m(), 19.98, "tps1m");
         assertClose(snapshot.tps5m(), 19.95, "tps5m");
@@ -201,7 +222,7 @@ public final class IvrmMetricsBridgeTestMain {
         require(json.contains("\"source\":\"spark\""), "source is missing");
         require(json.contains("\"tps1m\":19.98"), "tps1m JSON is missing");
         require(json.contains("\"msptMax1m\":41.2"), "msptMax1m JSON is missing");
-        System.out.println("metrics_bridge_reflection_test=ok");
+        System.out.println("metrics_bridge_neoforge_contract_test=ok");
     }
 
     private static void assertClose(double actual, double expected, String name) {

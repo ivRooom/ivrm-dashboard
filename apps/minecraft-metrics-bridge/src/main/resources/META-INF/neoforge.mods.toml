@@ -1,0 +1,13 @@
+modLoader="javafml"
+loaderVersion="[1,)"
+license="All Rights Reserved"
+
+[[mods]]
+modId="ivrm_metrics_bridge"
+version="0.2.0"
+displayName="IVRM Metrics Bridge"
+description='''Exports Spark TPS/MSPT statistics to a local structured metrics file for the IVRM monitoring agent.'''
+authors="ivRooom"
+
+[features.ivrm_metrics_bridge]
+javaVersion="[21,)"
