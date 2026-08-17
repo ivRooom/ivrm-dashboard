@@ -77,28 +77,27 @@ BotのGuild参加はこのログインフローには不要。
 
 ## Discord側で取得するID
 
+初期ProductionではOWNERだけをConsole Roleへ割り当てる。
 Developer Modeを有効にし、次を取得する。
 
 - ivRooom Guild ID
-- Console Viewer Role ID
-- Console Operator Role ID（使用する場合）
-- Console Administrator Role ID（使用する場合）
-- Console Owner Role ID（使用する場合）
+- Console Owner Role ID
 
+Viewer / Operator / Administratorは初期ロールアウトでは割り当てず、必要になった時点で追加する。
 Role IDは1つのConsole Roleにだけ割り当てる。
 
-最低構成:
+初期Production構成:
 
 ```json
 {
-  "viewer": ["VIEWER_ROLE_ID"],
+  "viewer": [],
   "operator": [],
   "administrator": [],
-  "owner": []
+  "owner": ["OWNER_ROLE_ID"]
 }
 ```
 
-管理操作を段階的に許可する場合:
+将来、管理操作を段階的に分離する場合:
 
 ```json
 {
@@ -112,6 +111,7 @@ Role IDは1つのConsole Roleにだけ割り当てる。
 ## Vercel Production Environment Variables
 
 Vercel Project `ivrm-dashboard` のProduction Scopeへ設定する。
+初期ProductionはOWNER Roleだけを有効化する。
 
 ```text
 IVRM_DISCORD_AUTH_MODE=report
@@ -119,7 +119,7 @@ DISCORD_CLIENT_ID=<Dashboard専用Application Client ID>
 DISCORD_CLIENT_SECRET=<Dashboard専用Application Client Secret>
 DISCORD_GUILD_ID=<ivRooom Guild ID>
 DISCORD_REDIRECT_URI=https://console.ivrm.jp/api/auth/discord/callback
-IVRM_DISCORD_ROLE_MAP_JSON={"viewer":["<VIEWER_ROLE_ID>"],"operator":[],"administrator":[],"owner":[]}
+IVRM_DISCORD_ROLE_MAP_JSON={"viewer":[],"operator":[],"administrator":[],"owner":["<OWNER_ROLE_ID>"]}
 IVRM_DISCORD_SESSION_TTL_SECONDS=14400
 ```
 
@@ -152,8 +152,8 @@ Discord Sessionがなくても既存Cloudflare Accessを使用できるため、
 
 確認:
 
-- 専用Role保持者がログイン成功
-- Roleなしユーザーが`required_role_missing`で拒否
+- OWNER Role保持者がログイン成功
+- OWNER Roleなしユーザーが`required_role_missing`で拒否
 - Guild未参加ユーザーが`guild_membership_required`で拒否
 - Membership Screening未完了が拒否
 - Callbackのstate検証が成功
@@ -195,13 +195,17 @@ Cloudflare Access側も利用できない場合だけ`disabled`へ戻す。
 ## Client Secret Rotation
 
 Dashboard専用Applicationに分離している場合、Dashboardだけでrotationできる。
+Rotation開始前の `IVRM_DISCORD_AUTH_MODE` を記録し、rotation作業だけを理由にModeを変更しない。
 
 1. Discord Developer Portalで新しいClient Secretを発行
 2. Vercel Production `DISCORD_CLIENT_SECRET`を更新
 3. Productionをredeploy
-4. `report`でログインSmoke
-5. 問題がなければ`enforce`を維持
-6. Secret値をチケット・ログへ残さない
+4. Rotation前のModeを維持したまま、`report`の場合はDiscordログインSmokeを実施する
+5. Phase 3未完了の場合は`enforce`へ変更しない。Phase 3完了済みの場合だけ既存の`enforce`を維持する
+6. Smoke Testに失敗した場合は、承認済みのSecret管理場所から旧`DISCORD_CLIENT_SECRET`をVercel Productionへ復元する
+7. 旧Secret復元後にProductionをredeployし、`report`でDiscordログインを再検証する
+8. 復旧確認後はrotation前の適切なModeへ戻す。Phase 3未完了なら`report`または`disabled`を維持する
+9. Secret値をチケット・ログ・ドキュメントへ残さない
 
 ## 将来の統合方針
 
