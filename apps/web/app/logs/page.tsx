@@ -77,7 +77,6 @@ export default async function LogsPage({ searchParams }: PageProps) {
     console.error("Console Logの取得に失敗しました", error);
   }
 
-  const sourceCount = new Set(entries.map((entry) => entry.sourceName)).size;
   const warningOrHigherCount = entries.filter((entry) =>
     ["warning", "error", "critical"].includes(entry.level),
   ).length;
@@ -207,7 +206,7 @@ export default async function LogsPage({ searchParams }: PageProps) {
         </form>
 
         <p className={styles.notice}>
-          ANSI装飾は除去し、IP・Bearer Token・password / secret / token系の値はOCI側とWeb側の両方でマスクします。Docker Socket、SSH、RCON、任意ShellをBrowserへ公開しません。
+          ANSI装飾とMinecraft legacy formattingは除去し、IPv4/IPv6・Bearer Token・password / secret / token系の値はOCI側とWeb側の両方でマスクします。Docker Socket、SSH、RCON、任意ShellをBrowserへ公開しません。
         </p>
 
         {loadError ? (
