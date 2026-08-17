@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ConsoleLogLevel,
+  ConsoleLogRange,
   ConsoleLogSourceName,
 } from "../lib/console-log-types";
 import type { ConsoleLogEntry } from "../lib/logs";
@@ -17,6 +18,7 @@ type LogViewerProps = {
   serverId: string;
   sourceName: ConsoleLogSourceName | null;
   level: ConsoleLogLevel | null;
+  range: ConsoleLogRange;
   query: string | null;
 };
 
@@ -57,10 +59,12 @@ export function LogViewer({
   serverId,
   sourceName,
   level,
+  range,
   query,
 }: LogViewerProps) {
   const [entries, setEntries] = useState(initialEntries.slice(-MAX_RENDERED_ENTRIES));
   const [follow, setFollow] = useState(true);
+  const [autoScroll, setAutoScroll] = useState(true);
   const [atBottom, setAtBottom] = useState(true);
   const [pollError, setPollError] = useState(false);
   const [lastPollAt, setLastPollAt] = useState<string | null>(null);
@@ -99,6 +103,7 @@ export function LogViewer({
           server: serverId,
           after: String(lastIdRef.current),
           limit: "200",
+          range,
         });
         if (sourceName) params.set("source", sourceName);
         if (level) params.set("level", level);
@@ -117,7 +122,7 @@ export function LogViewer({
         if (payload.entries.length > 0) {
           lastIdRef.current = Math.max(lastIdRef.current, payload.lastId);
           setEntries((current) => mergeEntries(current, payload.entries));
-          if (shouldStickRef.current) {
+          if (autoScroll && shouldStickRef.current) {
             window.requestAnimationFrame(() => scrollToLatest("auto"));
           }
         }
@@ -139,7 +144,7 @@ export function LogViewer({
       if (timer) clearTimeout(timer);
       controller?.abort();
     };
-  }, [follow, level, query, scrollToLatest, serverId, sourceName]);
+  }, [autoScroll, follow, level, query, range, scrollToLatest, serverId, sourceName]);
 
   const handleScroll = useCallback(() => {
     const viewport = viewportRef.current;
@@ -149,11 +154,28 @@ export function LogViewer({
     setAtBottom(nearBottom);
   }, []);
 
+  const handleAutoScrollToggle = useCallback(() => {
+    if (autoScroll) {
+      setAutoScroll(false);
+      return;
+    }
+
+    setAutoScroll(true);
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.requestAnimationFrame(() => scrollToLatest(reducedMotion ? "auto" : "smooth"));
+  }, [autoScroll, scrollToLatest]);
+
+  const autoScrollStatus = autoScroll
+    ? atBottom
+      ? "Auto-scroll ON"
+      : "Auto-scroll PAUSED"
+    : "Auto-scroll OFF";
+
   return (
     <section className={styles.viewer} aria-label="Console Log Viewer">
       <div className={styles.toolbar}>
         <div>
-          <strong>{follow ? "Follow ON" : "Follow OFF"}</strong>
+          <strong>{follow ? "Follow ON" : "Follow OFF"} / {autoScrollStatus}</strong>
           <span aria-live="polite">
             {pollError
               ? "最新ログの確認に失敗しました。次の周期で再試行します。"
@@ -175,12 +197,20 @@ export function LogViewer({
             </button>
           ) : null}
           <button
+            aria-pressed={autoScroll}
+            className={autoScroll ? styles.followActive : undefined}
+            onClick={handleAutoScrollToggle}
+            type="button"
+          >
+            {autoScroll ? "自動スクロール停止" : "自動スクロール開始"}
+          </button>
+          <button
             aria-pressed={follow}
             className={follow ? styles.followActive : undefined}
             onClick={() => setFollow((current) => !current)}
             type="button"
           >
-            {follow ? "追従を停止" : "追従を開始"}
+            {follow ? "Follow停止" : "Follow開始"}
           </button>
         </div>
       </div>
@@ -197,7 +227,7 @@ export function LogViewer({
         {entries.length === 0 ? (
           <div className={styles.empty}>
             <strong>表示できるログはまだありません</strong>
-            <span>Reporterが有効になると、24時間以内のredact済みログだけがここへ表示されます。</span>
+            <span>Reporterが有効になると、選択期間内のredact済みログだけがここへ表示されます。</span>
           </div>
         ) : (
           <ol className={styles.lines}>
@@ -215,6 +245,7 @@ export function LogViewer({
 
       <footer className={styles.footer}>
         <span>最大表示 {MAX_RENDERED_ENTRIES}行</span>
+        <span>Followと自動スクロールは独立して制御できます</span>
         <span>保存対象はredact済み・24時間以内のみ</span>
       </footer>
     </section>
