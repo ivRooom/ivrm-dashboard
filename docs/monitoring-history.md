@@ -4,7 +4,7 @@
 
 `console.ivrm.jp/history`で、Minecraft・Host・Dockerの短期詳細と長期傾向を同じ時間軸で確認する。
 
-新しいSecretや外部時系列DBは使用せず、既存SupabaseとAgent収集データを利用する。
+新しい外部時系列DBは使用せず、既存SupabaseとAgent収集データを利用する。Minecraft TPS / MSPTのRCON認証情報はConsole・Agent payload・Supabaseへ送信しない。
 
 ## 表示期間
 
@@ -20,27 +20,38 @@ Webから任意の時間数やBucket秒数を渡さない。許可する`range`�
 
 ## Minecraft履歴
 
-現在のMinecraft Status Probeが実測している値だけを履歴化する。
+Minecraft Status ProbeとSpark Performance Collectorが実測した値だけを履歴化する。
+
+### Status Probe
 
 - Public Endpoint Online人数
 - Backend Online人数
 - Public Status Probe Latency
 - Backend Status Probe Latency
 
-`minecraft_samples`には2026-08-13以降の実データが蓄積されているため、Migration適用時に保持中Rawを`minecraft_metric_rollups_5m`へBackfillする。
+`minecraft_samples`には2026-08-13以降の実データが蓄積されているため、Minecraft履歴Migration適用時に保持中Rawを`minecraft_metric_rollups_5m`へBackfillする。
 
 ### TPS / MSPT
 
-Minecraft標準Status ProtocolはTPS / MSPTを返さない。
+Minecraft標準Status ProtocolはTPS / MSPTを返さないため、`mc-main`コンテナ内部のSpark `spark tps`が実測した値だけを利用する。
 
-そのため以下は行わない。
+履歴対象:
+
+- TPS 1分 rolling
+- TPS 5分 rolling
+- TPS 15分 rolling
+- 直近1分 Tick duration median
+- 直近1分 Tick duration 95 percentile
+- 直近1分 Tick duration max
+
+以下は行わない。
 
 - Online人数やLatencyからTPS / MSPTを推定する
 - 固定値を埋める
 - Docker CPU使用率をTPSとして代用する
-- RCON SecretをConsoleや履歴DBへ持ち込む
+- RCON SecretをConsole、Go Agent、Heartbeat payload、履歴DBへ持ち込む
 
-TPS / MSPTは、サーバー内部から正規の性能メトリクスを読み取る限定経路を実装した後に追加する。
+Performance Collectorが取得できない区間は`null`のまま保持し、0補完しない。
 
 ## Host履歴
 
@@ -76,6 +87,8 @@ Counter resetを負の通信量として表示しない。
 
 グラフは期待Bucket間隔を超えるGapで線を分割する。これにより「実際の0」と「未観測」を区別する。
 
+Minecraft Performanceも同じ規則を使用する。Status Probeだけ存在してSpark Performanceが取得できない場合、Online / Latencyは表示を継続し、TPS / MSPTだけを欠損表示する。
+
 ## 状態期間Overlay
 
 メトリクス背景にはStale / Offline / Error / Maintenance期間を表示する。
@@ -106,7 +119,9 @@ nullable metricはメトリクスごとの有効Sample件数を保存し、長�
 Σ(有効Sample件数)
 ```
 
-MinecraftでもPublic / Backend Online人数・LatencyごとのSample件数を分ける。
+MinecraftではPublic / Backend Online人数・LatencyごとのSample件数に加え、Spark Performanceが完全に取得できた`performance_sample_count`を保存する。
+
+TPS 1m / 5m / 15m、MSPT median / p95は`performance_sample_count`で重み付き平均する。MSPT maxだけは平均化せず、5分BucketではRaw内の最大値、30分 / 1時間への再集約でも対象5分Bucket内の最大値を保持する。短時間のTick悪化を長期集約で消さないためである。
 
 ## 増分更新
 
@@ -139,6 +154,8 @@ Raw削除は対応する5分Rollupが存在するSampleだけを対象にする�
 - Minecraft Raw → `minecraft_metric_rollups_5m`確認
 - Heartbeat Raw → Host Rollup確認 + 子Sampleが残っていないことを確認
 
+Minecraft Performanceは既存`minecraft_samples` / `minecraft_metric_rollups_5m`の同じ行へ保存するため、追加のRetention Jobは作成しない。
+
 Host / Container / Minecraft Rollupは90日を超えたものからBounded Deleteする。
 
 既存`run_observability_retention_v1()`の関数名・戻り値は互換維持し、Minecraft Rollup保護を内部追加する。Retention有効状態や既存CronをMigrationで無効化しない。
@@ -163,6 +180,8 @@ get_observability_retention_state_v2
 ```
 
 内部更新HelperはService Roleから直接実行できない。
+
+Minecraft Performanceの書き込みは`insert_agent_heartbeat_v3`をService Role経由でのみ実行する。v2は既存Agent互換のため残す。
 
 履歴へ以下を含めない。
 
@@ -196,6 +215,17 @@ select max(bucket_at) from public.host_metric_rollups_5m;
 select max(bucket_at) from public.container_metric_rollups_5m;
 select max(bucket_at) from public.minecraft_metric_rollups_5m;
 ```
+
+### Minecraft Performance受信確認
+
+```sql
+select
+  count(*) filter (where performance_source = 'spark') as performance_samples,
+  max(received_at) filter (where performance_source = 'spark') as latest_performance_at
+from public.minecraft_samples;
+```
+
+Performance有効化前は0件で正常。有効化後は継続的に増えることを確認する。
 
 ### Minecraft Raw保護確認
 
