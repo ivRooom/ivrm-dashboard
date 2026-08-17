@@ -489,7 +489,8 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
                   <span>前回Rollup削除</span>
                   <strong className={styles.retentionCounts}>
                     H {retentionState.lastDeletedHostRollups.toLocaleString("ja-JP")} / C{" "}
-                    {retentionState.lastDeletedContainerRollups.toLocaleString("ja-JP")}
+                    {retentionState.lastDeletedContainerRollups.toLocaleString("ja-JP")} / MC{" "}
+                    {retentionState.lastDeletedMinecraftRollups.toLocaleString("ja-JP")}
                   </strong>
                 </div>
               </div>
