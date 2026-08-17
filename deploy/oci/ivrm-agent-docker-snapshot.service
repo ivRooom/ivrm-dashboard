@@ -9,6 +9,7 @@ User=root
 Group=root
 EnvironmentFile=/etc/ivrm-agent/docker.env
 ExecStart=/usr/local/libexec/ivrm-agent-docker-snapshot
+ExecStartPost=/usr/local/libexec/ivrm-agent-minecraft-performance
 
 NoNewPrivileges=true
 PrivateTmp=true

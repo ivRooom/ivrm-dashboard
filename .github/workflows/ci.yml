@@ -44,6 +44,10 @@ jobs:
         run: python3 -m py_compile deploy/oci/ivrm-agent-docker-snapshot.py
       - name: Docker Collectorをテスト
         run: python3 -m unittest deploy/oci/test_ivrm_agent_docker_snapshot.py
+      - name: Minecraft Performance Collectorの構文を確認
+        run: python3 -m py_compile deploy/oci/ivrm-agent-minecraft-performance.py
+      - name: Minecraft Performance Collectorをテスト
+        run: python3 -m unittest deploy/oci/test_ivrm_agent_minecraft_performance.py
       - name: Backup Reporterの構文を確認
         run: python3 -m py_compile deploy/oci/ivrm-backup-reporter.py
       - name: Backup Reporterをテスト
