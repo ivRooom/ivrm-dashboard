@@ -27,6 +27,18 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "必要なコマンドがありません: $1"
 }
 
+local_jdk_usable() {
+  command -v javac >/dev/null 2>&1 || return 1
+  command -v jar >/dev/null 2>&1 || return 1
+
+  local version_output version major
+  version_output="$(javac -version 2>&1)" || return 1
+  version="${version_output#javac }"
+  major="${version%%.*}"
+  [[ "${major}" =~ ^[0-9]+$ ]] || return 1
+  (( major >= 21 ))
+}
+
 for command_name in git sudo docker sha256sum; do
   require_command "${command_name}"
 done
@@ -65,9 +77,11 @@ printf 'repo=%s\nsha=%s\n' \
   "$(git -C "${REPO_ROOT}" rev-parse HEAD)"
 
 printf '\n==> Metrics Bridgeをビルド\n'
-if command -v javac >/dev/null 2>&1 && command -v jar >/dev/null 2>&1; then
+if local_jdk_usable; then
+  printf 'builder=host-jdk\n'
   bash "${BRIDGE_DIR}/build.sh" "${OUTPUT_JAR}"
 else
+  printf 'builder=%s\n' "${BUILDER_IMAGE}"
   # Build in an isolated JDK container. No network and no Docker socket are exposed.
   sudo docker run --rm \
     --network none \
@@ -99,8 +113,14 @@ if ! sudo docker cp "${OUTPUT_JAR}" "${CONTAINER_NAME}:${CONTAINER_JAR_PATH}"; t
   fail "Metrics Bridge jarをステージできませんでした"
 fi
 
-sudo docker exec "${CONTAINER_NAME}" test -s "${CONTAINER_JAR_PATH}" \
-  || fail "ステージ後のMetrics Bridge jarを確認できません"
+if ! sudo docker exec "${CONTAINER_NAME}" test -s "${CONTAINER_JAR_PATH}"; then
+  if [[ -s "${BACKUP_JAR}" ]]; then
+    sudo docker cp "${BACKUP_JAR}" "${CONTAINER_NAME}:${CONTAINER_JAR_PATH}" || true
+  else
+    sudo docker exec "${CONTAINER_NAME}" rm -f "${CONTAINER_JAR_PATH}" || true
+  fi
+  fail "ステージ後のMetrics Bridge jarを確認できません"
+fi
 
 printf '\n==> ステージ完了\n'
 printf '%s\n' \
