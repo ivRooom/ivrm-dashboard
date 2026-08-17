@@ -67,7 +67,7 @@ class SparkOutputParserTest(unittest.TestCase):
 
 
 class SparkCommandTest(unittest.TestCase):
-    def test_executes_fixed_container_and_command(self) -> None:
+    def test_executes_fixed_container_and_single_rcon_command(self) -> None:
         completed = subprocess.CompletedProcess(
             args=[],
             returncode=0,
@@ -84,7 +84,7 @@ class SparkCommandTest(unittest.TestCase):
 
         self.assertEqual(
             run.call_args.args[0],
-            ["/usr/bin/docker", "exec", "mc-main", "rcon-cli", "spark", "tps"],
+            ["/usr/bin/docker", "exec", "mc-main", "rcon-cli", "spark tps"],
         )
         self.assertFalse(run.call_args.kwargs["check"])
         self.assertEqual(run.call_args.kwargs["timeout"], 5)
