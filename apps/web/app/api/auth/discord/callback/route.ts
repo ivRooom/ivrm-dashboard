@@ -5,14 +5,16 @@ import {
   DISCORD_OAUTH_STATE_COOKIE,
   DISCORD_SESSION_COOKIE,
   DiscordAuthError,
-  constantTimeEqual,
+  consumeDiscordOAuthState,
   createDiscordConsoleSession,
   exchangeDiscordAuthorizationCode,
   fetchDiscordIdentity,
   getDiscordAuthConfiguration,
+  matchesDiscordOAuthState,
   recordDiscordLoginDenied,
   resolveDiscordConsoleRole,
   revokeDiscordAccessToken,
+  sanitizeDiscordOAuthProviderError,
   sanitizeReturnPath,
   type DiscordAuthConfiguration,
   type DiscordLoginFailureReason,
@@ -28,11 +30,21 @@ const COOKIE_BASE = {
   path: "/",
 };
 
-function clearOAuthCookies(response: NextResponse): void {
-  response.cookies.set(DISCORD_OAUTH_STATE_COOKIE, "", {
-    ...COOKIE_BASE,
-    maxAge: 0,
-  });
+function updateOAuthCookies(
+  response: NextResponse,
+  remainingState: string | null,
+): void {
+  if (remainingState) {
+    response.cookies.set(DISCORD_OAUTH_STATE_COOKIE, remainingState, {
+      ...COOKIE_BASE,
+      maxAge: 600,
+    });
+  } else {
+    response.cookies.set(DISCORD_OAUTH_STATE_COOKIE, "", {
+      ...COOKIE_BASE,
+      maxAge: 0,
+    });
+  }
   response.cookies.set(DISCORD_OAUTH_RETURN_COOKIE, "", {
     ...COOKIE_BASE,
     maxAge: 0,
@@ -42,13 +54,19 @@ function clearOAuthCookies(response: NextResponse): void {
 function loginErrorResponse(
   request: NextRequest,
   reason: DiscordLoginFailureReason,
+  options: {
+    remainingState?: string | null;
+    preserveOAuthCookies?: boolean;
+  } = {},
 ): NextResponse {
   const response = NextResponse.redirect(
     new URL(`/login?error=${encodeURIComponent(reason)}`, request.url),
   );
   response.headers.set("Cache-Control", "private, no-store, max-age=0");
   response.headers.set("X-Content-Type-Options", "nosniff");
-  clearOAuthCookies(response);
+  if (!options.preserveOAuthCookies) {
+    updateOAuthCookies(response, options.remainingState ?? null);
+  }
   return response;
 }
 
@@ -62,38 +80,42 @@ function reasonFromError(error: unknown): DiscordLoginFailureReason {
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const requestId = randomUUID();
   const returnedState = request.nextUrl.searchParams.get("state");
-  const expectedState = request.cookies.get(DISCORD_OAUTH_STATE_COOKIE)?.value || null;
+  const stateCookie = request.cookies.get(DISCORD_OAUTH_STATE_COOKIE)?.value || null;
   const returnPath = sanitizeReturnPath(
     request.cookies.get(DISCORD_OAUTH_RETURN_COOKIE)?.value || null,
   );
-  const oauthError = request.nextUrl.searchParams.get("error");
   let discordUserId: string | null = null;
   let guildId: string | null = null;
   let accessToken: string | null = null;
   let configuration: DiscordAuthConfiguration | null = null;
 
-  if (oauthError) {
-    await recordDiscordLoginDenied({
-      requestId,
-      discordUserId: null,
-      reason: "oauth_denied",
-      guildId: null,
-    });
-    return loginErrorResponse(request, "oauth_denied");
-  }
-
-  if (
-    !returnedState ||
-    !expectedState ||
-    !constantTimeEqual(returnedState, expectedState)
-  ) {
+  if (!returnedState || !matchesDiscordOAuthState(returnedState, stateCookie)) {
     await recordDiscordLoginDenied({
       requestId,
       discordUserId: null,
       reason: "oauth_state_invalid",
       guildId: null,
     });
-    return loginErrorResponse(request, "oauth_state_invalid");
+    return loginErrorResponse(request, "oauth_state_invalid", {
+      preserveOAuthCookies: true,
+    });
+  }
+
+  const remainingState = consumeDiscordOAuthState(returnedState, stateCookie);
+  const oauthError = sanitizeDiscordOAuthProviderError(
+    request.nextUrl.searchParams.get("error"),
+  );
+  if (oauthError) {
+    const reason: DiscordLoginFailureReason =
+      oauthError === "access_denied" ? "oauth_denied" : "oauth_provider_error";
+    await recordDiscordLoginDenied({
+      requestId,
+      discordUserId: null,
+      reason,
+      guildId: null,
+      providerError: oauthError,
+    });
+    return loginErrorResponse(request, reason, { remainingState });
   }
 
   const code = request.nextUrl.searchParams.get("code");
@@ -104,7 +126,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       reason: "oauth_code_missing",
       guildId: null,
     });
-    return loginErrorResponse(request, "oauth_code_missing");
+    return loginErrorResponse(request, "oauth_code_missing", { remainingState });
   }
 
   try {
@@ -146,7 +168,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       ...COOKIE_BASE,
       expires: expiresAt,
     });
-    clearOAuthCookies(response);
+    updateOAuthCookies(response, remainingState);
     return response;
   } catch (error) {
     const reason = reasonFromError(error);
@@ -156,7 +178,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       reason,
       guildId,
     });
-    return loginErrorResponse(request, reason);
+    return loginErrorResponse(request, reason, { remainingState });
   } finally {
     if (accessToken && configuration) {
       await revokeDiscordAccessToken(accessToken, configuration).catch(() => undefined);
