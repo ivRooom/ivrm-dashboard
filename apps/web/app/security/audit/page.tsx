@@ -41,6 +41,7 @@ const roleLabels: Record<ConsoleRole, string> = {
 
 const reasonLabels: Record<string, string> = {
   oauth_denied: "OAuthキャンセル",
+  oauth_provider_error: "Discord Providerエラー",
   oauth_state_invalid: "state不一致",
   oauth_code_missing: "認証コードなし",
   oauth_exchange_failed: "Token交換失敗",
@@ -155,7 +156,7 @@ export default async function DiscordAuthAuditPage({ searchParams }: PageProps) 
             Discord認証監査
           </h1>
           <p style={leadStyle}>
-            Discordログインの成功・拒否・Logout・管理失効だけを表示します。Token、Cookie、Session Hash、Role ID一覧、IPは表示しません。
+            Discordログインの成功・拒否・Logout・管理失効だけを表示します。Token、Cookie、Session Hash、Role ID一覧、IP、Providerの詳細文は表示しません。
           </p>
         </header>
 
@@ -214,6 +215,7 @@ export default async function DiscordAuthAuditPage({ searchParams }: PageProps) 
                   <th style={headerCellStyle}>対象Discord User</th>
                   <th style={headerCellStyle}>ロール</th>
                   <th style={headerCellStyle}>理由</th>
+                  <th style={headerCellStyle}>Provider Error</th>
                   <th style={headerCellStyle}>Request ID</th>
                 </tr>
               </thead>
@@ -237,6 +239,9 @@ export default async function DiscordAuthAuditPage({ searchParams }: PageProps) 
                     </td>
                     <td style={cellStyle}>
                       {log.reason ? reasonLabels[log.reason] || log.reason : "—"}
+                    </td>
+                    <td style={{ ...cellStyle, fontFamily: "ui-monospace, monospace" }}>
+                      {log.providerError || "—"}
                     </td>
                     <td style={{ ...cellStyle, fontFamily: "ui-monospace, monospace" }}>
                       {log.requestId}
@@ -349,7 +354,7 @@ const tableShellStyle = {
 } as const;
 const tableStyle = {
   width: "100%",
-  minWidth: 1080,
+  minWidth: 1200,
   borderCollapse: "collapse",
 } as const;
 const headerCellStyle = {
