@@ -1,16 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import {
-  DISCORD_OAUTH_RETURN_COOKIE,
-  DISCORD_OAUTH_STATE_COOKIE,
   DISCORD_SESSION_COOKIE,
   DiscordAuthError,
-  consumeDiscordOAuthState,
   createDiscordConsoleSession,
   exchangeDiscordAuthorizationCode,
   fetchDiscordIdentity,
   getDiscordAuthConfiguration,
-  matchesDiscordOAuthState,
   recordDiscordLoginDenied,
   resolveDiscordConsoleRole,
   revokeDiscordAccessToken,
@@ -19,6 +15,11 @@ import {
   type DiscordAuthConfiguration,
   type DiscordLoginFailureReason,
 } from "../../../../../lib/discord-auth";
+import {
+  getDiscordOAuthCookieNames,
+  matchesDiscordOAuthStateCookie,
+  type DiscordOAuthCookieNames,
+} from "../../../../../lib/discord-oauth-cookies";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -30,22 +31,15 @@ const COOKIE_BASE = {
   path: "/",
 };
 
-function updateOAuthCookies(
+function clearOAuthAttemptCookies(
   response: NextResponse,
-  remainingState: string | null,
+  cookieNames: DiscordOAuthCookieNames,
 ): void {
-  if (remainingState) {
-    response.cookies.set(DISCORD_OAUTH_STATE_COOKIE, remainingState, {
-      ...COOKIE_BASE,
-      maxAge: 600,
-    });
-  } else {
-    response.cookies.set(DISCORD_OAUTH_STATE_COOKIE, "", {
-      ...COOKIE_BASE,
-      maxAge: 0,
-    });
-  }
-  response.cookies.set(DISCORD_OAUTH_RETURN_COOKIE, "", {
+  response.cookies.set(cookieNames.state, "", {
+    ...COOKIE_BASE,
+    maxAge: 0,
+  });
+  response.cookies.set(cookieNames.returnTo, "", {
     ...COOKIE_BASE,
     maxAge: 0,
   });
@@ -54,18 +48,15 @@ function updateOAuthCookies(
 function loginErrorResponse(
   request: NextRequest,
   reason: DiscordLoginFailureReason,
-  options: {
-    remainingState?: string | null;
-    preserveOAuthCookies?: boolean;
-  } = {},
+  cookieNames: DiscordOAuthCookieNames | null,
 ): NextResponse {
   const response = NextResponse.redirect(
     new URL(`/login?error=${encodeURIComponent(reason)}`, request.url),
   );
   response.headers.set("Cache-Control", "private, no-store, max-age=0");
   response.headers.set("X-Content-Type-Options", "nosniff");
-  if (!options.preserveOAuthCookies) {
-    updateOAuthCookies(response, options.remainingState ?? null);
+  if (cookieNames) {
+    clearOAuthAttemptCookies(response, cookieNames);
   }
   return response;
 }
@@ -80,28 +71,31 @@ function reasonFromError(error: unknown): DiscordLoginFailureReason {
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const requestId = randomUUID();
   const returnedState = request.nextUrl.searchParams.get("state");
-  const stateCookie = request.cookies.get(DISCORD_OAUTH_STATE_COOKIE)?.value || null;
-  const returnPath = sanitizeReturnPath(
-    request.cookies.get(DISCORD_OAUTH_RETURN_COOKIE)?.value || null,
-  );
+  const cookieNames = getDiscordOAuthCookieNames(returnedState);
+  const stateCookie = cookieNames
+    ? request.cookies.get(cookieNames.state)?.value || null
+    : null;
   let discordUserId: string | null = null;
   let guildId: string | null = null;
   let accessToken: string | null = null;
   let configuration: DiscordAuthConfiguration | null = null;
 
-  if (!returnedState || !matchesDiscordOAuthState(returnedState, stateCookie)) {
+  if (
+    !cookieNames ||
+    !matchesDiscordOAuthStateCookie(returnedState, stateCookie)
+  ) {
     await recordDiscordLoginDenied({
       requestId,
       discordUserId: null,
       reason: "oauth_state_invalid",
       guildId: null,
     });
-    return loginErrorResponse(request, "oauth_state_invalid", {
-      preserveOAuthCookies: true,
-    });
+    return loginErrorResponse(request, "oauth_state_invalid", null);
   }
 
-  const remainingState = consumeDiscordOAuthState(returnedState, stateCookie);
+  const returnPath = sanitizeReturnPath(
+    request.cookies.get(cookieNames.returnTo)?.value || null,
+  );
   const oauthError = sanitizeDiscordOAuthProviderError(
     request.nextUrl.searchParams.get("error"),
   );
@@ -115,7 +109,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       guildId: null,
       providerError: oauthError,
     });
-    return loginErrorResponse(request, reason, { remainingState });
+    return loginErrorResponse(request, reason, cookieNames);
   }
 
   const code = request.nextUrl.searchParams.get("code");
@@ -126,7 +120,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       reason: "oauth_code_missing",
       guildId: null,
     });
-    return loginErrorResponse(request, "oauth_code_missing", { remainingState });
+    return loginErrorResponse(request, "oauth_code_missing", cookieNames);
   }
 
   try {
@@ -168,7 +162,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       ...COOKIE_BASE,
       expires: expiresAt,
     });
-    updateOAuthCookies(response, remainingState);
+    clearOAuthAttemptCookies(response, cookieNames);
     return response;
   } catch (error) {
     const reason = reasonFromError(error);
@@ -178,7 +172,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       reason,
       guildId,
     });
-    return loginErrorResponse(request, reason, { remainingState });
+    return loginErrorResponse(request, reason, cookieNames);
   } finally {
     if (accessToken && configuration) {
       await revokeDiscordAccessToken(accessToken, configuration).catch(() => undefined);
