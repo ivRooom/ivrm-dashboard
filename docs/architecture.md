@@ -4,7 +4,7 @@
 
 - `apps/web`: Next.js管理画面とHeartbeat受信API。Vercelへ配置する。
 - `apps/agent`: 各ホストでメトリクスを収集し、外向きHTTPSで送信する。
-- `supabase`: MVPでは状態・履歴を管理する。Realtime配信、アプリ利用者の権限、監査ログは将来実装する。
+- `supabase`: 監視状態・履歴・Incident・Backup・Notification・Reliabilityの構造化データを管理する。
 
 ```text
 OCI / Lightsail / EC2
@@ -20,6 +20,37 @@ OCI / Lightsail / EC2
             ↓
        console.ivrm.jp
 ```
+
+## Console Shell / Navigation
+
+認証済み管理画面はRoot Layoutの共通Console Shellで描画する。
+
+```text
+Root Layout
+  └─ Console Shell
+      ├─ Desktop Sidebar
+      ├─ Top Context Bar
+      │   ├─ Current section / page
+      │   ├─ Environment
+      │   ├─ User / Console Role
+      │   └─ Logout
+      └─ Page Content
+```
+
+MobileではDesktop SidebarをCompact Header + menuへ切り替える。Desktop / Mobileはともに`apps/web/app/console-navigation.ts`をNavigation Source of Truthとして利用し、Page Componentは原則としてPage header・filter・content・contextual actionだけを担当する。
+
+Navigation IAは以下とする。
+
+- Overview: Overview
+- Minecraft: Minecraft / Operations
+- Infrastructure: Hosts / Containers / Inventory / Capacity
+- Observability: Incidents / Events / History / Reliability
+- Protection: Backups / Notifications
+- Administration: Security
+
+`/logs`はIssue #68でRouteが実装されるまでNavigationへ追加しない。Active判定は詳細Routeを含むprefix matchingとし、`/hosts/{serverId}`、`/containers/...`、`/security/sessions`、`/security/audit`でも親項目をActive表示する。
+
+`/login`など`isPublicConsoleRoute()`でPublicと判定されるRouteにはConsole Shellを表示しない。Navigationのために監視データ取得をClientへ移さず、Client ComponentはPath判定とMobile interactionなど必要最小限に限定する。
 
 ## Heartbeat認証
 
@@ -60,10 +91,12 @@ X-IVRM-Signature
 
 ## セキュリティ
 
+- Discord Session / RBAC / Server-side authorizationをConsole Shell変更でも維持する。
+- Service Role Key、Discord OAuth Token、Session Token / Hash、RCON credentialをBrowserへ渡さない。
 - Docker Socket、Docker API、SSH、RCONをインターネットへ公開しない。
-- MVPは読み取り専用とし、任意Shell・任意Dockerコマンド・任意RCONを実装しない。
+- 任意Shell・任意Dockerコマンド・任意RCONを実装しない。
 - Agent Secretをログへ出力しない。
-- SupabaseテーブルはRLSを有効化し、受信APIだけがService Roleで書き込む。
+- SupabaseテーブルはRLSを有効化し、必要なServer-side処理だけがService Roleを利用する。
 - Heartbeat保存はPostgres関数内でHostロック、レート制限確認、Nonce重複判定、INSERTを原子的に行う。
 - APIエラーでSecret、署名、本文、Supabaseレスポンスを返却しない。
 
@@ -77,10 +110,12 @@ X-IVRM-Signature
 6. Agentをsystemdで起動する。
 7. Heartbeat保存とStale判定を確認する。
 
-## 次の実装
+## 現在の開発順
 
-1. Docker Unix Socketから読み取り専用stats収集
-2. Stale / Offline / ErrorのDB ViewまたはServer Component判定
-3. Console画面をSupabase実データへ接続
-4. Minecraft TPS / MSPT / Player / Backup収集
-5. Cloudflare AccessとDiscord OAuth
+1. Issue #71 Phase A: Console Shell / Navigation
+2. Issue #71 Phase B: Design Token / Shared Components
+3. Issue #71 Phase C: Overview UX Refresh
+4. Issue #68: Logs / Lifecycle Operations
+5. Issue #70: Activity ingestion / Queue Health
+
+GitHub Issue / Pull Request / Actionsを動的な開発状態のSource of Truthとし、この文書へSHA・CI状態・PR状態を固定値として持たせない。
