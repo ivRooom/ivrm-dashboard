@@ -240,25 +240,8 @@ export default async function HostDetailPage({ params, searchParams }: PageProps
   } as const;
 
   return (
-    <main className="shell">
+    <>
       <AutoRefresh intervalMs={rangeConfig.refreshMs} />
-      <aside className="sidebar">
-        <a className="brand" href="/#top"><span>IV</span><strong>IVRM Console</strong></a>
-        <nav aria-label="メインナビゲーション">
-          <a href="/#top">概要</a>
-          <a href="/minecraft">Minecraft</a>
-          <a aria-current="page" href="/hosts">ホスト</a>
-          <a href="/containers">コンテナ</a>
-          <a href={`/history?range=${range}`}>履歴グラフ</a>
-          <a href="/events">コンテナイベント</a>
-        </nav>
-        <div className="agent">
-          <i className={currentError ? "error" : host?.status ?? "offline"} />
-          {serverId}<br />
-          <small>{currentError ? "取得エラー" : host ? statusLabels[host.status] : "未受信"}</small>
-        </div>
-      </aside>
-
       <section className={`content ${styles.hostContent}`}>
         <header>
           <div>
@@ -370,6 +353,6 @@ export default async function HostDetailPage({ params, searchParams }: PageProps
 
         <section className={styles.notice}><strong>読み取り専用</strong><p>Host詳細はHeartbeat・既存履歴RPC・構造化Hostイベントだけを利用します。Shell、Docker操作、RCON、Secret、IP、ログ本文は扱いません。</p></section>
       </section>
-    </main>
+    </>
   );
 }
