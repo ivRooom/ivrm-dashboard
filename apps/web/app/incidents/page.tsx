@@ -114,28 +114,8 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
   const backupDataAvailable = data?.backupDataAvailable ?? false;
 
   return (
-    <main className="shell">
+    <>
       <AutoRefresh intervalMs={30_000} />
-
-      <aside className="sidebar">
-        <a className="brand" href="/#top"><span>IV</span><strong>IVRM Console</strong></a>
-        <nav aria-label="メインナビゲーション">
-          <a href="/#top">概要</a>
-          <a href="/minecraft">Minecraft</a>
-          <a href="/hosts">ホスト</a>
-          <a href="/containers">コンテナ</a>
-          <a aria-current="page" href={`/incidents?range=${range}`}>インシデント</a>
-          <a href={`/backups?range=${range}`}>バックアップ</a>
-          <a href={`/events?range=${range}`}>イベント</a>
-          <a href={`/history?range=${range}`}>履歴グラフ</a>
-        </nav>
-        <div className="agent">
-          <i className={loadError ? "error" : active.length > 0 ? "stale" : "online"} />
-          Incident Center<br />
-          <small>{loadError ? "取得エラー" : active.length > 0 ? `${active.length}件 Active` : "Active 0件"}</small>
-        </div>
-      </aside>
-
       <section className={`content ${styles.incidentContent}`}>
         <header>
           <div>
@@ -307,6 +287,6 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
           </>
         ) : null}
       </section>
-    </main>
+    </>
   );
 }
