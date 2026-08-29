@@ -1,13 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
-  DISCORD_OAUTH_RETURN_COOKIE,
-  DISCORD_OAUTH_STATE_COOKIE,
-  appendDiscordOAuthState,
   createDiscordAuthorizationUrl,
   generateOpaqueToken,
   getDiscordAuthConfiguration,
   sanitizeReturnPath,
 } from "../../../../../lib/discord-auth";
+import { getDiscordOAuthCookieNames } from "../../../../../lib/discord-oauth-cookies";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -27,21 +25,22 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     const state = generateOpaqueToken(32);
-    const stateCookie = appendDiscordOAuthState(
-      request.cookies.get(DISCORD_OAUTH_STATE_COOKIE)?.value || null,
-      state,
-    );
+    const cookieNames = getDiscordOAuthCookieNames(state);
+    if (!cookieNames) {
+      return NextResponse.redirect(new URL("/login?error=configuration_error", request.url));
+    }
+
     const returnPath = sanitizeReturnPath(request.nextUrl.searchParams.get("returnTo"));
     const response = NextResponse.redirect(
       createDiscordAuthorizationUrl(configuration, state),
     );
     response.headers.set("Cache-Control", "private, no-store, max-age=0");
     response.headers.set("X-Content-Type-Options", "nosniff");
-    response.cookies.set(DISCORD_OAUTH_STATE_COOKIE, stateCookie, {
+    response.cookies.set(cookieNames.state, state, {
       ...COOKIE_BASE,
       maxAge: 600,
     });
-    response.cookies.set(DISCORD_OAUTH_RETURN_COOKIE, returnPath, {
+    response.cookies.set(cookieNames.returnTo, returnPath, {
       ...COOKIE_BASE,
       maxAge: 600,
     });
