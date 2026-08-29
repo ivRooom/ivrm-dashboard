@@ -11,6 +11,7 @@ import { MobileNavigationLinks } from "./mobile-navigation";
 import { NavigationLinks } from "./navigation-links";
 import "./globals.css";
 import "./responsive.css";
+import "./console-shell.css";
 
 export const metadata: Metadata = {
   title: "IVRM Console",
