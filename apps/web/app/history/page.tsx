@@ -394,42 +394,8 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
   } as const;
 
   return (
-    <main className="shell">
+    <>
       <AutoRefresh intervalMs={rangeConfig.refreshMs} />
-
-      <aside className="sidebar">
-        <a className="brand" href="/#top">
-          <span>IV</span>
-          <strong>IVRM Console</strong>
-        </a>
-        <nav aria-label="メインナビゲーション">
-          <a href="/#top">概要</a>
-          <a href="/minecraft">Minecraft</a>
-          <a href="#minecraft-history">Minecraft履歴</a>
-          <a href="/#hosts">ホスト</a>
-          <a href="/#containers">コンテナ</a>
-          <a aria-current="page" href={`/history?range=${range}`}>
-            履歴グラフ
-          </a>
-        </nav>
-        <div className="agent">
-          <i
-            className={
-              hostDataError && containerDataError && minecraftDataError
-                ? "error"
-                : "online"
-            }
-          />
-          Metrics History
-          <br />
-          <small>
-            {hostDataError && containerDataError && minecraftDataError
-              ? "取得エラー"
-              : rangeConfig.aggregationLabel}
-          </small>
-        </div>
-      </aside>
-
       <section className={`content ${styles.historyContent}`}>
         <header>
           <div>
@@ -758,6 +724,6 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
           </p>
         </section>
       </section>
-    </main>
+    </>
   );
 }
