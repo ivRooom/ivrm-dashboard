@@ -117,25 +117,8 @@ export default async function HostsPage() {
   }
 
   return (
-    <main className="shell">
+    <>
       <AutoRefresh />
-      <aside className="sidebar">
-        <a className="brand" href="/#top"><span>IV</span><strong>IVRM Console</strong></a>
-        <nav aria-label="メインナビゲーション">
-          <a href="/#top">概要</a>
-          <a href="/minecraft">Minecraft</a>
-          <a aria-current="page" href="/hosts">ホスト</a>
-          <a href="/containers">コンテナ</a>
-          <a href="/history">履歴グラフ</a>
-          <a href="/events">イベント</a>
-        </nav>
-        <div className="agent">
-          <i className={dataError ? "error" : offline > 0 ? "offline" : delayed > 0 ? "stale" : "online"} />
-          Host Monitor<br />
-          <small>{dataError ? "取得エラー" : `${online}/${hosts.length} 正常`}</small>
-        </div>
-      </aside>
-
       <section className={`content ${styles.hostContent}`}>
         <header>
           <div>
@@ -206,6 +189,6 @@ export default async function HostsPage() {
           </section>
         ) : null}
       </section>
-    </main>
+    </>
   );
 }
