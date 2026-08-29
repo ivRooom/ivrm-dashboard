@@ -112,24 +112,26 @@ Docker監視のOCI配置・更新手順は[`docs/oci-docker-monitoring.md`](docs
 - rootの短時間Collectorと非特権Agentを分離する
 - Collectorは許可済みコンテナ名だけを対象にする
 - Dockerから取得した環境変数、Mount、IP、ログ本文を送信しない
-- MVPでは読み取り専用とする
 - 任意Shell・任意Dockerコマンド・任意RCONは実装しない
-- 将来の操作機能は許可リスト・権限確認・監査ログを必須とする
-- Supabase Service Role KeyはVercelのServer Componentからのみ利用する
-- `container_expectations`と監視メトリクスは`anon`・`authenticated`から参照できない
-- 実メトリクスの公開前にCloudflare Accessで閲覧者を制限する
+- 操作機能は許可リスト・権限確認・監査ログを必須とする
+- Supabase Service Role KeyはVercelのServer-side処理からのみ利用する
+- `container_expectations`と監視メトリクスは`anon`・`authenticated`から直接参照できない
+- Discord Session / RBAC / Server-side authorizationを管理Consoleの境界として維持する
 
-## ドメイン
+## Console Navigation
 
-初期は単一アプリへ統合します。
+認証済み画面は共通Console Shellを利用し、Desktop / Mobileとも`apps/web/app/console-navigation.ts`をNavigation Source of Truthとします。
 
-- `console.ivrm.jp/overview`
-- `console.ivrm.jp/minecraft`
-- `console.ivrm.jp/hosts`
-- `console.ivrm.jp/herta`
-- `console.ivrm.jp/aws`
+- Overview: `/`
+- Minecraft: `/minecraft`, `/operations`
+- Infrastructure: `/hosts`, `/containers`, `/inventory`, `/capacity`
+- Observability: `/incidents`, `/events`, `/history`, `/reliability`
+- Protection: `/backups`, `/notifications`
+- Administration: `/security`
 
-`mc.console.ivrm.jp`や`herta.console.ivrm.jp`は、独立デプロイや独立した権限境界が必要になった段階で再評価します。
+`/login`などPublic Routeには管理Console Shellを表示しません。未実装の`/logs`はIssue #68でRouteが実装されるまでNavigationへ追加しません。
+
+詳細は[`docs/architecture.md`](docs/architecture.md)を参照してください。
 
 ## 開発方針
 
@@ -137,27 +139,26 @@ Docker監視のOCI配置・更新手順は[`docs/oci-docker-monitoring.md`](docs
 - Web: Next.js / TypeScript
 - Agent: Go
 - 状態ストア: Supabase Postgres
-- リアルタイム更新: Supabase Realtime
 - Webデプロイ: Vercel
 - Agent配布: GitHub ActionsでLinux ARM64 / AMD64をビルド
+- Repository / GitHub Issue / Pull Request / Actionsを動的な状態のSource of Truthとする
 
-## 実環境ステータス
+## 現在の実装基盤
 
-- Supabase: `ivrm-core`へホスト・Docker状態・期待状態・リソース列のMigration適用済み
-- Vercel: `ivrm-dashboard`をProduction Deployment済み
-- Health Check: `https://console.ivrm.jp/api/health`でHTTP 200を確認済み
-- `console.ivrm.jp`: Cloudflare経由で接続済み
-- OCI Agent: `0.3.0`をOracle Linux ARM64へsystemdサービスとして配置済み
-- Docker Collector: 10秒間隔、Heartbeat: 15秒間隔で継続稼働
-- Agent認証: Agent ID・Timestamp・Nonce・HMAC-SHA256署名を検証
-- ホスト画面: Supabaseの最新HeartbeatをServer Componentから取得
-- Docker状態監視: State・Health・RestartCount・OOMKilledを3コンテナで本番表示済み
-- 期待状態: `mc-resource`の計画停止を「待機中」としてProduction表示済み
-- Dockerリソース監視: Agent `0.4.0`・Collector・API・画面をPR #11で実装中
+- Vercel: `ivrm-dashboard`を`console.ivrm.jp`へデプロイ
+- Health Check: `/api/health`
+- Agent: 現行コードは`0.6.0`
+- Agent認証: Agent ID・Timestamp・Nonce・HMAC-SHA256署名
+- Monitoring: Host / Container / Minecraft Status / TPS / MSPT / History
+- Operations data: Incident / Backup / Notification / Reliability / Inventory / Capacity
+- Auth: Discord Console Session / RBAC。Production hardeningはIssue #54で管理
+
+Productionの現在状態、CI、PR、Deployment、Agent rollout状況はREADMEへ固定せず、GitHubと接続サービスをSource of Truthとして確認します。
 
 ## 次の開発項目
 
-1. PR #11をマージ後、OCIへCollectorとAgent `0.4.0`を配置する
-2. Minecraft TPS・MSPT・プレイヤー数を取得する
-3. 最終バックアップ結果を表示する
-4. Stale / Offline / Error判定の通知と履歴表示を追加する
+1. Issue #71 Phase A — Console Shell / Navigation
+2. Issue #71 Phase B — Design Token / Shared Components
+3. Issue #71 Phase C — Overview UX Refresh
+4. Issue #68 — Logs / Lifecycle Operations
+5. Issue #70 — Activity ingestion / Queue Health
