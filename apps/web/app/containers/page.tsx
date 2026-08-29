@@ -102,32 +102,8 @@ export default async function ContainersPage() {
   ).length;
 
   return (
-    <main className="shell">
+    <>
       <AutoRefresh intervalMs={15_000} />
-
-      <aside className="sidebar">
-        <a className="brand" href="/#top">
-          <span>IV</span>
-          <strong>IVRM Console</strong>
-        </a>
-        <nav aria-label="メインナビゲーション">
-          <a href="/#top">概要</a>
-          <a href="/minecraft">Minecraft</a>
-          <a aria-current="page" href="/containers">
-            コンテナ
-          </a>
-          <a href="/history">履歴グラフ</a>
-        </nav>
-        <div className="agent">
-          <i className={issueCount > 0 ? "error" : hasDataError ? "error" : "online"} />
-          Container Inventory
-          <br />
-          <small>
-            {hasDataError ? "取得エラー" : `${healthyCount} / ${containers.length} 正常`}
-          </small>
-        </div>
-      </aside>
-
       <section className={`content ${styles.containerContent}`}>
         <header>
           <div>
@@ -256,6 +232,6 @@ export default async function ContainersPage() {
           </section>
         )}
       </section>
-    </main>
+    </>
   );
 }
