@@ -151,39 +151,8 @@ export default async function MinecraftPage() {
   const backendReachable = overview?.backendProbe.reachable === true;
 
   return (
-    <main className="shell">
+    <>
       <AutoRefresh intervalMs={15_000} />
-
-      <aside className="sidebar">
-        <a className="brand" href="/#top">
-          <span>IV</span>
-          <strong>IVRM Console</strong>
-        </a>
-        <nav aria-label="メインナビゲーション">
-          <a href="/#top">概要</a>
-          <a aria-current="page" href="/minecraft">
-            Minecraft
-          </a>
-          <a href="/#hosts">ホスト</a>
-          <a href="/#containers">コンテナ</a>
-          <a href="/history">履歴グラフ</a>
-        </nav>
-        <div className="agent">
-          <i
-            className={
-              status === "operational"
-                ? "online"
-                : status === "degraded" || status === "maintenance"
-                  ? "stale"
-                  : "error"
-            }
-          />
-          Minecraft Overview
-          <br />
-          <small>{overallLabels[status]}</small>
-        </div>
-      </aside>
-
       <section className={`content ${styles.minecraftContent}`}>
         <header>
           <div>
@@ -425,6 +394,6 @@ export default async function MinecraftPage() {
           </>
         )}
       </section>
-    </main>
+    </>
   );
 }
