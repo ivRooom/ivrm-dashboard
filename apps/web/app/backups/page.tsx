@@ -167,28 +167,8 @@ export default async function BackupsPage({ searchParams }: PageProps) {
     }));
 
   return (
-    <main className="shell">
+    <>
       <AutoRefresh intervalMs={config.refreshMs} />
-
-      <aside className="sidebar">
-        <a className="brand" href="/#top"><span>IV</span><strong>IVRM Console</strong></a>
-        <nav aria-label="メインナビゲーション">
-          <a href="/#top">概要</a>
-          <a href="/minecraft">Minecraft</a>
-          <a href="/hosts">ホスト</a>
-          <a href="/containers">コンテナ</a>
-          <a href={`/incidents?range=${range}`}>インシデント</a>
-          <a aria-current="page" href={`/backups?range=${range}`}>バックアップ</a>
-          <a href={`/events?range=${range}`}>イベント</a>
-          <a href={`/history?range=${range}`}>履歴グラフ</a>
-        </nav>
-        <div className="agent">
-          <i className={loadError ? "error" : summary?.overallHealth === "critical" ? "error" : summary?.overallHealth === "warning" ? "stale" : "online"} />
-          Backup Center<br />
-          <small>{loadError ? "取得エラー" : summary ? `${healthLabels[summary.overallHealth]} / ${summary.targetCount} targets` : "Telemetry待機中"}</small>
-        </div>
-      </aside>
-
       <section className={`content ${styles.backupContent}`}>
         <header className={styles.pageHeader}>
           <div>
@@ -375,6 +355,6 @@ export default async function BackupsPage({ searchParams }: PageProps) {
           </>
         ) : null}
       </section>
-    </main>
+    </>
   );
 }
