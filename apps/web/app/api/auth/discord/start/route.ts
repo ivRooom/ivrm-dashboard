@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   DISCORD_OAUTH_RETURN_COOKIE,
   DISCORD_OAUTH_STATE_COOKIE,
+  appendDiscordOAuthState,
   createDiscordAuthorizationUrl,
   generateOpaqueToken,
   getDiscordAuthConfiguration,
@@ -26,13 +27,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     const state = generateOpaqueToken(32);
+    const stateCookie = appendDiscordOAuthState(
+      request.cookies.get(DISCORD_OAUTH_STATE_COOKIE)?.value || null,
+      state,
+    );
     const returnPath = sanitizeReturnPath(request.nextUrl.searchParams.get("returnTo"));
     const response = NextResponse.redirect(
       createDiscordAuthorizationUrl(configuration, state),
     );
     response.headers.set("Cache-Control", "private, no-store, max-age=0");
     response.headers.set("X-Content-Type-Options", "nosniff");
-    response.cookies.set(DISCORD_OAUTH_STATE_COOKIE, state, {
+    response.cookies.set(DISCORD_OAUTH_STATE_COOKIE, stateCookie, {
       ...COOKIE_BASE,
       maxAge: 600,
     });
