@@ -189,33 +189,8 @@ export default async function EventsPage({ searchParams }: PageProps) {
   const recoveryCount = severityCount(events, "recovery");
 
   return (
-    <main className="shell">
+    <>
       <AutoRefresh intervalMs={rangeConfig.refreshMs} />
-
-      <aside className="sidebar">
-        <a className="brand" href="/#top">
-          <span>IV</span>
-          <strong>IVRM Console</strong>
-        </a>
-        <nav aria-label="メインナビゲーション">
-          <a href="/#top">概要</a>
-          <a href="/minecraft">Minecraft</a>
-          <a href="/hosts">ホスト</a>
-          <a href="/containers">コンテナ</a>
-          <a href={`/incidents?range=${range}`}>インシデント</a>
-          <a href={`/history?range=${range}`}>履歴グラフ</a>
-          <a aria-current="page" href={`/events?range=${range}`}>
-            イベント
-          </a>
-        </nav>
-        <div className="agent">
-          <i className={eventError ? "error" : criticalCount > 0 ? "stale" : "online"} />
-          Event Timeline
-          <br />
-          <small>{eventError ? "取得エラー" : `${events.length}件 / ${rangeConfig.label}`}</small>
-        </div>
-      </aside>
-
       <section className={`content ${styles.eventsContent}`}>
         <header>
           <div>
@@ -359,6 +334,6 @@ export default async function EventsPage({ searchParams }: PageProps) {
           </p>
         </section>
       </section>
-    </main>
+    </>
   );
 }

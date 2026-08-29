@@ -49,12 +49,6 @@ function ratio(value: number, exact: boolean): string {
   return exact ? text : `≤ ${text}`;
 }
 
-function indicatorClass(loadError: boolean, health: ReliabilityHealth | undefined): string {
-  if (loadError || !health || health === "critical" || health === "unknown") return "error";
-  if (health === "degraded" || health === "disabled") return "stale";
-  return "online";
-}
-
 export default async function ReliabilityPage({ searchParams }: PageProps) {
   const query = await searchParams;
   const range = parseIncidentRange(first(query.range));
@@ -97,24 +91,8 @@ export default async function ReliabilityPage({ searchParams }: PageProps) {
   }
 
   return (
-    <main className="shell">
+    <>
       <AutoRefresh intervalMs={30_000} />
-      <aside className="sidebar">
-        <a className="brand" href="/#top"><span>IV</span><strong>IVRM Console</strong></a>
-        <nav aria-label="メインナビゲーション">
-          <a href="/#top">概要</a><a href="/minecraft">Minecraft</a><a href="/hosts">ホスト</a>
-          <a href="/containers">コンテナ</a><a href={`/incidents?range=${range}`}>インシデント</a>
-          <a href={`/backups?range=${range}`}>バックアップ</a><a href="/notifications">通知</a>
-          <a aria-current="page" href={`/reliability?range=${range}`}>信頼性</a>
-          <a href="/capacity">キャパシティ</a><a href={`/history?range=${range}`}>履歴グラフ</a>
-        </nav>
-        <div className="agent">
-          <i className={indicatorClass(loadError, data?.overall.health)} />
-          Reliability Center<br />
-          <small>{loadError ? "取得エラー" : data ? healthLabels[data.overall.health] : "Loading"}</small>
-        </div>
-      </aside>
-
       <section className={`content ${styles.content}`}>
         <header className={styles.header}>
           <div>
@@ -192,6 +170,6 @@ export default async function ReliabilityPage({ searchParams }: PageProps) {
           </>
         )}
       </section>
-    </main>
+    </>
   );
 }

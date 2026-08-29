@@ -7,18 +7,9 @@ import {
   type ContainerState,
   type ContainerStatus,
   type HostOverview,
-  type HostStatus,
 } from "../lib/monitoring";
 
 export const dynamic = "force-dynamic";
-
-const navigation = [
-  { label: "概要", href: "#top" },
-  { label: "Minecraft", href: "/minecraft" },
-  { label: "ホスト", href: "#hosts" },
-  { label: "コンテナ", href: "#containers" },
-  { label: "履歴グラフ", href: "/history" },
-] as const;
 
 const labels: Record<ContainerStatus, string> = {
   online: "稼働中",
@@ -150,19 +141,6 @@ function formatRelativeTime(timestamp: string | null, reference: string): string
   return `${Math.floor(ageSeconds / 86_400)}日前`;
 }
 
-function overallStatus(hosts: HostOverview[], hasDataError: boolean): HostStatus {
-  if (hasDataError) {
-    return "error";
-  }
-  if (hosts.some((host) => host.status === "online")) {
-    return "online";
-  }
-  if (hosts.some((host) => host.status === "stale")) {
-    return "stale";
-  }
-  return "offline";
-}
-
 function formatExit(container: ContainerOverview): string {
   if (container.oomKilled) {
     return "OOMKilled";
@@ -219,7 +197,6 @@ export default async function HomePage() {
     console.error("監視データの取得に失敗しました");
   }
 
-  const status = overallStatus(hosts, hasDataError);
   const onlineCount = hosts.filter((host) => host.status === "online").length;
   const normalContainerCount = containers.filter((container) =>
     ["online", "standby", "maintenance"].includes(container.status),
@@ -235,29 +212,8 @@ export default async function HomePage() {
       .sort((left, right) => Date.parse(right) - Date.parse(left))[0] ?? null;
 
   return (
-    <main className="shell">
+    <>
       <AutoRefresh />
-
-      <aside className="sidebar">
-        <a className="brand" href="#top">
-          <span>IV</span>
-          <strong>IVRM Console</strong>
-        </a>
-        <nav aria-label="メインナビゲーション">
-          {navigation.map((item) => (
-            <a href={item.href} key={item.href}>
-              {item.label}
-            </a>
-          ))}
-        </nav>
-        <div className="agent">
-          <i className={status} />
-          OCI Agent
-          <br />
-          <small>{labels[status]}</small>
-        </div>
-      </aside>
-
       <section className="content" id="top">
         <header>
           <div>
@@ -456,6 +412,6 @@ export default async function HomePage() {
           )}
         </section>
       </section>
-    </main>
+    </>
   );
 }

@@ -329,33 +329,8 @@ export default async function ContainerDetailPage({ params, searchParams }: Page
     history?.dataSource ?? (range === "7d" || range === "30d" ? "rollup_5m" : "raw");
 
   return (
-    <main className="shell">
+    <>
       <AutoRefresh intervalMs={rangeConfig.refreshMs} />
-
-      <aside className="sidebar">
-        <a className="brand" href="/#top">
-          <span>IV</span>
-          <strong>IVRM Console</strong>
-        </a>
-        <nav aria-label="メインナビゲーション">
-          <a href="/#top">概要</a>
-          <a href="/minecraft">Minecraft</a>
-          <a aria-current="page" href="/containers">コンテナ</a>
-          <a href={`/history?range=${range}`}>履歴グラフ</a>
-          <a href={`/events?range=${range}&target=${encodeURIComponent(`${serverId}/${containerName}`)}`}>
-            イベント
-          </a>
-        </nav>
-        <div className="agent">
-          <i className={currentError ? "error" : container?.status ?? "offline"} />
-          {containerName}
-          <br />
-          <small>
-            {currentError ? "取得エラー" : container ? statusLabels[container.status] : "未受信"}
-          </small>
-        </div>
-      </aside>
-
       <section className={`content ${styles.containerContent}`}>
         <header>
           <div>
@@ -485,6 +460,6 @@ export default async function ContainerDetailPage({ params, searchParams }: Page
           <p>この画面は監視Snapshot・履歴RPC・構造化イベントだけを利用します。Docker操作、Shell、RCON、Secret、ログ本文は扱いません。</p>
         </section>
       </section>
-    </main>
+    </>
   );
 }

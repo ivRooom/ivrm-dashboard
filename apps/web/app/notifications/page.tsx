@@ -92,26 +92,10 @@ export default async function NotificationsPage() {
     : summary.failedCount > 0 || dispatcherStale || dispatcherError ? "要確認"
     : summary.retryCount > 0 ? "再試行中"
     : "正常";
-  const notificationNeedsAttention = Boolean(
-    loadError || summary?.failedCount || dispatcherStale || dispatcherError,
-  );
 
   return (
-    <main className="shell">
+    <>
       <AutoRefresh intervalMs={30_000} />
-      <aside className="sidebar">
-        <a className="brand" href="/#top"><span>IV</span><strong>IVRM Console</strong></a>
-        <nav aria-label="メインナビゲーション">
-          <a href="/#top">概要</a><a href="/minecraft">Minecraft</a><a href="/hosts">ホスト</a><a href="/containers">コンテナ</a>
-          <a href="/incidents">インシデント</a><a href="/backups">バックアップ</a><a aria-current="page" href="/notifications">通知</a>
-          <a href="/events">イベント</a><a href="/history">履歴グラフ</a>
-        </nav>
-        <div className="agent">
-          <i className={notificationNeedsAttention ? "error" : summary?.retryCount ? "stale" : "online"} />
-          Notification Center<br /><small>{notificationHealth}</small>
-        </div>
-      </aside>
-
       <section className={`content ${styles.notificationContent}`}>
         <header className={styles.pageHeader}>
           <div>
@@ -187,6 +171,6 @@ export default async function NotificationsPage() {
           </>
         ) : null}
       </section>
-    </main>
+    </>
   );
 }
