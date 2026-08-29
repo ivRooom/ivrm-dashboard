@@ -1,23 +1,145 @@
+export type ConsoleNavigationGroupId =
+  | "overview"
+  | "minecraft"
+  | "infrastructure"
+  | "observability"
+  | "protection"
+  | "administration";
+
+export type ConsoleNavigationGroup = {
+  id: ConsoleNavigationGroupId;
+  label: string;
+};
+
 export type ConsoleNavigationItem = {
   href: string;
   label: string;
-  desktop: boolean;
-  mobile: boolean;
+  group: ConsoleNavigationGroupId;
+  description: string;
 };
 
-export const consoleNavigationItems: readonly ConsoleNavigationItem[] = [
-  { href: "/", label: "概要", desktop: false, mobile: true },
-  { href: "/minecraft", label: "Minecraft", desktop: false, mobile: true },
-  { href: "/hosts", label: "ホスト", desktop: true, mobile: true },
-  { href: "/containers", label: "コンテナ", desktop: true, mobile: true },
-  { href: "/incidents", label: "インシデント", desktop: true, mobile: true },
-  { href: "/backups", label: "バックアップ", desktop: true, mobile: true },
-  { href: "/notifications", label: "通知", desktop: true, mobile: true },
-  { href: "/reliability", label: "信頼性", desktop: true, mobile: true },
-  { href: "/inventory", label: "インベントリ", desktop: true, mobile: true },
-  { href: "/capacity", label: "キャパシティ", desktop: true, mobile: true },
-  { href: "/history", label: "履歴グラフ", desktop: false, mobile: true },
-  { href: "/events", label: "イベント", desktop: true, mobile: true },
-  { href: "/operations", label: "操作基盤", desktop: true, mobile: true },
-  { href: "/security", label: "認証・権限", desktop: true, mobile: true },
+export const consoleNavigationGroups: readonly ConsoleNavigationGroup[] = [
+  { id: "overview", label: "Overview" },
+  { id: "minecraft", label: "Minecraft" },
+  { id: "infrastructure", label: "Infrastructure" },
+  { id: "observability", label: "Observability" },
+  { id: "protection", label: "Protection" },
+  { id: "administration", label: "Administration" },
 ] as const;
+
+export const consoleNavigationItems: readonly ConsoleNavigationItem[] = [
+  {
+    href: "/",
+    label: "概要",
+    group: "overview",
+    description: "システム全体の現在状態",
+  },
+  {
+    href: "/minecraft",
+    label: "Minecraft",
+    group: "minecraft",
+    description: "ゲームサーバーの稼働状態",
+  },
+  {
+    href: "/operations",
+    label: "操作基盤",
+    group: "minecraft",
+    description: "許可済み運用操作の基盤",
+  },
+  {
+    href: "/hosts",
+    label: "ホスト",
+    group: "infrastructure",
+    description: "ホストリソースとAgent",
+  },
+  {
+    href: "/containers",
+    label: "コンテナ",
+    group: "infrastructure",
+    description: "Dockerコンテナ状態",
+  },
+  {
+    href: "/inventory",
+    label: "インベントリ",
+    group: "infrastructure",
+    description: "構成とバージョン情報",
+  },
+  {
+    href: "/capacity",
+    label: "キャパシティ",
+    group: "infrastructure",
+    description: "容量と増加傾向",
+  },
+  {
+    href: "/incidents",
+    label: "インシデント",
+    group: "observability",
+    description: "現在と過去の障害",
+  },
+  {
+    href: "/events",
+    label: "イベント",
+    group: "observability",
+    description: "監視イベントの時系列",
+  },
+  {
+    href: "/history",
+    label: "履歴グラフ",
+    group: "observability",
+    description: "メトリクス履歴",
+  },
+  {
+    href: "/reliability",
+    label: "信頼性",
+    group: "observability",
+    description: "SLOとReliability",
+  },
+  {
+    href: "/backups",
+    label: "バックアップ",
+    group: "protection",
+    description: "バックアップ状態と履歴",
+  },
+  {
+    href: "/notifications",
+    label: "通知",
+    group: "protection",
+    description: "通知SignalとDelivery",
+  },
+  {
+    href: "/security",
+    label: "認証・権限",
+    group: "administration",
+    description: "Session・RBAC・Audit",
+  },
+] as const;
+
+export function isConsoleNavigationItemActive(
+  pathname: string,
+  item: ConsoleNavigationItem,
+): boolean {
+  if (item.href === "/") {
+    return pathname === "/";
+  }
+
+  return pathname === item.href || pathname.startsWith(`${item.href}/`);
+}
+
+export function getActiveConsoleNavigationItem(
+  pathname: string,
+): ConsoleNavigationItem | null {
+  return (
+    consoleNavigationItems.find((item) =>
+      isConsoleNavigationItemActive(pathname, item),
+    ) ?? null
+  );
+}
+
+export function getConsoleNavigationGroup(
+  groupId: ConsoleNavigationGroupId,
+): ConsoleNavigationGroup {
+  return (
+    consoleNavigationGroups.find((group) => group.id === groupId) ??
+    consoleNavigationGroups[0]
+  );
+}
