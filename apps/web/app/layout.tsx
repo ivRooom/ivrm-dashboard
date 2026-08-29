@@ -7,6 +7,7 @@ import {
   isPublicConsoleRoute,
 } from "../lib/console-auth";
 import { ConsoleCurrentContext } from "./console-current-context";
+import { ConsolePageLandmark } from "./console-page-landmark";
 import { MobileNavigationLinks } from "./mobile-navigation";
 import { NavigationLinks } from "./navigation-links";
 import "./globals.css";
@@ -197,7 +198,7 @@ export default async function RootLayout({
               </details>
             </header>
 
-            <div className="console-page">{children}</div>
+            <ConsolePageLandmark>{children}</ConsolePageLandmark>
           </div>
         </div>
       </body>
