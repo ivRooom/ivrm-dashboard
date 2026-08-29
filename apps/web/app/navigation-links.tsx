@@ -1,9 +1,10 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   consoleNavigationGroups,
   consoleNavigationItems,
+  getConsoleNavigationHref,
   isConsoleNavigationItemActive,
 } from "./console-navigation";
 
@@ -13,6 +14,8 @@ type Props = {
 
 export function NavigationLinks({ variant = "desktop" }: Props) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentRange = searchParams.get("range");
 
   return (
     <div
@@ -33,6 +36,7 @@ export function NavigationLinks({ variant = "desktop" }: Props) {
             <div className="console-navigation-items">
               {items.map((item) => {
                 const active = isConsoleNavigationItemActive(pathname, item);
+                const href = getConsoleNavigationHref(item, currentRange);
                 return (
                   <a
                     aria-current={active ? "page" : undefined}
@@ -41,7 +45,7 @@ export function NavigationLinks({ variant = "desktop" }: Props) {
                         ? "console-navigation-link"
                         : "console-mobile-link"
                     }
-                    href={item.href}
+                    href={href}
                     key={item.href}
                     title={item.description}
                   >
