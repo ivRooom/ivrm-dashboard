@@ -6,6 +6,7 @@ import {
   getConsoleSession,
   isPublicConsoleRoute,
 } from "../lib/console-auth";
+import { ConsoleCurrentContext } from "./console-current-context";
 import { MobileNavigationLinks } from "./mobile-navigation";
 import { NavigationLinks } from "./navigation-links";
 import "./globals.css";
@@ -23,30 +24,17 @@ export const viewport: Viewport = {
   themeColor: "#090b10",
 };
 
-const navigationLinkStyle = {
-  border: "1px solid rgba(148, 163, 184, 0.35)",
-  borderRadius: 999,
-  background: "rgba(7, 17, 31, 0.9)",
-  color: "#dbeafe",
-  padding: "7px 12px",
-  fontSize: 12,
-  fontWeight: 700,
-  textDecoration: "none",
-  backdropFilter: "blur(10px)",
-} as const;
-
-const reportLoginLinkStyle = {
-  ...navigationLinkStyle,
-  border: "1px solid rgba(250, 204, 21, 0.48)",
-  background: "rgba(113, 63, 18, 0.78)",
-  color: "#fef08a",
-} as const;
-
 const roleLabels = {
   viewer: "閲覧者",
   operator: "運用担当",
   administrator: "管理者",
   owner: "所有者",
+} as const;
+
+const environmentLabels = {
+  production: "PRODUCTION",
+  preview: "PREVIEW",
+  development: "LOCAL",
 } as const;
 
 export default async function RootLayout({
@@ -72,120 +60,145 @@ export default async function RootLayout({
   const showDiscordReportLogin =
     session.discordMode === "report" && session.authProvider !== "discord";
   const discordReportLoginHref = "/login?returnTo=%2Fsecurity";
+  const environment =
+    environmentLabels[
+      (process.env.VERCEL_ENV as keyof typeof environmentLabels | undefined) ??
+        "development"
+    ] ?? "LOCAL";
+  const userLabel =
+    session.displayName ||
+    session.discordUsername ||
+    session.email ||
+    "Console user";
+  const roleLabel = session.role ? roleLabels[session.role] : "権限確認中";
 
   return (
     <html lang="ja">
       <body>
-        <nav
-          aria-label="管理コンソール"
-          className="console-toolbar-desktop"
-          style={{
-            position: "fixed",
-            zIndex: 1000,
-            top: 12,
-            right: 12,
-            display: "flex",
-            flexWrap: "wrap",
-            justifyContent: "flex-end",
-            alignItems: "center",
-            gap: 8,
-            maxWidth: "calc(100vw - 24px)",
-          }}
-        >
-          {session.authProvider === "discord" ? (
-            <span
-              style={{
-                ...navigationLinkStyle,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                fontWeight: 600,
-              }}
-            >
-              {session.discordAvatarUrl ? (
-                <img
-                  src={session.discordAvatarUrl}
-                  alt=""
-                  width={22}
-                  height={22}
-                  style={{ borderRadius: 999, objectFit: "cover" }}
-                />
-              ) : null}
-              <span>{session.displayName || session.discordUsername}</span>
-              {session.role ? (
-                <small style={{ color: "#93c5fd" }}>{roleLabels[session.role]}</small>
-              ) : null}
-            </span>
-          ) : null}
-          {showDiscordReportLogin ? (
-            <a
-              href={discordReportLoginHref}
-              style={reportLoginLinkStyle}
-              aria-label="Discord認証をテストする"
-            >
-              Discord認証を確認
+        <div className="console-shell">
+          <aside className="console-sidebar">
+            <a className="console-brand" href="/" aria-label="IVRM Console Overview">
+              <span aria-hidden="true">IV</span>
+              <div>
+                <strong>IVRM Console</strong>
+                <small>Operations</small>
+              </div>
             </a>
-          ) : null}
-          <NavigationLinks style={navigationLinkStyle} />
-          {session.authProvider === "discord" ? (
-            <form action="/api/auth/logout" method="post" style={{ margin: 0 }}>
-              <button
-                type="submit"
-                style={{
-                  ...navigationLinkStyle,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                }}
-              >
-                ログアウト
-              </button>
-            </form>
-          ) : null}
-        </nav>
 
-        <details className="console-mobile-menu">
-          <summary>
-            <span aria-hidden="true" className="console-mobile-menu-icon">☰</span>
-            <span>メニュー</span>
-          </summary>
-          <div className="console-mobile-menu-panel">
-            {session.authProvider === "discord" ? (
-              <div className="console-mobile-session">
-                {session.discordAvatarUrl ? (
-                  <img src={session.discordAvatarUrl} alt="" width={34} height={34} />
-                ) : null}
+            <nav aria-label="管理コンソール">
+              <NavigationLinks />
+            </nav>
+
+            <div className="console-sidebar-footer">
+              <div className="console-environment-status">
+                <i aria-hidden="true" />
                 <div>
-                  <strong>{session.displayName || session.discordUsername}</strong>
-                  {session.role ? <small>{roleLabels[session.role]}</small> : null}
+                  <span>Environment</span>
+                  <strong>{environment}</strong>
                 </div>
               </div>
-            ) : null}
-            {showDiscordReportLogin ? (
-              <a
-                href={discordReportLoginHref}
-                style={{
-                  ...reportLoginLinkStyle,
-                  display: "block",
-                  textAlign: "center",
-                  borderRadius: 12,
-                  padding: "10px 12px",
-                }}
-              >
-                Discord認証を確認
-              </a>
-            ) : null}
-            <nav aria-label="モバイル管理コンソール" className="console-mobile-links">
-              <MobileNavigationLinks />
-            </nav>
-            {session.authProvider === "discord" ? (
-              <form action="/api/auth/logout" method="post" className="console-mobile-logout-form">
-                <button type="submit" className="console-mobile-logout">ログアウト</button>
-              </form>
-            ) : null}
-          </div>
-        </details>
+            </div>
+          </aside>
 
-        {children}
+          <div className="console-shell-main">
+            <header className="console-context-bar">
+              <ConsoleCurrentContext />
+              <div className="console-context-actions">
+                <span className="console-environment-badge">{environment}</span>
+
+                {session.authProvider !== "none" ? (
+                  <div className="console-user-context">
+                    {session.discordAvatarUrl ? (
+                      <img
+                        src={session.discordAvatarUrl}
+                        alt=""
+                        width={28}
+                        height={28}
+                      />
+                    ) : null}
+                    <div>
+                      <strong>{userLabel}</strong>
+                      <small>{roleLabel}</small>
+                    </div>
+                  </div>
+                ) : null}
+
+                {showDiscordReportLogin ? (
+                  <a
+                    className="console-report-login"
+                    href={discordReportLoginHref}
+                    aria-label="Discord認証をテストする"
+                  >
+                    Discord認証を確認
+                  </a>
+                ) : null}
+
+                {session.authProvider === "discord" ? (
+                  <form action="/api/auth/logout" method="post" className="console-logout-form">
+                    <button type="submit" className="console-logout-button">
+                      ログアウト
+                    </button>
+                  </form>
+                ) : null}
+              </div>
+            </header>
+
+            <header className="console-mobile-header">
+              <a className="console-mobile-brand" href="/" aria-label="IVRM Console Overview">
+                <span aria-hidden="true">IV</span>
+                <strong>IVRM Console</strong>
+              </a>
+
+              <details className="console-mobile-menu">
+                <summary>
+                  <span aria-hidden="true" className="console-mobile-menu-icon">☰</span>
+                  <span>メニュー</span>
+                </summary>
+                <div className="console-mobile-menu-panel">
+                  <div className="console-mobile-context">
+                    <ConsoleCurrentContext />
+                    <span className="console-environment-badge">{environment}</span>
+                  </div>
+
+                  {session.authProvider !== "none" ? (
+                    <div className="console-mobile-session">
+                      {session.discordAvatarUrl ? (
+                        <img src={session.discordAvatarUrl} alt="" width={34} height={34} />
+                      ) : null}
+                      <div>
+                        <strong>{userLabel}</strong>
+                        <small>{roleLabel}</small>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {showDiscordReportLogin ? (
+                    <a
+                      className="console-report-login console-report-login-mobile"
+                      href={discordReportLoginHref}
+                    >
+                      Discord認証を確認
+                    </a>
+                  ) : null}
+
+                  <nav aria-label="モバイル管理コンソール">
+                    <MobileNavigationLinks />
+                  </nav>
+
+                  {session.authProvider === "discord" ? (
+                    <form action="/api/auth/logout" method="post" className="console-mobile-logout-form">
+                      <button type="submit" className="console-mobile-logout">
+                        ログアウト
+                      </button>
+                    </form>
+                  ) : null}
+                </div>
+              </details>
+            </header>
+
+            <div className="console-page">{children}</div>
+          </div>
+        </div>
       </body>
     </html>
   );
