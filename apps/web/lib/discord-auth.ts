@@ -42,6 +42,7 @@ export type DiscordConsoleSessionRow = {
 
 export type DiscordLoginFailureReason =
   | "oauth_denied"
+  | "oauth_provider_error"
   | "oauth_state_invalid"
   | "oauth_code_missing"
   | "oauth_exchange_failed"
@@ -77,6 +78,10 @@ const DISCORD_ROLE_ORDER: ConsoleRole[] = [
 const DISCORD_ROLE_SET = new Set<ConsoleRole>(DISCORD_ROLE_ORDER);
 const SNOWFLAKE_PATTERN = /^[0-9]{17,20}$/;
 const SESSION_HASH_PATTERN = /^[0-9a-f]{64}$/;
+const OAUTH_STATE_PATTERN = /^[A-Za-z0-9_-]{32,256}$/;
+const OAUTH_PROVIDER_ERROR_PATTERN = /^[a-z0-9_]{1,64}$/;
+const OAUTH_STATE_MAX_ENTRIES = 4;
+const OAUTH_STATE_COOKIE_MAX_LENGTH = 1200;
 const OAUTH_SCOPES = "identify guilds.members.read";
 
 function requireEnvironment(name: string): string {
@@ -249,6 +254,63 @@ export function constantTimeEqual(left: string, right: string): boolean {
     leftBuffer.length === rightBuffer.length &&
     timingSafeEqual(leftBuffer, rightBuffer)
   );
+}
+
+function parseDiscordOAuthStates(value: string | null): string[] {
+  if (!value || value.length > OAUTH_STATE_COOKIE_MAX_LENGTH) {
+    return [];
+  }
+
+  const states = value
+    .split(".")
+    .filter((state) => OAUTH_STATE_PATTERN.test(state));
+  return [...new Set(states)].slice(-OAUTH_STATE_MAX_ENTRIES);
+}
+
+export function appendDiscordOAuthState(
+  cookieValue: string | null,
+  state: string,
+): string {
+  if (!OAUTH_STATE_PATTERN.test(state)) {
+    throw new Error("Discord OAuth stateが不正です");
+  }
+  const states = parseDiscordOAuthStates(cookieValue).filter(
+    (candidate) => !constantTimeEqual(candidate, state),
+  );
+  return [...states, state].slice(-OAUTH_STATE_MAX_ENTRIES).join(".");
+}
+
+export function matchesDiscordOAuthState(
+  returnedState: string | null,
+  cookieValue: string | null,
+): boolean {
+  if (!returnedState || !OAUTH_STATE_PATTERN.test(returnedState)) {
+    return false;
+  }
+  return parseDiscordOAuthStates(cookieValue).some((expectedState) =>
+    constantTimeEqual(returnedState, expectedState),
+  );
+}
+
+export function consumeDiscordOAuthState(
+  returnedState: string,
+  cookieValue: string | null,
+): string | null {
+  if (!OAUTH_STATE_PATTERN.test(returnedState)) {
+    return cookieValue;
+  }
+  const remainingStates = parseDiscordOAuthStates(cookieValue).filter(
+    (expectedState) => !constantTimeEqual(returnedState, expectedState),
+  );
+  return remainingStates.length > 0 ? remainingStates.join(".") : null;
+}
+
+export function sanitizeDiscordOAuthProviderError(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return OAUTH_PROVIDER_ERROR_PATTERN.test(normalized) ? normalized : "unknown";
 }
 
 export function sanitizeReturnPath(value: string | null): string {
@@ -585,10 +647,12 @@ export async function recordDiscordLoginDenied(input: {
   discordUserId: string | null;
   reason: DiscordLoginFailureReason;
   guildId: string | null;
+  providerError?: string | null;
 }): Promise<void> {
   const targetId = input.discordUserId && SNOWFLAKE_PATTERN.test(input.discordUserId)
     ? input.discordUserId
     : "unknown";
+  const providerError = sanitizeDiscordOAuthProviderError(input.providerError ?? null);
   await callSupabaseRpc<unknown>("append_audit_log", {
     p_request_id: input.requestId,
     p_actor_user_id: null,
@@ -602,6 +666,7 @@ export async function recordDiscordLoginDenied(input: {
     p_metadata: {
       reason: input.reason,
       guildId: input.guildId,
+      ...(providerError ? { providerError } : {}),
     },
   }).catch(() => undefined);
 }
