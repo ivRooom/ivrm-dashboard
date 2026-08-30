@@ -5,7 +5,9 @@ import {
   MetricGrid,
   PageContent,
   PageHeader,
+  SectionHeader,
   StatePanel,
+  StatusBadge,
 } from "../../components/console-ui";
 import { MetricLineChart } from "../../components/metric-line-chart";
 import {
@@ -387,11 +389,6 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
     : retentionState?.enabled
       ? "稼働中"
       : "停止中";
-  const retentionStatusClass = retentionDataError
-    ? styles.retentionError
-    : retentionState?.enabled
-      ? styles.retentionActive
-      : styles.retentionPaused;
 
   const sharedChartProps = {
     startAt: chartStartAt,
@@ -452,22 +449,26 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
           </small>
         </div>
 
-        <section
-          className={styles.retentionPanel}
-          aria-labelledby="retention-health-title"
-        >
-          <div className={styles.retentionHeader}>
-            <div>
-              <span>RETENTION</span>
-              <h2 id="retention-health-title">データ保持 Health</h2>
-            </div>
-            <strong
-              className={`${styles.retentionStatus} ${retentionStatusClass}`}
-              role="status"
-            >
-              {retentionStatusLabel}
-            </strong>
-          </div>
+        <section className={styles.retentionPanel} aria-label="データ保持 Health">
+          <SectionHeader
+            aside={
+              <span role="status">
+                <StatusBadge
+                  tone={
+                    retentionDataError
+                      ? "danger"
+                      : retentionState?.enabled
+                        ? "success"
+                        : "warning"
+                  }
+                >
+                  {retentionStatusLabel}
+                </StatusBadge>
+              </span>
+            }
+            eyebrow="RETENTION"
+            title="データ保持 Health"
+          />
 
           {retentionDataError || !retentionState ? (
             <StatePanel title="Retention状態を取得できませんでした" variant="error">
@@ -529,17 +530,17 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
         <section
           className={styles.metricSection}
           id="minecraft-history"
-          aria-labelledby="minecraft-history-title"
+          aria-label="Minecraft履歴"
         >
-          <div className={styles.sectionHeading}>
-            <div>
-              <span>MINECRAFT</span>
-              <h2 id="minecraft-history-title">Minecraft履歴</h2>
-            </div>
-            <p>
-              Public / BackendのOnline人数・Status Probe Latencyと、Sparkからサーバー内部で実測したTPS / MSPTを同じ時間軸で確認します。Performance未収集区間は0補完せず欠損表示します。Spark Performance集約元: {minecraftPerformanceSampleCount.toLocaleString("ja-JP")}件。
-            </p>
-          </div>
+          <SectionHeader
+            description={
+              <>
+                Public / BackendのOnline人数・Status Probe Latencyと、Sparkからサーバー内部で実測したTPS / MSPTを同じ時間軸で確認します。Performance未収集区間は0補完せず欠損表示します。Spark Performance集約元: {minecraftPerformanceSampleCount.toLocaleString("ja-JP")}件。
+              </>
+            }
+            eyebrow="MINECRAFT"
+            title="Minecraft履歴"
+          />
 
           {minecraftDataError ? (
             <StatePanel title="Minecraft履歴を取得できませんでした" variant="error">
@@ -587,14 +588,12 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
           )}
         </section>
 
-        <section className={styles.metricSection} aria-labelledby="host-history-title">
-          <div className={styles.sectionHeading}>
-            <div>
-              <span>HOST</span>
-              <h2 id="host-history-title">ホスト履歴</h2>
-            </div>
-            <p>OSレベルのLoad Average・メモリ・ディスク使用率です。</p>
-          </div>
+        <section className={styles.metricSection} aria-label="ホスト履歴">
+          <SectionHeader
+            description="OSレベルのLoad Average・メモリ・ディスク使用率です。"
+            eyebrow="HOST"
+            title="ホスト履歴"
+          />
 
           {hostDataError ? (
             <StatePanel title="ホスト履歴を取得できませんでした" variant="error">
@@ -632,16 +631,12 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
           )}
         </section>
 
-        <section className={styles.metricSection} aria-labelledby="container-history-title">
-          <div className={styles.sectionHeading}>
-            <div>
-              <span>DOCKER</span>
-              <h2 id="container-history-title">コンテナ履歴</h2>
-            </div>
-            <p>
-              CPU・メモリに加えて、Process数・再起動回数・Network / Block I/Oを確認します。
-            </p>
-          </div>
+        <section className={styles.metricSection} aria-label="コンテナ履歴">
+          <SectionHeader
+            description="CPU・メモリに加えて、Process数・再起動回数・Network / Block I/Oを確認します。"
+            eyebrow="DOCKER"
+            title="コンテナ履歴"
+          />
 
           {containerDataError ? (
             <StatePanel title="Docker監視履歴を取得できませんでした" variant="error">
