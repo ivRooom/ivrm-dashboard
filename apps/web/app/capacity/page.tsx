@@ -180,9 +180,11 @@ export default async function CapacityPage({ searchParams }: PageProps) {
           ) : (
             <>
               {sourceFailures.length > 0 ? (
-                <StatePanel title="一部データソースを取得できませんでした" variant="warning">
-                  取得できた情報だけで継続表示しています。対象: {sourceFailures.join(" / ")}
-                </StatePanel>
+                <div role="status">
+                  <StatePanel title="一部データソースを取得できませんでした" variant="warning">
+                    取得できた情報だけで継続表示しています。対象: {sourceFailures.join(" / ")}
+                  </StatePanel>
+                </div>
               ) : null}
 
               <MetricGrid className={styles.sharedMetricGrid} label="Capacity Forecast Summary">
