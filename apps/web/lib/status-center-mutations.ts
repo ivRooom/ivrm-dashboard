@@ -1,10 +1,12 @@
 import "server-only";
 
-export type StatusIncidentMutationActor = {
+export type StatusCenterMutationActor = {
   actorEmail: string | null;
   actorRole: "administrator" | "owner";
   actorDiscordUserId: string | null;
 };
+
+export type StatusIncidentMutationActor = StatusCenterMutationActor;
 
 export type CreateStatusIncidentInput = StatusIncidentMutationActor & {
   title: string;
@@ -27,10 +29,30 @@ export type UpdateStatusIncidentInput = StatusIncidentMutationActor & {
   requestId: string;
 };
 
-type MutationResult = {
+export type CreateStatusMaintenanceInput = StatusCenterMutationActor & {
+  title: string;
+  body: string;
+  affectedServiceIds: string[];
+  startsAt: string;
+  endsAt: string;
+  reliabilityWindowId: string | null;
+  idempotencyKey: string;
+};
+
+export type StatusMaintenanceActionInput = StatusCenterMutationActor & {
+  publicId: string;
+  requestId: string;
+};
+
+type IncidentMutationResult = {
   publicId: string;
   lifecycleStatus: string;
   publicationState: string;
+};
+
+type MaintenanceMutationResult = {
+  publicId: string;
+  publicationState: "draft" | "published" | "cancelled";
 };
 
 function requireEnvironment(name: string): string {
@@ -67,15 +89,19 @@ async function callRpc(name: string, body: Record<string, unknown>): Promise<unk
   return (await response.json()) as unknown;
 }
 
-function parseResult(value: unknown): MutationResult {
+function singleRow(value: unknown, label: string): Record<string, unknown> {
   if (!Array.isArray(value) || value.length !== 1) {
-    throw new Error("Status Incident Mutation応答件数が不正です");
+    throw new Error(`${label}応答件数が不正です`);
   }
   const row = value[0];
   if (typeof row !== "object" || row === null || Array.isArray(row)) {
-    throw new Error("Status Incident Mutation応答形式が不正です");
+    throw new Error(`${label}応答形式が不正です`);
   }
-  const record = row as Record<string, unknown>;
+  return row as Record<string, unknown>;
+}
+
+function parseIncidentResult(value: unknown): IncidentMutationResult {
+  const record = singleRow(value, "Status Incident Mutation");
   if (
     typeof record.public_id !== "string" ||
     !/^INC-[A-F0-9]{12}$/.test(record.public_id) ||
@@ -91,7 +117,23 @@ function parseResult(value: unknown): MutationResult {
   };
 }
 
-function actorParams(actor: StatusIncidentMutationActor): Record<string, unknown> {
+function parseMaintenanceResult(value: unknown): MaintenanceMutationResult {
+  const record = singleRow(value, "Status Maintenance Mutation");
+  if (
+    typeof record.public_id !== "string" ||
+    !/^MNT-[A-F0-9]{12}$/.test(record.public_id) ||
+    typeof record.publication_state !== "string" ||
+    !["draft", "published", "cancelled"].includes(record.publication_state)
+  ) {
+    throw new Error("Status Maintenance Mutation応答値が不正です");
+  }
+  return {
+    publicId: record.public_id,
+    publicationState: record.publication_state as MaintenanceMutationResult["publicationState"],
+  };
+}
+
+function actorParams(actor: StatusCenterMutationActor): Record<string, unknown> {
   return {
     p_actor_email: actor.actorEmail,
     p_actor_role: actor.actorRole,
@@ -101,8 +143,8 @@ function actorParams(actor: StatusIncidentMutationActor): Record<string, unknown
 
 export async function createStatusIncident(
   input: CreateStatusIncidentInput,
-): Promise<MutationResult> {
-  return parseResult(await callRpc("create_status_incident_v1", {
+): Promise<IncidentMutationResult> {
+  return parseIncidentResult(await callRpc("create_status_incident_v1", {
     p_title: input.title,
     p_impact: input.impact,
     p_affected_service_ids: input.affectedServiceIds,
@@ -115,8 +157,8 @@ export async function createStatusIncident(
 
 export async function publishStatusIncident(
   input: PublishStatusIncidentInput,
-): Promise<MutationResult> {
-  return parseResult(await callRpc("publish_status_incident_v1", {
+): Promise<IncidentMutationResult> {
+  return parseIncidentResult(await callRpc("publish_status_incident_v1", {
     p_public_id: input.publicId,
     p_request_id: input.requestId,
     ...actorParams(input),
@@ -125,11 +167,46 @@ export async function publishStatusIncident(
 
 export async function updateStatusIncident(
   input: UpdateStatusIncidentInput,
-): Promise<MutationResult> {
-  return parseResult(await callRpc("append_status_incident_update_v1", {
+): Promise<IncidentMutationResult> {
+  return parseIncidentResult(await callRpc("append_status_incident_update_v1", {
     p_public_id: input.publicId,
     p_lifecycle_status: input.lifecycleStatus,
     p_message: input.message,
+    p_request_id: input.requestId,
+    ...actorParams(input),
+  }));
+}
+
+export async function createStatusMaintenance(
+  input: CreateStatusMaintenanceInput,
+): Promise<MaintenanceMutationResult> {
+  return parseMaintenanceResult(await callRpc("create_status_maintenance_v1", {
+    p_title: input.title,
+    p_body: input.body,
+    p_affected_service_ids: input.affectedServiceIds,
+    p_starts_at: input.startsAt,
+    p_ends_at: input.endsAt,
+    p_reliability_window_id: input.reliabilityWindowId,
+    p_idempotency_key: input.idempotencyKey,
+    ...actorParams(input),
+  }));
+}
+
+export async function publishStatusMaintenance(
+  input: StatusMaintenanceActionInput,
+): Promise<MaintenanceMutationResult> {
+  return parseMaintenanceResult(await callRpc("publish_status_maintenance_v1", {
+    p_public_id: input.publicId,
+    p_request_id: input.requestId,
+    ...actorParams(input),
+  }));
+}
+
+export async function cancelStatusMaintenance(
+  input: StatusMaintenanceActionInput,
+): Promise<MaintenanceMutationResult> {
+  return parseMaintenanceResult(await callRpc("cancel_status_maintenance_v1", {
+    p_public_id: input.publicId,
     p_request_id: input.requestId,
     ...actorParams(input),
   }));
