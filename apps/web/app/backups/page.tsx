@@ -1,4 +1,15 @@
 import { AutoRefresh } from "../../components/auto-refresh";
+import {
+  ActionLink,
+  MetricCard,
+  MetricGrid,
+  PageContent,
+  PageHeader,
+  SectionHeader,
+  StatePanel,
+  StatusBadge,
+  type ConsoleTone,
+} from "../../components/console-ui";
 import { MetricLineChart, type MetricChartMarker } from "../../components/metric-line-chart";
 import {
   BACKUP_RANGE_CONFIG,
@@ -16,6 +27,8 @@ export const dynamic = "force-dynamic";
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
+
+type MetricTone = Exclude<ConsoleTone, "maintenance">;
 
 const healthLabels: Record<BackupHealth, string> = {
   healthy: "正常",
@@ -49,6 +62,20 @@ const failureLabels: Record<BackupFailureCode, string> = {
   insufficient_space: "空き容量不足",
   unknown: "原因未分類",
 };
+
+function healthTone(health: BackupHealth): MetricTone {
+  if (health === "healthy") return "success";
+  if (health === "warning") return "warning";
+  if (health === "critical") return "danger";
+  return "neutral";
+}
+
+function outcomeTone(outcome: BackupOutcome): MetricTone {
+  if (outcome === "success") return "success";
+  if (outcome === "failed") return "danger";
+  if (outcome === "running") return "warning";
+  return "neutral";
+}
 
 function firstValue(value: string | string[] | undefined): string | null {
   return Array.isArray(value) ? value[0] || null : value || null;
@@ -97,15 +124,6 @@ function targetKey(target: Pick<BackupTargetSnapshot, "hostId" | "backupTarget" 
 
 function targetAnchor(target: Pick<BackupTargetSnapshot, "hostId" | "backupTarget" | "gameMode" | "backupType">): string {
   return `backup-target-${target.hostId}-${target.backupTarget}-${target.gameMode}-${target.backupType}`;
-}
-
-function healthClass(health: BackupHealth): string {
-  return {
-    healthy: styles.healthy,
-    warning: styles.warning,
-    critical: styles.critical,
-    unknown: styles.unknown,
-  }[health];
 }
 
 export default async function BackupsPage({ searchParams }: PageProps) {
@@ -169,18 +187,18 @@ export default async function BackupsPage({ searchParams }: PageProps) {
   return (
     <>
       <AutoRefresh intervalMs={config.refreshMs} />
-      <section className={`content ${styles.backupContent}`}>
-        <header className={styles.pageHeader}>
-          <div>
-            <p className={styles.eyebrow}>DATA PROTECTION / RESTORE READINESS</p>
-            <h1>バックアップセンター</h1>
-            <p>最新バックアップの鮮度・整合性・Remote Sync・Retention・Restore Testを、実行操作なしの読み取り専用で確認します。</p>
-          </div>
-          <div className={styles.headerActions}>
-            <a href="/incidents" className={styles.secondaryLink}>インシデントを見る</a>
-            <a href="/hosts" className={styles.secondaryLink}>ホストを見る</a>
-          </div>
-        </header>
+      <PageContent className={styles.backupContent}>
+        <PageHeader
+          actions={
+            <>
+              <ActionLink href="/incidents">インシデントを見る</ActionLink>
+              <ActionLink href="/hosts">ホストを見る</ActionLink>
+            </>
+          }
+          description="最新バックアップの鮮度・整合性・Remote Sync・Retention・Restore Testを、実行操作なしの読み取り専用で確認します。"
+          eyebrow="DATA PROTECTION / RESTORE READINESS"
+          title="バックアップセンター"
+        />
 
         <nav className={styles.periodSelector} aria-label="Backup履歴集計期間">
           {(Object.keys(BACKUP_RANGE_CONFIG) as BackupRange[]).map((candidate) => (
@@ -196,57 +214,62 @@ export default async function BackupsPage({ searchParams }: PageProps) {
         </nav>
 
         {loadError ? (
-          <div className="empty error-panel" role="alert">
-            <strong>Backup情報を取得できませんでした</strong>
-            <p>Backup Center Migration・Service Role RPC・Supabase接続を確認してください。</p>
-          </div>
+          <StatePanel title="Backup情報を取得できませんでした" variant="error">
+            Backup Center Migration・Service Role RPC・Supabase接続を確認してください。
+          </StatePanel>
         ) : summary ? (
           <>
-            <section className={styles.summaryGrid} aria-label="Backupサマリー">
-              <article className={healthClass(summary.overallHealth)}>
-                <span>BACKUP HEALTH</span>
-                <strong>{healthLabels[summary.overallHealth]}</strong>
-                <small>正常 {summary.healthyCount} / 注意 {summary.warningCount} / 重大 {summary.criticalCount} / 未確認 {summary.unknownCount}</small>
-              </article>
-              <article>
-                <span>LATEST SUCCESS</span>
-                <strong>{formatDateTime(summary.latestSuccessAt)}</strong>
-                <small>{config.label}の構造化履歴</small>
-              </article>
-              <article>
-                <span>SUCCESS RATE</span>
-                <strong>{summary.successRatePercent === null ? "—" : `${summary.successRatePercent.toFixed(1)}%`}</strong>
-                <small>{summary.successRunCount} / {summary.completedRunCount} completed</small>
-              </article>
-              <article className={summary.latestFailureAt ? styles.warning : undefined}>
-                <span>LATEST FAILURE</span>
-                <strong>{formatDateTime(summary.latestFailureAt)}</strong>
-                <small>成功で上書きせず履歴として保持</small>
-              </article>
-              <article className={summary.remoteSyncPendingCount > 0 ? styles.warning : undefined}>
-                <span>REMOTE SYNC</span>
-                <strong>{summary.remoteSyncPendingCount}</strong>
-                <small>未同期Target</small>
-              </article>
-              <article>
-                <span>RESTORE READY</span>
-                <strong>{summary.restoreReadyCount} / {summary.targetCount}</strong>
-                <small>Checksum + Retention + Restore Test確認済み</small>
-              </article>
-            </section>
+            <MetricGrid label="Backupサマリー">
+              <MetricCard
+                detail={`正常 ${summary.healthyCount} / 注意 ${summary.warningCount} / 重大 ${summary.criticalCount} / 未確認 ${summary.unknownCount}`}
+                label="BACKUP HEALTH"
+                tone={healthTone(summary.overallHealth)}
+                value={
+                  <StatusBadge tone={healthTone(summary.overallHealth)}>
+                    {healthLabels[summary.overallHealth]}
+                  </StatusBadge>
+                }
+              />
+              <MetricCard
+                detail={`${config.label}の構造化履歴`}
+                label="LATEST SUCCESS"
+                value={formatDateTime(summary.latestSuccessAt)}
+              />
+              <MetricCard
+                detail={`${summary.successRunCount} / ${summary.completedRunCount} completed`}
+                label="SUCCESS RATE"
+                value={summary.successRatePercent === null ? "—" : `${summary.successRatePercent.toFixed(1)}%`}
+              />
+              <MetricCard
+                detail="成功で上書きせず履歴として保持"
+                label="LATEST FAILURE"
+                tone={summary.latestFailureAt ? "warning" : "neutral"}
+                value={formatDateTime(summary.latestFailureAt)}
+              />
+              <MetricCard
+                detail="未同期Target"
+                label="REMOTE SYNC"
+                tone={summary.remoteSyncPendingCount > 0 ? "warning" : "neutral"}
+                value={summary.remoteSyncPendingCount}
+              />
+              <MetricCard
+                detail="Checksum + Retention + Restore Test確認済み"
+                label="RESTORE READY"
+                value={`${summary.restoreReadyCount} / ${summary.targetCount}`}
+              />
+            </MetricGrid>
 
             <section className={styles.sectionBlock}>
-              <div className={styles.sectionHeading}>
-                <div><span>PROTECTION TARGETS</span><h2>バックアップ対象</h2></div>
-                <p>欠損値は正常扱いせず、証明できた状態だけをHealthy / Restore Readyとして表示します。</p>
-              </div>
+              <SectionHeader
+                description="欠損値は正常扱いせず、証明できた状態だけをHealthy / Restore Readyとして表示します。"
+                eyebrow="PROTECTION TARGETS"
+                title="バックアップ対象"
+              />
 
               {targets.length === 0 ? (
-                <div className={styles.emptyState}>
-                  <strong>Backup Telemetryはまだありません</strong>
-                  <p>署名付きBackup Reportを初めて受信するとPolicyが安全な既定SLAで自動登録され、この画面にTargetが追加されます。</p>
-                  <code>POST /api/agent/backups</code>
-                </div>
+                <StatePanel title="Backup Telemetryはまだありません">
+                  署名付きBackup Reportを初めて受信するとPolicyが安全な既定SLAで自動登録され、この画面にTargetが追加されます。 POST /api/agent/backups
+                </StatePanel>
               ) : (
                 <div className={styles.targetGrid}>
                   {targets.map((target) => (
@@ -257,7 +280,7 @@ export default async function BackupsPage({ searchParams }: PageProps) {
                           <h3>{target.backupTarget}</h3>
                           <small>{target.hostDisplayName} / {target.serverId}</small>
                         </div>
-                        <span className={`${styles.badge} ${healthClass(target.health)}`}>{healthLabels[target.health]}</span>
+                        <StatusBadge tone={healthTone(target.health)}>{healthLabels[target.health]}</StatusBadge>
                       </div>
 
                       <div className={styles.metricGrid}>
@@ -281,10 +304,11 @@ export default async function BackupsPage({ searchParams }: PageProps) {
             </section>
 
             <section className={styles.sectionBlock}>
-              <div className={styles.sectionHeading}>
-                <div><span>TRENDS</span><h2>容量・所要時間</h2></div>
-                <p>失敗RunはCritical markerとして重ね、成功率だけでは見えない悪化傾向を確認します。</p>
-              </div>
+              <SectionHeader
+                description="失敗RunはCritical markerとして重ね、成功率だけでは見えない悪化傾向を確認します。"
+                eyebrow="TRENDS"
+                title="容量・所要時間"
+              />
               <div className={styles.chartGrid}>
                 <MetricLineChart
                   title="Backup Duration"
@@ -318,12 +342,13 @@ export default async function BackupsPage({ searchParams }: PageProps) {
             </section>
 
             <section className={styles.sectionBlock}>
-              <div className={styles.sectionHeading}>
-                <div><span>RUN HISTORY</span><h2>実行履歴</h2></div>
-                <p>Path・Bucket名・署名URL・stdout/stderrは保存せず、運用判断に必要な固定フィールドだけ表示します。</p>
-              </div>
+              <SectionHeader
+                description="Path・Bucket名・署名URL・stdout/stderrは保存せず、運用判断に必要な固定フィールドだけ表示します。"
+                eyebrow="RUN HISTORY"
+                title="実行履歴"
+              />
               {history.length === 0 ? (
-                <div className={styles.emptyState}>選択期間にBackup Runはありません。</div>
+                <StatePanel title="選択期間にBackup Runはありません。" />
               ) : (
                 <div className={styles.tableShell}>
                   <table>
@@ -333,7 +358,7 @@ export default async function BackupsPage({ searchParams }: PageProps) {
                         <tr key={run.rowId}>
                           <td>{formatDateTime(run.completedAt ?? run.startedAt)}</td>
                           <td><strong>{run.backupTarget}</strong><small>{run.gameMode} / {run.hostDisplayName}</small></td>
-                          <td><span className={`${styles.badge} ${run.outcome === "failed" ? styles.critical : run.outcome === "success" ? styles.healthy : styles.warning}`}>{outcomeLabels[run.outcome]}</span></td>
+                          <td><StatusBadge tone={outcomeTone(run.outcome)}>{outcomeLabels[run.outcome]}</StatusBadge></td>
                           <td>{typeLabels[run.backupType]} / {run.destinationType.toUpperCase()}</td>
                           <td>{formatBytes(run.sizeBytes)}</td>
                           <td>{formatDuration(run.durationSeconds)}</td>
@@ -348,13 +373,12 @@ export default async function BackupsPage({ searchParams }: PageProps) {
               )}
             </section>
 
-            <section className={styles.notice}>
-              <strong>読み取り専用・復元可能性を優先</strong>
-              <p>Backup Centerから任意Shell、S3操作、バックアップ実行・削除・復元は行いません。Restore Readyは成功だけでは判定せず、Checksum・Retention・Restore Testを構造化Telemetryで確認できた場合だけReadyにします。</p>
-            </section>
+            <StatePanel title="読み取り専用・復元可能性を優先" variant="info">
+              Backup Centerから任意Shell、S3操作、バックアップ実行・削除・復元は行いません。Restore Readyは成功だけでは判定せず、Checksum・Retention・Restore Testを構造化Telemetryで確認できた場合だけReadyにします。
+            </StatePanel>
           </>
         ) : null}
-      </section>
+      </PageContent>
     </>
   );
 }
