@@ -11,14 +11,12 @@ import {
   resolveDiscordConsoleRole,
   revokeDiscordAccessToken,
   sanitizeDiscordOAuthProviderError,
-  sanitizeReturnPath,
   type DiscordAuthConfiguration,
   type DiscordLoginFailureReason,
 } from "../../../../../lib/discord-auth";
 import {
-  getDiscordOAuthCookieNames,
-  matchesDiscordOAuthStateCookie,
-  type DiscordOAuthCookieNames,
+  getDiscordOAuthSlotCookieName,
+  verifyDiscordOAuthAttempt,
 } from "../../../../../lib/discord-oauth-cookies";
 
 export const dynamic = "force-dynamic";
@@ -31,15 +29,11 @@ const COOKIE_BASE = {
   path: "/",
 };
 
-function clearOAuthAttemptCookies(
+function clearOAuthAttemptCookie(
   response: NextResponse,
-  cookieNames: DiscordOAuthCookieNames,
+  cookieName: string,
 ): void {
-  response.cookies.set(cookieNames.state, "", {
-    ...COOKIE_BASE,
-    maxAge: 0,
-  });
-  response.cookies.set(cookieNames.returnTo, "", {
+  response.cookies.set(cookieName, "", {
     ...COOKIE_BASE,
     maxAge: 0,
   });
@@ -48,15 +42,15 @@ function clearOAuthAttemptCookies(
 function loginErrorResponse(
   request: NextRequest,
   reason: DiscordLoginFailureReason,
-  cookieNames: DiscordOAuthCookieNames | null,
+  cookieName: string | null,
 ): NextResponse {
   const response = NextResponse.redirect(
     new URL(`/login?error=${encodeURIComponent(reason)}`, request.url),
   );
   response.headers.set("Cache-Control", "private, no-store, max-age=0");
   response.headers.set("X-Content-Type-Options", "nosniff");
-  if (cookieNames) {
-    clearOAuthAttemptCookies(response, cookieNames);
+  if (cookieName) {
+    clearOAuthAttemptCookie(response, cookieName);
   }
   return response;
 }
@@ -71,31 +65,55 @@ function reasonFromError(error: unknown): DiscordLoginFailureReason {
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const requestId = randomUUID();
   const returnedState = request.nextUrl.searchParams.get("state");
-  const cookieNames = getDiscordOAuthCookieNames(returnedState);
-  const stateCookie = cookieNames
-    ? request.cookies.get(cookieNames.state)?.value || null
-    : null;
   let discordUserId: string | null = null;
   let guildId: string | null = null;
   let accessToken: string | null = null;
   let configuration: DiscordAuthConfiguration | null = null;
 
-  if (
-    !cookieNames ||
-    !matchesDiscordOAuthStateCookie(returnedState, stateCookie)
-  ) {
+  try {
+    configuration = getDiscordAuthConfiguration();
+  } catch {
+    await recordDiscordLoginDenied({
+      requestId,
+      discordUserId: null,
+      reason: "configuration_error",
+      guildId: null,
+    });
+    return loginErrorResponse(request, "configuration_error", null);
+  }
+
+  if (!configuration) {
+    await recordDiscordLoginDenied({
+      requestId,
+      discordUserId: null,
+      reason: "configuration_error",
+      guildId: null,
+    });
+    return loginErrorResponse(request, "configuration_error", null);
+  }
+  guildId = configuration.guildId;
+
+  const cookieName = getDiscordOAuthSlotCookieName(returnedState);
+  const cookieValue = cookieName
+    ? request.cookies.get(cookieName)?.value || null
+    : null;
+  const attempt = verifyDiscordOAuthAttempt(
+    returnedState,
+    cookieValue,
+    configuration.clientSecret,
+  );
+
+  if (!cookieName || !attempt) {
     await recordDiscordLoginDenied({
       requestId,
       discordUserId: null,
       reason: "oauth_state_invalid",
-      guildId: null,
+      guildId,
     });
+    // Slot衝突時に新しい正当なflowのCookieを消さない。
     return loginErrorResponse(request, "oauth_state_invalid", null);
   }
 
-  const returnPath = sanitizeReturnPath(
-    request.cookies.get(cookieNames.returnTo)?.value || null,
-  );
   const oauthError = sanitizeDiscordOAuthProviderError(
     request.nextUrl.searchParams.get("error"),
   );
@@ -106,10 +124,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       requestId,
       discordUserId: null,
       reason,
-      guildId: null,
+      guildId,
       providerError: oauthError,
     });
-    return loginErrorResponse(request, reason, cookieNames);
+    return loginErrorResponse(request, reason, cookieName);
   }
 
   const code = request.nextUrl.searchParams.get("code");
@@ -118,18 +136,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       requestId,
       discordUserId: null,
       reason: "oauth_code_missing",
-      guildId: null,
+      guildId,
     });
-    return loginErrorResponse(request, "oauth_code_missing", cookieNames);
+    return loginErrorResponse(request, "oauth_code_missing", cookieName);
   }
 
   try {
-    configuration = getDiscordAuthConfiguration();
-    if (!configuration) {
-      throw new DiscordAuthError("configuration_error");
-    }
-    guildId = configuration.guildId;
-
     const token = await exchangeDiscordAuthorizationCode(code, configuration);
     accessToken = token.accessToken;
 
@@ -155,14 +167,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       throw new DiscordAuthError("session_create_failed");
     }
 
-    const response = NextResponse.redirect(new URL(returnPath, request.url));
+    const response = NextResponse.redirect(new URL(attempt.returnTo, request.url));
     response.headers.set("Cache-Control", "private, no-store, max-age=0");
     response.headers.set("X-Content-Type-Options", "nosniff");
     response.cookies.set(DISCORD_SESSION_COOKIE, session.sessionToken, {
       ...COOKIE_BASE,
       expires: expiresAt,
     });
-    clearOAuthAttemptCookies(response, cookieNames);
+    clearOAuthAttemptCookie(response, cookieName);
     return response;
   } catch (error) {
     const reason = reasonFromError(error);
@@ -172,9 +184,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       reason,
       guildId,
     });
-    return loginErrorResponse(request, reason, cookieNames);
+    return loginErrorResponse(request, reason, cookieName);
   } finally {
-    if (accessToken && configuration) {
+    if (accessToken) {
       await revokeDiscordAccessToken(accessToken, configuration).catch(() => undefined);
     }
   }
