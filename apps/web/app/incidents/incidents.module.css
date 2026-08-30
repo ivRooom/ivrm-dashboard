@@ -289,8 +289,12 @@
   gap: 7px;
 }
 
+.finalNotice,
 .notice {
   margin-top: 28px;
+}
+
+.notice {
   padding: 16px;
 }
 
