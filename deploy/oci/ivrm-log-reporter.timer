@@ -1,0 +1,12 @@
+[Unit]
+Description=Run IVRM Read-only Log Reporter periodically
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=10s
+AccuracySec=1s
+RandomizedDelaySec=1s
+Unit=ivrm-log-reporter.service
+
+[Install]
+WantedBy=timers.target
