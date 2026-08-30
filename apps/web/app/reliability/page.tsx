@@ -1,4 +1,9 @@
 import { AutoRefresh } from "../../components/auto-refresh";
+import {
+  ActionLink,
+  PageHeader,
+  StatePanel,
+} from "../../components/console-ui";
 import { getConsoleSession, hasConsoleRole } from "../../lib/console-auth";
 import {
   INCIDENT_RANGE_CONFIG,
@@ -94,18 +99,18 @@ export default async function ReliabilityPage({ searchParams }: PageProps) {
     <>
       <AutoRefresh intervalMs={30_000} />
       <section className={`content ${styles.content}`}>
-        <header className={styles.header}>
-          <div>
-            <p className={styles.eyebrow}>RELIABILITY / SLO / BURN RATE / HISTORY / MAINTENANCE</p>
-            <h1>Service Reliability Center</h1>
-            <p>Host・Container・Backup・Notificationを横断し、Raw Incident、明示SLO、Burn Rate、履歴、スコープ付き計画停止から稼働品質とError Budgetを確認します。</p>
-          </div>
-          <div className={styles.actions}>
-            <a href={`/incidents?range=${range}`}>Incident Center</a>
-            <a href="/capacity">Capacity Forecast</a>
-            <a href="/notifications">Notification Center</a>
-          </div>
-        </header>
+        <PageHeader
+          eyebrow="RELIABILITY / SLO / BURN RATE / HISTORY / MAINTENANCE"
+          title="Service Reliability Center"
+          description="Host・Container・Backup・Notificationを横断し、Raw Incident、明示SLO、Burn Rate、履歴、スコープ付き計画停止から稼働品質とError Budgetを確認します。"
+          actions={
+            <>
+              <ActionLink href={`/incidents?range=${range}`}>Incident Center</ActionLink>
+              <ActionLink href="/capacity">Capacity Forecast</ActionLink>
+              <ActionLink href="/notifications">Notification Center</ActionLink>
+            </>
+          }
+        />
         <nav className={styles.periods} aria-label="信頼性集計期間">
           {(Object.keys(INCIDENT_RANGE_CONFIG) as IncidentRange[]).map((candidate) => (
             <a key={candidate} aria-current={candidate === range ? "page" : undefined} href={`/reliability?range=${candidate}`}>
@@ -115,7 +120,9 @@ export default async function ReliabilityPage({ searchParams }: PageProps) {
         </nav>
 
         {loadError || !data ? (
-          <div className="empty error-panel" role="alert"><strong>Reliability情報を取得できませんでした</strong><p>Incident / Backup / Notificationのデータ接続を確認してください。</p></div>
+          <StatePanel title="Reliability情報を取得できませんでした" variant="error">
+            Incident / Backup / Notificationのデータ接続を確認してください。
+          </StatePanel>
         ) : (
           <>
             <section className={styles.overall} aria-label="Overall Reliability">
