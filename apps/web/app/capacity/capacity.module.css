@@ -3,6 +3,11 @@
   gap: 28px;
 }
 
+.sharedPageHeader,
+.sharedMetricGrid {
+  margin-bottom: 0;
+}
+
 .header {
   display: flex;
   align-items: flex-start;
