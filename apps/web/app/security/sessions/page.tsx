@@ -1,6 +1,15 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import {
+  ActionLink,
+  PageContent,
+  PageHeader,
+  StatePanel,
+  StatusBadge,
+  TableShell,
+  type ConsoleTone,
+} from "../../../components/console-ui";
+import {
   getConsoleSession,
   hasConsoleRole,
   type ConsoleRole,
@@ -13,6 +22,7 @@ import {
   type DiscordSessionAdminRow,
   type DiscordSessionStatus,
 } from "../../../lib/discord-security-admin";
+import styles from "./sessions.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -89,6 +99,12 @@ function canRevoke(
   return actorRole === "administrator" && target.consoleRole !== "owner";
 }
 
+function statusTone(status: "active" | "expired" | "revoked"): ConsoleTone {
+  if (status === "active") return "success";
+  if (status === "expired") return "warning";
+  return "danger";
+}
+
 export default async function DiscordSessionsPage({ searchParams }: PageProps) {
   const [session, params, cookieStore] = await Promise.all([
     getConsoleSession(),
@@ -136,264 +152,142 @@ export default async function DiscordSessionsPage({ searchParams }: PageProps) {
       : null;
 
   return (
-    <main style={pageStyle}>
-      <section style={{ maxWidth: 1240, margin: "0 auto" }}>
-        <a href="/security" style={backLinkStyle}>
-          ← 認証・権限へ戻る
-        </a>
-        <header style={{ margin: "28px 0" }}>
-          <p style={eyebrowStyle}>SESSION SECURITY</p>
-          <h1 style={{ fontSize: "clamp(2rem, 5vw, 3.5rem)", margin: "8px 0" }}>
-            Discord Session管理
-          </h1>
-          <p style={leadStyle}>
-            Administrator／Ownerだけが利用できます。Token、Cookie、Session Hash、Discord Role IDは表示しません。
-          </p>
-        </header>
+    <PageContent className={styles.content}>
+      <PageHeader
+        actions={<ActionLink href="/security">認証・権限へ戻る</ActionLink>}
+        className={styles.pageHeader}
+        description="Administrator／Ownerだけが利用できます。Token、Cookie、Session Hash、Discord Role IDは表示しません。"
+        eyebrow="SESSION SECURITY"
+        title="Discord Session管理"
+      />
 
-        {outcome && outcomeMessages[outcome] ? (
-          <div role="status" style={successStyle}>
-            {outcomeMessages[outcome]}
-          </div>
-        ) : null}
+      {outcome && outcomeMessages[outcome] ? (
+        <div role="status">
+          <StatePanel title={outcomeMessages[outcome]} variant="info" />
+        </div>
+      ) : null}
 
-        <nav aria-label="Session状態" style={filterNavStyle}>
-          {(["active", "expired", "revoked", "all"] as const).map((item) => (
-            <a
-              key={item}
-              href={filterHref(item)}
-              aria-current={status === item ? "page" : undefined}
-              style={{
-                ...filterLinkStyle,
-                borderColor: status === item ? "#60a5fa" : "rgba(148,163,184,.3)",
-                color: status === item ? "#dbeafe" : "#94a3b8",
-              }}
-            >
-              {item === "all" ? "すべて" : statusLabels[item]}
-            </a>
-          ))}
-        </nav>
+      <nav aria-label="Session状態" className={styles.filterNav}>
+        {(["active", "expired", "revoked", "all"] as const).map((item) => (
+          <a
+            aria-current={status === item ? "page" : undefined}
+            className={styles.filterLink}
+            href={filterHref(item)}
+            key={item}
+          >
+            {item === "all" ? "すべて" : statusLabels[item]}
+          </a>
+        ))}
+      </nav>
 
-        {loadError ? (
-          <div role="alert" style={errorStyle}>
-            Session一覧を取得できませんでした。現在のSessionと権限を確認してください。
-          </div>
-        ) : null}
+      {loadError ? (
+        <StatePanel title="Session一覧を取得できませんでした" variant="error">
+          現在のSessionと権限を確認してください。
+        </StatePanel>
+      ) : null}
 
-        {!loadError && rows.length === 0 ? (
-          <section style={cardStyle}>
-            <h2 style={{ marginTop: 0 }}>対象Sessionはありません</h2>
-            <p style={leadStyle}>選択した状態に一致するDiscord Sessionはありません。</p>
-          </section>
-        ) : null}
+      {!loadError && rows.length === 0 ? (
+        <StatePanel title="対象Sessionはありません">
+          選択した状態に一致するDiscord Sessionはありません。
+        </StatePanel>
+      ) : null}
 
-        {rows.length > 0 ? (
-          <div style={tableShellStyle}>
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={headerCellStyle}>ユーザー</th>
-                  <th style={headerCellStyle}>ロール</th>
-                  <th style={headerCellStyle}>状態</th>
-                  <th style={headerCellStyle}>作成／最終利用</th>
-                  <th style={headerCellStyle}>期限／失効</th>
-                  <th style={headerCellStyle}>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => {
-                  const revocable = canRevoke(session.role, row);
-                  return (
-                    <tr key={row.sessionId}>
-                      <td style={cellStyle}>
-                        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                          {row.discordAvatarUrl ? (
-                            <img
-                              src={row.discordAvatarUrl}
-                              alt=""
-                              width={36}
-                              height={36}
-                              style={{ borderRadius: 999, objectFit: "cover" }}
-                            />
-                          ) : null}
-                          <div>
-                            <strong style={{ display: "block" }}>
-                              {row.discordGlobalName || row.discordUsername}
-                              {row.isCurrent ? "（現在）" : ""}
-                            </strong>
-                            <small style={mutedStyle}>@{row.discordUsername}</small>
-                            <small style={{ ...mutedStyle, display: "block" }}>
-                              {row.discordUserId}
-                            </small>
-                          </div>
+      {rows.length > 0 ? (
+        <TableShell className={styles.tableShell} label="Discord Session一覧">
+          <table>
+            <thead>
+              <tr>
+                <th>ユーザー</th>
+                <th>ロール</th>
+                <th>状態</th>
+                <th>作成／最終利用</th>
+                <th>期限／失効</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const revocable = canRevoke(session.role, row);
+                return (
+                  <tr key={row.sessionId}>
+                    <td>
+                      <div className={styles.userCell}>
+                        {row.discordAvatarUrl ? (
+                          <img
+                            alt=""
+                            className={styles.avatar}
+                            height={36}
+                            src={row.discordAvatarUrl}
+                            width={36}
+                          />
+                        ) : null}
+                        <div>
+                          <strong className={styles.userName}>
+                            {row.discordGlobalName || row.discordUsername}
+                            {row.isCurrent ? "（現在）" : ""}
+                          </strong>
+                          <small className={styles.muted}>@{row.discordUsername}</small>
+                          <small className={styles.mutedBlock}>{row.discordUserId}</small>
                         </div>
-                      </td>
-                      <td style={cellStyle}>{roleLabels[row.consoleRole]}</td>
-                      <td style={cellStyle}>
-                        <span style={statusBadgeStyle(row.status)}>
-                          {statusLabels[row.status]}
-                        </span>
-                      </td>
-                      <td style={cellStyle}>
-                        <span style={{ display: "block" }}>{formatDateTime(row.createdAt)}</span>
-                        <small style={mutedStyle}>最終 {formatDateTime(row.lastSeenAt)}</small>
-                      </td>
-                      <td style={cellStyle}>
-                        <span style={{ display: "block" }}>{formatDateTime(row.expiresAt)}</span>
-                        <small style={mutedStyle}>
-                          {row.revokedAt
-                            ? `${formatDateTime(row.revokedAt)}・${revokeReasonLabels[row.revokeReason || ""] || "失効"}`
-                            : "—"}
-                        </small>
-                      </td>
-                      <td style={cellStyle}>
-                        {revocable ? (
-                          <form
-                            action={`/api/security/discord-sessions/${row.sessionId}/revoke`}
-                            method="post"
-                            style={{ display: "grid", gap: 8, minWidth: 150 }}
-                          >
-                            <input
-                              name="confirmation"
-                              required
-                              pattern="REVOKE"
-                              placeholder="REVOKE"
-                              aria-label="確認文字列REVOKE"
-                              autoComplete="off"
-                              style={inputStyle}
-                            />
-                            <button type="submit" style={dangerButtonStyle}>
-                              Sessionを失効
-                            </button>
-                          </form>
-                        ) : row.status === "active" && row.consoleRole === "owner" ? (
-                          <small style={mutedStyle}>Ownerのみ操作可能</small>
-                        ) : (
-                          <small style={mutedStyle}>操作なし</small>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
+                      </div>
+                    </td>
+                    <td>{roleLabels[row.consoleRole]}</td>
+                    <td>
+                      <StatusBadge tone={statusTone(row.status)}>
+                        {statusLabels[row.status]}
+                      </StatusBadge>
+                    </td>
+                    <td>
+                      <span className={styles.dateValue}>{formatDateTime(row.createdAt)}</span>
+                      <small className={styles.muted}>最終 {formatDateTime(row.lastSeenAt)}</small>
+                    </td>
+                    <td>
+                      <span className={styles.dateValue}>{formatDateTime(row.expiresAt)}</span>
+                      <small className={styles.muted}>
+                        {row.revokedAt
+                          ? `${formatDateTime(row.revokedAt)}・${revokeReasonLabels[row.revokeReason || ""] || "失効"}`
+                          : "—"}
+                      </small>
+                    </td>
+                    <td>
+                      {revocable ? (
+                        <form
+                          action={`/api/security/discord-sessions/${row.sessionId}/revoke`}
+                          className={styles.revokeForm}
+                          method="post"
+                        >
+                          <input
+                            aria-label="確認文字列REVOKE"
+                            autoComplete="off"
+                            className={styles.revokeInput}
+                            name="confirmation"
+                            pattern="REVOKE"
+                            placeholder="REVOKE"
+                            required
+                          />
+                          <button className={styles.revokeButton} type="submit">
+                            Sessionを失効
+                          </button>
+                        </form>
+                      ) : row.status === "active" && row.consoleRole === "owner" ? (
+                        <small className={styles.muted}>Ownerのみ操作可能</small>
+                      ) : (
+                        <small className={styles.muted}>操作なし</small>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </TableShell>
+      ) : null}
 
-        {nextHref ? (
-          <div style={{ marginTop: 20 }}>
-            <a href={nextHref} style={filterLinkStyle}>
-              次の50件を表示
-            </a>
-          </div>
-        ) : null}
-      </section>
-    </main>
+      {nextHref ? (
+        <div className={styles.pagination}>
+          <ActionLink href={nextHref}>次の50件を表示</ActionLink>
+        </div>
+      ) : null}
+    </PageContent>
   );
 }
-
-function statusBadgeStyle(status: "active" | "expired" | "revoked") {
-  const colors = {
-    active: { color: "#86efac", background: "rgba(22,101,52,.25)" },
-    expired: { color: "#fde68a", background: "rgba(113,63,18,.25)" },
-    revoked: { color: "#fca5a5", background: "rgba(127,29,29,.25)" },
-  }[status];
-  return {
-    display: "inline-flex",
-    borderRadius: 999,
-    padding: "5px 9px",
-    fontSize: 12,
-    fontWeight: 800,
-    ...colors,
-  } as const;
-}
-
-const pageStyle = {
-  minHeight: "100vh",
-  background: "#07111f",
-  color: "#e8eef7",
-  padding: "72px 20px 80px",
-  fontFamily: "system-ui, sans-serif",
-} as const;
-const backLinkStyle = { color: "#9cc5ff", textDecoration: "none" } as const;
-const eyebrowStyle = { color: "#8ba4c7", letterSpacing: ".12em" } as const;
-const leadStyle = { color: "#b8c7dc", lineHeight: 1.8 } as const;
-const mutedStyle = { color: "#8294ad", lineHeight: 1.5 } as const;
-const cardStyle = {
-  border: "1px solid rgba(148,163,184,.22)",
-  borderRadius: 18,
-  padding: 22,
-  background: "rgba(15,27,45,.82)",
-} as const;
-const filterNavStyle = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 10,
-  margin: "0 0 20px",
-} as const;
-const filterLinkStyle = {
-  display: "inline-flex",
-  border: "1px solid rgba(148,163,184,.3)",
-  borderRadius: 999,
-  padding: "8px 13px",
-  color: "#dbeafe",
-  textDecoration: "none",
-  background: "rgba(15,27,45,.72)",
-  fontWeight: 700,
-  fontSize: 13,
-} as const;
-const successStyle = {
-  ...cardStyle,
-  borderColor: "rgba(74,222,128,.4)",
-  color: "#bbf7d0",
-  marginBottom: 18,
-} as const;
-const errorStyle = {
-  ...cardStyle,
-  borderColor: "rgba(248,113,113,.5)",
-  color: "#fecaca",
-  marginBottom: 18,
-} as const;
-const tableShellStyle = {
-  overflowX: "auto",
-  border: "1px solid rgba(148,163,184,.22)",
-  borderRadius: 18,
-  background: "rgba(15,27,45,.82)",
-} as const;
-const tableStyle = {
-  width: "100%",
-  minWidth: 1080,
-  borderCollapse: "collapse",
-} as const;
-const headerCellStyle = {
-  padding: "14px 16px",
-  textAlign: "left",
-  color: "#8ba4c7",
-  borderBottom: "1px solid rgba(148,163,184,.22)",
-  fontSize: 12,
-  letterSpacing: ".06em",
-} as const;
-const cellStyle = {
-  padding: "16px",
-  verticalAlign: "top",
-  borderBottom: "1px solid rgba(148,163,184,.12)",
-  fontSize: 14,
-} as const;
-const inputStyle = {
-  width: "100%",
-  boxSizing: "border-box",
-  border: "1px solid rgba(248,113,113,.45)",
-  borderRadius: 9,
-  padding: "8px 10px",
-  background: "#07111f",
-  color: "#e8eef7",
-} as const;
-const dangerButtonStyle = {
-  border: "1px solid rgba(248,113,113,.55)",
-  borderRadius: 9,
-  padding: "8px 10px",
-  background: "rgba(127,29,29,.34)",
-  color: "#fecaca",
-  fontWeight: 800,
-  cursor: "pointer",
-} as const;
