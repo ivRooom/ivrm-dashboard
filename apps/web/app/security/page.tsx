@@ -1,10 +1,21 @@
 import {
+  ActionLink,
+  MetricCard,
+  MetricGrid,
+  PageContent,
+  PageHeader,
+  SectionHeader,
+  StatePanel,
+  StatusBadge,
+} from "../../components/console-ui";
+import {
   getConsoleSession,
   hasConsoleRole,
   type ConsoleRole,
   type ConsoleSession,
   type ConsoleSessionStatus,
 } from "../../lib/console-auth";
+import styles from "./security.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -61,18 +72,29 @@ function statusMessage(session: ConsoleSession): string {
 }
 
 function formatDateTime(value: string | null): string {
-  if (!value) {
-    return "—";
-  }
+  if (!value) return "—";
   const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) {
-    return "—";
-  }
+  if (!Number.isFinite(date.getTime())) return "—";
   return new Intl.DateTimeFormat("ja-JP", {
     dateStyle: "medium",
     timeStyle: "medium",
     timeZone: "Asia/Tokyo",
   }).format(date);
+}
+
+function statusTone(status: ConsoleSessionStatus): "neutral" | "success" | "warning" | "danger" | "info" {
+  if (status === "authenticated") return "success";
+  if (status === "error" || status === "identity_mismatch") return "danger";
+  if (status === "unregistered" || status === "inactive") return "warning";
+  if (status === "disabled") return "info";
+  return "neutral";
+}
+
+function stateVariant(status: ConsoleSessionStatus): "empty" | "error" | "warning" | "info" {
+  if (status === "error" || status === "identity_mismatch") return "error";
+  if (status === "unregistered" || status === "inactive") return "warning";
+  if (status === "authenticated" || status === "disabled") return "info";
+  return "empty";
 }
 
 export default async function SecurityPage() {
@@ -81,193 +103,118 @@ export default async function SecurityPage() {
     session.authProvider === "discord" && hasConsoleRole(session, "administrator");
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "#07111f",
-        color: "#e8eef7",
-        padding: "72px 24px 80px",
-        fontFamily: "system-ui, sans-serif",
-      }}
-    >
-      <section style={{ maxWidth: 980, margin: "0 auto" }}>
-        <a href="/" style={{ color: "#9cc5ff", textDecoration: "none" }}>
-          ← システム概要へ戻る
-        </a>
-        <header style={{ margin: "28px 0" }}>
-          <p style={{ color: "#8ba4c7", letterSpacing: ".12em" }}>
-            SECURITY &amp; ACCESS
-          </p>
-          <h1 style={{ fontSize: "clamp(2rem, 5vw, 3.5rem)", margin: "8px 0" }}>
-            認証・権限
-          </h1>
-          <p style={{ color: "#b8c7dc", lineHeight: 1.8 }}>
-            DiscordのGuild・専用ロールと、Minecraft LuckPermsとは独立したWebコンソールロールを確認します。
-          </p>
-        </header>
+    <PageContent className={styles.content}>
+      <PageHeader
+        className={styles.pageHeader}
+        eyebrow="SECURITY & ACCESS"
+        title="認証・権限"
+        description="DiscordのGuild・専用ロールと、Minecraft LuckPermsとは独立したWebコンソールロールを確認します。"
+        actions={<ActionLink href="/operations">操作基盤を確認</ActionLink>}
+      />
 
-        <section
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
-            gap: 16,
-          }}
-        >
-          <article style={cardStyle}>
-            <span style={labelStyle}>認証元</span>
-            <strong style={valueStyle}>{providerLabels[session.authProvider]}</strong>
-            <small style={smallStyle}>最終認可はServer側Session照合</small>
-          </article>
-          <article style={cardStyle}>
-            <span style={labelStyle}>Discordモード</span>
-            <strong style={valueStyle}>{session.discordMode}</strong>
-            <small style={smallStyle}>disabled → report → enforce</small>
-          </article>
-          <article style={cardStyle}>
-            <span style={labelStyle}>認証状態</span>
-            <strong style={valueStyle}>{statusLabels[session.status]}</strong>
-            <small style={smallStyle}>Access: {session.accessState}</small>
-          </article>
-          <article style={cardStyle}>
-            <span style={labelStyle}>Webロール</span>
-            <strong style={valueStyle}>
-              {session.role ? roleLabels[session.role] : "未割当"}
-            </strong>
-            <small style={smallStyle}>LuckPermsとは別管理</small>
-          </article>
-          <article style={cardStyle}>
-            <span style={labelStyle}>Discordユーザー</span>
-            <strong style={{ ...valueStyle, fontSize: 17 }}>
-              {session.displayName || session.discordUsername || "未確認"}
-            </strong>
-            <small style={smallStyle}>
-              {session.discordUserId ? `ID: ${session.discordUserId}` : "—"}
-            </small>
-          </article>
-          <article style={cardStyle}>
-            <span style={labelStyle}>一致ロール</span>
-            <strong style={valueStyle}>{session.matchedDiscordRoleIds.length}</strong>
-            <small style={smallStyle}>Role ID自体は表示しません</small>
-          </article>
-          <article style={cardStyle}>
-            <span style={labelStyle}>Session期限</span>
-            <strong style={{ ...valueStyle, fontSize: 16 }}>
-              {formatDateTime(session.sessionExpiresAt)}
-            </strong>
-            <small style={smallStyle}>期限後は再ログインが必要</small>
-          </article>
-        </section>
+      <MetricGrid className={styles.metricGrid} label="認証・権限サマリー">
+        <MetricCard
+          label="AUTH PROVIDER"
+          value={providerLabels[session.authProvider]}
+          detail="最終認可はServer側Session照合"
+        />
+        <MetricCard
+          label="DISCORD MODE"
+          value={session.discordMode}
+          detail="disabled → report → enforce"
+        />
+        <MetricCard
+          label="AUTH STATUS"
+          value={statusLabels[session.status]}
+          detail={`Access: ${session.accessState}`}
+          tone={statusTone(session.status)}
+        />
+        <MetricCard
+          label="WEB ROLE"
+          value={session.role ? roleLabels[session.role] : "未割当"}
+          detail="LuckPermsとは別管理"
+        />
+        <MetricCard
+          label="DISCORD USER"
+          value={session.displayName || session.discordUsername || "未確認"}
+          detail={session.discordUserId ? `ID: ${session.discordUserId}` : "—"}
+        />
+        <MetricCard
+          label="MATCHED ROLE"
+          value={session.matchedDiscordRoleIds.length}
+          detail="Role ID自体は表示しません"
+        />
+        <MetricCard
+          label="SESSION EXPIRES"
+          value={formatDateTime(session.sessionExpiresAt)}
+          detail="期限後は再ログインが必要"
+        />
+      </MetricGrid>
 
-        <section style={{ ...cardStyle, marginTop: 20 }}>
-          <h2 style={{ marginTop: 0 }}>{statusLabels[session.status]}</h2>
-          <p style={{ color: "#b8c7dc", lineHeight: 1.8 }}>
-            {statusMessage(session)}
-          </p>
-        </section>
+      <StatePanel
+        title={statusLabels[session.status]}
+        variant={stateVariant(session.status)}
+      >
+        {statusMessage(session)}
+      </StatePanel>
 
-        {canAdministerDiscordSecurity ? (
-          <section style={{ ...cardStyle, marginTop: 20 }}>
-            <h2 style={{ marginTop: 0 }}>セキュリティ管理</h2>
-            <p style={{ color: "#b8c7dc", lineHeight: 1.8 }}>
-              Discord Sessionで認証済みのAdministrator／Ownerだけが利用できます。Session Token、Cookie、Hash、Discord Role ID一覧は表示しません。
-            </p>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-                gap: 14,
-                marginTop: 18,
-              }}
-            >
-              <a href="/security/sessions" style={toolLinkStyle}>
-                <strong>Discord Session管理</strong>
-                <span style={smallStyle}>有効Sessionの確認・強制失効・期限状態</span>
-              </a>
-              <a href="/security/audit" style={toolLinkStyle}>
-                <strong>Discord認証監査</strong>
-                <span style={smallStyle}>ログイン成功・拒否・Logout・管理失効</span>
-              </a>
-            </div>
-          </section>
-        ) : null}
-
-        <section style={{ ...cardStyle, marginTop: 20 }}>
-          <h2 style={{ marginTop: 0 }}>ロール階層</h2>
-          <div style={{ display: "grid", gap: 12 }}>
-            {permissions.map((item) => (
-              <div
-                key={item.role}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "minmax(120px, 180px) 1fr auto",
-                  gap: 16,
-                  alignItems: "center",
-                  padding: "12px 0",
-                  borderBottom: "1px solid rgba(148,163,184,.16)",
-                }}
-              >
-                <strong>{roleLabels[item.role]}</strong>
-                <span style={{ color: "#b8c7dc" }}>{item.description}</span>
-                <span style={{ color: hasConsoleRole(session, item.role) ? "#86efac" : "#64748b" }}>
-                  {hasConsoleRole(session, item.role) ? "利用可能" : "権限なし"}
-                </span>
-              </div>
-            ))}
+      {canAdministerDiscordSecurity ? (
+        <section className={styles.panel} aria-label="セキュリティ管理">
+          <SectionHeader
+            eyebrow="ADMINISTRATION"
+            title="セキュリティ管理"
+            description="Discord Sessionで認証済みのAdministrator / Ownerだけが利用できます。Session Token、Cookie、Hash、Discord Role ID一覧は表示しません。"
+          />
+          <div className={styles.toolGrid}>
+            <a className={styles.toolLink} href="/security/sessions">
+              <strong>Discord Session管理</strong>
+              <span>有効Sessionの確認・強制失効・期限状態</span>
+            </a>
+            <a className={styles.toolLink} href="/security/audit">
+              <strong>Discord認証監査</strong>
+              <span>ログイン成功・拒否・Logout・管理失効</span>
+            </a>
           </div>
         </section>
+      ) : null}
 
-        <section style={{ ...cardStyle, marginTop: 20 }}>
-          <h2 style={{ marginTop: 0 }}>Discord認証の安全設計</h2>
-          <ul style={{ color: "#b8c7dc", lineHeight: 2 }}>
-            <li>対象GuildのMember情報から専用Role IDを確認します。</li>
-            <li>Membership Screening未完了ユーザーは拒否します。</li>
-            <li>複数のRoleが一致した場合は最上位のWebロールを採用します。</li>
-            <li>Discord OAuth TokenはRole確認後に保存せず、失効を試みます。</li>
-            <li>Session CookieはSecure・HttpOnly・SameSite=Laxです。</li>
-            <li>DBにはSession TokenのSHA-256 Hashだけを保存します。</li>
-          </ul>
-        </section>
+      <section className={styles.panel} aria-label="Webコンソールロール階層">
+        <SectionHeader
+          eyebrow="ROLE HIERARCHY"
+          title="ロール階層"
+          description="WebコンソールRBACはMinecraft LuckPermsと分離し、現在Sessionに許可された範囲だけを表示します。"
+        />
+        <div className={styles.roleList}>
+          {permissions.map((item) => {
+            const available = hasConsoleRole(session, item.role);
+            return (
+              <div className={styles.roleRow} key={item.role}>
+                <strong>{roleLabels[item.role]}</strong>
+                <span className={styles.roleDescription}>{item.description}</span>
+                <StatusBadge tone={available ? "success" : "neutral"}>
+                  {available ? "利用可能" : "権限なし"}
+                </StatusBadge>
+              </div>
+            );
+          })}
+        </div>
       </section>
-    </main>
+
+      <section className={styles.panel} aria-label="Discord認証の安全設計">
+        <SectionHeader
+          eyebrow="SECURITY BOUNDARY"
+          title="Discord認証の安全設計"
+          description="表示を統一しても、OAuth・Session・Guild Role Gateの境界は変更しません。"
+        />
+        <ul className={styles.safetyList}>
+          <li>対象GuildのMember情報から専用Role IDを確認します。</li>
+          <li>Membership Screening未完了ユーザーは拒否します。</li>
+          <li>複数のRoleが一致した場合は最上位のWebロールを採用します。</li>
+          <li>Discord OAuth TokenはRole確認後に保存せず、失効を試みます。</li>
+          <li>Session CookieはSecure・HttpOnly・SameSite=Laxです。</li>
+          <li>DBにはSession TokenのSHA-256 Hashだけを保存します。</li>
+        </ul>
+      </section>
+    </PageContent>
   );
 }
-
-const cardStyle = {
-  border: "1px solid rgba(148,163,184,.22)",
-  borderRadius: 18,
-  padding: 20,
-  background: "rgba(15, 27, 45, .82)",
-} as const;
-
-const labelStyle = {
-  display: "block",
-  color: "#8ba4c7",
-  fontSize: 12,
-  letterSpacing: ".08em",
-  marginBottom: 10,
-} as const;
-
-const valueStyle = {
-  display: "block",
-  fontSize: 24,
-  overflowWrap: "anywhere",
-} as const;
-
-const smallStyle = {
-  display: "block",
-  color: "#8294ad",
-  marginTop: 10,
-  lineHeight: 1.5,
-} as const;
-
-const toolLinkStyle = {
-  display: "grid",
-  alignContent: "start",
-  minHeight: 96,
-  border: "1px solid rgba(96,165,250,.35)",
-  borderRadius: 14,
-  padding: 16,
-  background: "rgba(30,64,175,.14)",
-  color: "#dbeafe",
-  textDecoration: "none",
-} as const;
