@@ -78,9 +78,10 @@ function notificationTone(
   dispatcherStale: boolean,
   dispatcherError: boolean,
 ): MetricTone {
-  if (failedCount > 0 || dispatcherStale || dispatcherError) return "danger";
-  if (!channelConfigured || retryCount > 0) return "warning";
   if (!channelEnabled) return "info";
+  if (!channelConfigured) return "warning";
+  if (failedCount > 0 || dispatcherStale || dispatcherError) return "danger";
+  if (retryCount > 0) return "warning";
   return "success";
 }
 
