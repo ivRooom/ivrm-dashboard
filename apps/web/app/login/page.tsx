@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { PageHeader, StatePanel } from "../../components/console-ui";
 import { getConsoleSession } from "../../lib/console-auth";
 import {
   getDiscordAuthConfiguration,
@@ -6,6 +7,7 @@ import {
   sanitizeReturnPath,
   type DiscordLoginFailureReason,
 } from "../../lib/discord-auth";
+import styles from "./login.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -67,96 +69,44 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const loginHref = `/api/auth/discord/start?returnTo=${encodeURIComponent(returnPath)}`;
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        display: "grid",
-        placeItems: "center",
-        padding: 24,
-        background:
-          "radial-gradient(circle at top, rgba(88, 101, 242, .24), transparent 38%), #07111f",
-        color: "#e8eef7",
-        fontFamily: "system-ui, sans-serif",
-      }}
-    >
-      <section
-        style={{
-          width: "min(100%, 520px)",
-          border: "1px solid rgba(148, 163, 184, .28)",
-          borderRadius: 24,
-          padding: "clamp(24px, 6vw, 42px)",
-          background: "rgba(15, 27, 45, .92)",
-          boxShadow: "0 24px 80px rgba(0, 0, 0, .32)",
-          backdropFilter: "blur(18px)",
-        }}
-      >
-        <p style={{ color: "#8ba4c7", letterSpacing: ".14em", marginTop: 0 }}>
-          IVRM CONSOLE
-        </p>
-        <h1 style={{ fontSize: "clamp(2rem, 8vw, 3.2rem)", margin: "8px 0 16px" }}>
-          Discordでログイン
-        </h1>
-        <p style={{ color: "#b8c7dc", lineHeight: 1.8 }}>
-          ivRooomのDiscordサーバーに参加し、管理コンソール専用ロールを持つメンバーだけが利用できます。
-        </p>
+    <main className={styles.loginPage}>
+      <section className={styles.loginCard} aria-label="IVRM Consoleログイン">
+        <div className={styles.brandLockup} aria-label="IVRM Console">
+          <span className={styles.brandMark} aria-hidden="true">
+            IV
+          </span>
+          <span>IVRM Console</span>
+        </div>
+
+        <PageHeader
+          className={styles.loginHeader}
+          eyebrow="SECURE ACCESS / DISCORD OAUTH"
+          title="Discordでログイン"
+          description="ivRooomのDiscordサーバーに参加し、管理コンソール専用ロールを持つメンバーだけが利用できます。"
+        />
 
         {knownError ? (
-          <div
-            role="alert"
-            style={{
-              border: "1px solid rgba(248, 113, 113, .5)",
-              borderRadius: 14,
-              padding: 14,
-              margin: "20px 0",
-              color: "#fecaca",
-              background: "rgba(127, 29, 29, .22)",
-              lineHeight: 1.7,
-            }}
-          >
-            {knownError}
+          <div className={styles.messageStack}>
+            <StatePanel title="ログイン状態を確認してください" variant="error">
+              {knownError}
+            </StatePanel>
           </div>
         ) : null}
 
         {loggedOut ? (
-          <div
-            role="status"
-            style={{
-              border: "1px solid rgba(74, 222, 128, .4)",
-              borderRadius: 14,
-              padding: 14,
-              margin: "20px 0",
-              color: "#bbf7d0",
-              background: "rgba(20, 83, 45, .2)",
-            }}
-          >
-            ログアウトしました。
+          <div className={styles.messageStack} role="status">
+            <div className={styles.successNotice}>
+              <strong>ログアウトしました</strong>
+              <span>必要になったら、下のボタンからもう一度ログインできます。</span>
+            </div>
           </div>
         ) : null}
 
         {configured ? (
-          <a
-            href={loginHref}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 10,
-              width: "100%",
-              boxSizing: "border-box",
-              marginTop: 26,
-              borderRadius: 14,
-              padding: "14px 18px",
-              background: "#5865f2",
-              color: "white",
-              fontWeight: 800,
-              textDecoration: "none",
-              boxShadow: "0 12px 30px rgba(88, 101, 242, .3)",
-            }}
-          >
+          <a className={styles.discordButton} href={loginHref}>
             <svg
               aria-hidden="true"
-              width="22"
-              height="22"
+              className={styles.discordIcon}
               viewBox="0 0 24 24"
               fill="currentColor"
             >
@@ -165,36 +115,22 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             Discordで続行
           </a>
         ) : (
-          <div
-            style={{
-              marginTop: 26,
-              border: "1px solid rgba(250, 204, 21, .4)",
-              borderRadius: 14,
-              padding: 16,
-              color: "#fef08a",
-              background: "rgba(113, 63, 18, .2)",
-              lineHeight: 1.7,
-            }}
+          <StatePanel
+            className={styles.configWarning}
+            title="Discord認証を利用できません"
+            variant="warning"
           >
             Discord認証の環境変数が未設定です。現在のモード: {mode}
-          </div>
+          </StatePanel>
         )}
 
-        <div
-          style={{
-            display: "grid",
-            gap: 10,
-            marginTop: 28,
-            paddingTop: 22,
-            borderTop: "1px solid rgba(148, 163, 184, .18)",
-            color: "#8294ad",
-            fontSize: 13,
-            lineHeight: 1.7,
-          }}
-        >
+        <footer className={styles.securityNotes}>
+          <strong>SECURITY</strong>
           <span>DiscordのパスワードはIVRM Consoleへ送信されません。</span>
-          <span>OAuth Tokenはロール確認後に保存せず、Session CookieはHttpOnlyで保護します。</span>
-        </div>
+          <span>
+            OAuth Tokenはロール確認後に保存せず、Session CookieはHttpOnlyで保護します。
+          </span>
+        </footer>
       </section>
     </main>
   );
