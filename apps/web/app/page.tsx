@@ -128,7 +128,10 @@ function formatPercent(value: number | null): string {
   return value === null ? "未取得" : `${value.toFixed(1)}%`;
 }
 
-function attentionTone(value: number | null, severity: "warning" | "danger"): "neutral" | "warning" | "danger" {
+function attentionTone(
+  value: number | null,
+  severity: "warning" | "danger",
+): "neutral" | "warning" | "danger" {
   if (value === null || value === 0) return "neutral";
   return severity;
 }
@@ -154,12 +157,15 @@ export default async function HomePage() {
       <AutoRefresh intervalMs={30_000} />
       <PageContent className={styles.content}>
         <PageHeader
+          className={styles.pageHeader}
           eyebrow="OPERATIONS OVERVIEW"
           title="IVRM Console Overview"
           description="正常か、今すぐ対応が必要か、Minecraftが遊べる状態かを最初に判断するための運用Overviewです。"
           actions={
             <>
-              <ActionLink href="/incidents" variant="primary">Incident Center</ActionLink>
+              <ActionLink href="/incidents" variant="primary">
+                Incident Center
+              </ActionLink>
               <ActionLink href="/reliability">Reliability</ActionLink>
             </>
           }
@@ -171,7 +177,7 @@ export default async function HomePage() {
           </StatePanel>
         ) : null}
 
-        <section className={styles.section} aria-labelledby="system-status-title">
+        <section className={styles.section} aria-label="現在のサービス状態">
           <SectionHeader
             eyebrow="SYSTEM STATUS"
             title="現在のサービス状態"
@@ -189,7 +195,9 @@ export default async function HomePage() {
                 <strong>
                   {minecraft?.players.online ?? "—"} / {minecraft?.players.max ?? "—"} players
                 </strong>
-                <small>{formatRelativeTime(minecraft?.checkedAt ?? null, data.generatedAt)}にProbe更新</small>
+                <small>
+                  {formatRelativeTime(minecraft?.checkedAt ?? null, data.generatedAt)}にProbe更新
+                </small>
               </div>
             </a>
 
@@ -228,7 +236,9 @@ export default async function HomePage() {
               </div>
               <div>
                 <strong>{data.notification?.failedCount ?? "—"} failed</strong>
-                <small>Retry {data.notification?.retryCount ?? "—"} / Pending {data.notification?.pendingCount ?? "—"}</small>
+                <small>
+                  Retry {data.notification?.retryCount ?? "—"} / Pending {data.notification?.pendingCount ?? "—"}
+                </small>
               </div>
             </a>
 
@@ -247,7 +257,7 @@ export default async function HomePage() {
           </div>
         </section>
 
-        <section className={styles.section} aria-labelledby="attention-title">
+        <section className={styles.section} aria-label="要対応">
           <SectionHeader
             eyebrow="NEEDS ATTENTION"
             title="要対応"
@@ -288,7 +298,7 @@ export default async function HomePage() {
           </MetricGrid>
         </section>
 
-        <section className={styles.section} aria-labelledby="quick-status-title">
+        <section className={styles.section} aria-label="MinecraftとInfrastructureの現在値">
           <SectionHeader
             eyebrow="QUICK STATUS"
             title="Minecraft / Infrastructure"
@@ -312,27 +322,44 @@ export default async function HomePage() {
                   </div>
                   <div className={styles.fact}>
                     <span>TPS 1 / 5 / 15m</span>
-                    <strong>{formatTps([minecraft.performance.tps1m, minecraft.performance.tps5m, minecraft.performance.tps15m])}</strong>
+                    <strong>
+                      {formatTps([
+                        minecraft.performance.tps1m,
+                        minecraft.performance.tps5m,
+                        minecraft.performance.tps15m,
+                      ])}
+                    </strong>
                     <small>{minecraft.performance.source ?? "performance source未取得"}</small>
                   </div>
                   <div className={styles.fact}>
                     <span>MSPT Median / P95</span>
-                    <strong>{formatMspt(minecraft.performance.msptMedian1m, minecraft.performance.msptP951m)}</strong>
+                    <strong>
+                      {formatMspt(
+                        minecraft.performance.msptMedian1m,
+                        minecraft.performance.msptP951m,
+                      )}
+                    </strong>
                     <small>1 minute window</small>
                   </div>
                   <div className={styles.fact}>
                     <span>Public / Backend</span>
-                    <strong>{formatLatency(minecraft.publicEndpoint.latencyMs)} / {formatLatency(minecraft.backendProbe.latencyMs)}</strong>
+                    <strong>
+                      {formatLatency(minecraft.publicEndpoint.latencyMs)} / {formatLatency(minecraft.backendProbe.latencyMs)}
+                    </strong>
                     <small>接続Latency</small>
                   </div>
                   <div className={styles.fact}>
                     <span>Velocity</span>
-                    <strong>{minecraft.velocity ? containerLabels[minecraft.velocity.status] : "未受信"}</strong>
+                    <strong>
+                      {minecraft.velocity ? containerLabels[minecraft.velocity.status] : "未受信"}
+                    </strong>
                     <small>{minecraft.velocity?.state ?? "Container未取得"}</small>
                   </div>
                   <div className={styles.fact}>
                     <span>Backend</span>
-                    <strong>{minecraft.backend ? containerLabels[minecraft.backend.status] : "未受信"}</strong>
+                    <strong>
+                      {minecraft.backend ? containerLabels[minecraft.backend.status] : "未受信"}
+                    </strong>
                     <small>{minecraft.backend?.state ?? "Container未取得"}</small>
                   </div>
                 </div>
@@ -393,7 +420,7 @@ export default async function HomePage() {
           </div>
         </section>
 
-        <section className={styles.section} aria-labelledby="recent-activity-title">
+        <section className={styles.section} aria-label="直近の運用変化">
           <SectionHeader
             eyebrow="RECENT ACTIVITY"
             title="直近の運用変化"
