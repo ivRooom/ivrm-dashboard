@@ -8,6 +8,164 @@
   gap: var(--space-3);
 }
 
+.editorPanel,
+.manageCard {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-default);
+  padding: var(--card-padding);
+}
+
+.editorPanel {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.editorPanel h3,
+.editorPanel p,
+.manageCard p {
+  margin: 0;
+}
+
+.editorPanel p,
+.manageCard p {
+  color: var(--text-secondary);
+  font-size: var(--font-size-md);
+  line-height: var(--line-height-body);
+}
+
+.editorForm {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+}
+
+.editorForm label,
+.inlineActionForm label {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.editorForm input,
+.editorForm select,
+.editorForm textarea {
+  width: 100%;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.editorForm input,
+.editorForm select {
+  min-height: var(--control-height);
+}
+
+.editorForm textarea {
+  resize: vertical;
+  min-height: 88px;
+  line-height: var(--line-height-body);
+}
+
+.editorForm input:focus-visible,
+.editorForm select:focus-visible,
+.editorForm textarea:focus-visible,
+.editorForm button:focus-visible,
+.inlineActionForm button:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: var(--focus-offset);
+}
+
+.fieldWide,
+.formActions {
+  grid-column: 1 / -1;
+}
+
+.formActions,
+.inlineActionForm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.formActions span {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.editorForm button,
+.inlineActionForm button {
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-md);
+  background: var(--surface-accent-subtle);
+  color: var(--text-accent);
+  min-height: var(--control-height);
+  padding: 8px 14px;
+  font: inherit;
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.editorForm button:hover,
+.inlineActionForm button:hover {
+  background: var(--surface-interactive-hover);
+  border-color: var(--border-interactive);
+}
+
+.manageList {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.manageCard {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.manageCard header {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  align-items: flex-start;
+}
+
+.manageCard header > div {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.manageCard header span {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.inlineActionForm {
+  padding-top: var(--space-2);
+}
+
+.confirm {
+  display: flex !important;
+  grid-template-columns: none !important;
+  align-items: flex-start;
+  gap: var(--space-2) !important;
+  color: var(--text-secondary);
+  line-height: var(--line-height-body);
+}
+
+.confirm input {
+  width: auto;
+  min-height: auto;
+  margin-top: 3px;
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -69,7 +227,21 @@
 }
 
 @media (max-width: 720px) {
+  .editorForm {
+    grid-template-columns: 1fr;
+  }
+
+  .fieldWide,
+  .formActions {
+    grid-column: auto;
+  }
+
   .table {
     min-width: 680px;
+  }
+
+  .manageCard header {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
