@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { getConsoleSession, hasConsoleRole } from "../../../../lib/console-auth";
 import {
@@ -228,7 +227,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const publicId = typeof body.publicId === "string" ? body.publicId : "";
-  const requestId = typeof body.requestId === "string" ? body.requestId : randomUUID();
+  const requestId = typeof body.requestId === "string" ? body.requestId : "";
   if (!PUBLIC_ID_PATTERN.test(publicId) || !UUID_PATTERN.test(requestId)) {
     return wantsJson(request)
       ? jsonResponse({ error: "incident_identity_invalid" }, 400)
