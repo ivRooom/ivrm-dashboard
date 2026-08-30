@@ -48,6 +48,7 @@ export type OverviewSnapshot = {
     monitoring: boolean;
     minecraft: boolean;
     incidents: boolean;
+    backup: boolean;
     notifications: boolean;
   };
   status: {
@@ -84,7 +85,12 @@ function unavailableIncidentService(id: "host" | "container" | "backup"): Reliab
     longestRecoverySeconds: null,
     latestRecoveredAt: null,
     affectedEntityCount: 0,
-    detailHref: id === "host" ? "/hosts" : id === "container" ? "/containers" : "/backups?range=24h",
+    detailHref:
+      id === "host"
+        ? "/hosts"
+        : id === "container"
+          ? "/containers"
+          : "/backups?range=24h",
   };
 }
 
@@ -121,14 +127,18 @@ function infrastructureHealth(monitoring: MonitoringSnapshot | null): Reliabilit
   if (!monitoring || monitoring.hosts.length === 0) return "unknown";
   if (
     monitoring.hosts.some((host) => host.status === "offline") ||
-    monitoring.containers.some((container) =>
-      container.status === "offline" || container.status === "error"
+    monitoring.containers.some(
+      (container) => container.status === "offline" || container.status === "error",
     )
-  ) return "critical";
+  ) {
+    return "critical";
+  }
   if (
     monitoring.hosts.some((host) => host.status === "stale") ||
     monitoring.containers.some((container) => container.status === "stale")
-  ) return "degraded";
+  ) {
+    return "degraded";
+  }
   return "operational";
 }
 
@@ -164,6 +174,7 @@ function recoveryActivity(incident: RecoveredIncident): OverviewActivity {
 function recentActivities(
   incidents: UnifiedIncidentCenterSnapshot | null,
   notification: NotificationSummary | null,
+  referenceAt: string,
 ): OverviewActivity[] {
   const activities: OverviewActivity[] = [];
   if (incidents) {
@@ -183,8 +194,19 @@ function recentActivities(
       tone: notification.failedCount > 0 ? "danger" : "info",
     });
   }
+
+  const rangeEnd = Date.parse(referenceAt);
+  const rangeStart = rangeEnd - 24 * 60 * 60 * 1_000;
   return activities
-    .filter((item) => Number.isFinite(Date.parse(item.occurredAt)))
+    .filter((item) => {
+      const occurredAt = Date.parse(item.occurredAt);
+      return (
+        Number.isFinite(occurredAt) &&
+        Number.isFinite(rangeEnd) &&
+        occurredAt >= rangeStart &&
+        occurredAt <= rangeEnd
+      );
+    })
     .sort((left, right) => Date.parse(right.occurredAt) - Date.parse(left.occurredAt))
     .slice(0, 6);
 }
@@ -217,25 +239,25 @@ export async function getOverviewSnapshot(): Promise<OverviewSnapshot> {
     console.error("OverviewのNotification Summary取得に失敗しました", notificationResult.reason);
   }
 
+  const generatedAt = new Date().toISOString();
   const [hostService, containerService, backupService] = incidentServices(incidents);
   const notificationService = buildNotificationService(notification);
   const services = [hostService, containerService, backupService, notificationService];
   const staleOrOffline = monitoring
     ? monitoring.hosts.filter((host) => host.status === "stale" || host.status === "offline").length +
-      monitoring.containers.filter((container) => container.status === "stale" || container.status === "offline").length
-    : null;
-  const backupCritical = incidents
-    ? incidents.active.filter(
-        (incident) => incident.entityType === "backup" && incident.severity === "critical",
+      monitoring.containers.filter(
+        (container) => container.status === "stale" || container.status === "offline",
       ).length
     : null;
+  const backupCritical =
+    incidents?.backupDataAvailable === true
+      ? incidents.active.filter(
+          (incident) => incident.entityType === "backup" && incident.severity === "critical",
+        ).length
+      : null;
 
   return {
-    generatedAt:
-      monitoring?.generatedAt ??
-      incidents?.generatedAt ??
-      notification?.generatedAt ??
-      new Date().toISOString(),
+    generatedAt,
     monitoring,
     minecraft,
     incidents,
@@ -244,6 +266,7 @@ export async function getOverviewSnapshot(): Promise<OverviewSnapshot> {
       monitoring: monitoring !== null,
       minecraft: minecraft !== null,
       incidents: incidents !== null,
+      backup: incidents?.backupDataAvailable === true,
       notifications: notification !== null,
     },
     status: {
@@ -260,6 +283,6 @@ export async function getOverviewSnapshot(): Promise<OverviewSnapshot> {
       backupCritical,
       staleOrOffline,
     },
-    activities: recentActivities(incidents, notification),
+    activities: recentActivities(incidents, notification, generatedAt),
   };
 }
