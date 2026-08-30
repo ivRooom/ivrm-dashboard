@@ -44,6 +44,21 @@ export type StatusMaintenanceActionInput = StatusCenterMutationActor & {
   requestId: string;
 };
 
+export type CreateStatusAnnouncementInput = StatusCenterMutationActor & {
+  kind: "info" | "warning";
+  title: string;
+  body: string;
+  affectedServiceIds: string[] | null;
+  publishAt: string;
+  expiresAt: string | null;
+  idempotencyKey: string;
+};
+
+export type StatusAnnouncementActionInput = StatusCenterMutationActor & {
+  publicId: string;
+  requestId: string;
+};
+
 type IncidentMutationResult = {
   publicId: string;
   lifecycleStatus: string;
@@ -53,6 +68,11 @@ type IncidentMutationResult = {
 type MaintenanceMutationResult = {
   publicId: string;
   publicationState: "draft" | "published" | "cancelled";
+};
+
+type AnnouncementMutationResult = {
+  publicId: string;
+  publicationState: "draft" | "published" | "archived";
 };
 
 function requireEnvironment(name: string): string {
@@ -133,6 +153,22 @@ function parseMaintenanceResult(value: unknown): MaintenanceMutationResult {
   };
 }
 
+function parseAnnouncementResult(value: unknown): AnnouncementMutationResult {
+  const record = singleRow(value, "Status Announcement Mutation");
+  if (
+    typeof record.public_id !== "string" ||
+    !/^ANN-[A-F0-9]{12}$/.test(record.public_id) ||
+    typeof record.publication_state !== "string" ||
+    !["draft", "published", "archived"].includes(record.publication_state)
+  ) {
+    throw new Error("Status Announcement Mutation応答値が不正です");
+  }
+  return {
+    publicId: record.public_id,
+    publicationState: record.publication_state as AnnouncementMutationResult["publicationState"],
+  };
+}
+
 function actorParams(actor: StatusCenterMutationActor): Record<string, unknown> {
   return {
     p_actor_email: actor.actorEmail,
@@ -206,6 +242,41 @@ export async function cancelStatusMaintenance(
   input: StatusMaintenanceActionInput,
 ): Promise<MaintenanceMutationResult> {
   return parseMaintenanceResult(await callRpc("cancel_status_maintenance_v1", {
+    p_public_id: input.publicId,
+    p_request_id: input.requestId,
+    ...actorParams(input),
+  }));
+}
+
+export async function createStatusAnnouncement(
+  input: CreateStatusAnnouncementInput,
+): Promise<AnnouncementMutationResult> {
+  return parseAnnouncementResult(await callRpc("create_status_announcement_v1", {
+    p_kind: input.kind,
+    p_title: input.title,
+    p_body: input.body,
+    p_affected_service_ids: input.affectedServiceIds,
+    p_publish_at: input.publishAt,
+    p_expires_at: input.expiresAt,
+    p_idempotency_key: input.idempotencyKey,
+    ...actorParams(input),
+  }));
+}
+
+export async function publishStatusAnnouncement(
+  input: StatusAnnouncementActionInput,
+): Promise<AnnouncementMutationResult> {
+  return parseAnnouncementResult(await callRpc("publish_status_announcement_v1", {
+    p_public_id: input.publicId,
+    p_request_id: input.requestId,
+    ...actorParams(input),
+  }));
+}
+
+export async function archiveStatusAnnouncement(
+  input: StatusAnnouncementActionInput,
+): Promise<AnnouncementMutationResult> {
+  return parseAnnouncementResult(await callRpc("archive_status_announcement_v1", {
     p_public_id: input.publicId,
     p_request_id: input.requestId,
     ...actorParams(input),
