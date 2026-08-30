@@ -3,6 +3,10 @@
   gap: var(--page-section-gap);
 }
 
+.pageHeader {
+  margin-bottom: 0;
+}
+
 .section {
   min-width: 0;
 }
