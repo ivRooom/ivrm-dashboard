@@ -1,5 +1,17 @@
 import { AutoRefresh } from "../../components/auto-refresh";
 import {
+  ActionLink,
+  MetricCard,
+  MetricGrid,
+  PageContent,
+  PageHeader,
+  SectionHeader,
+  StatePanel,
+  StatusBadge,
+  TableShell,
+  type ConsoleTone,
+} from "../../components/console-ui";
+import {
   getNotificationCenterSnapshot,
   type NotificationDelivery,
   type NotificationSeverity,
@@ -10,6 +22,8 @@ import {
 import styles from "./notifications.module.css";
 
 export const dynamic = "force-dynamic";
+
+type MetricTone = Exclude<ConsoleTone, "maintenance">;
 
 const severityLabels: Record<NotificationSeverity, string> = {
   info: "情報", warning: "注意", critical: "重大", recovery: "復旧",
@@ -42,15 +56,33 @@ function formatRelative(value: string | null, now: string): string {
   return `${Math.floor(diff / 86400)}日前`;
 }
 
-function severityClass(severity: NotificationSeverity): string {
-  return severity === "critical" ? styles.critical : severity === "warning" ? styles.warning : severity === "recovery" ? styles.recovery : styles.info;
+function severityTone(severity: NotificationSeverity): ConsoleTone {
+  if (severity === "critical") return "danger";
+  if (severity === "warning") return "warning";
+  if (severity === "recovery") return "success";
+  return "info";
 }
 
-function statusClass(status: NotificationStatus): string {
-  if (status === "sent") return styles.recovery;
-  if (status === "failed") return styles.critical;
-  if (status === "retry" || status === "pending" || status === "sending") return styles.warning;
-  return styles.muted;
+function statusTone(status: NotificationStatus): ConsoleTone {
+  if (status === "sent") return "success";
+  if (status === "failed") return "danger";
+  if (status === "retry" || status === "pending" || status === "sending") return "warning";
+  return "neutral";
+}
+
+function notificationTone(
+  channelEnabled: boolean,
+  channelConfigured: boolean,
+  failedCount: number,
+  retryCount: number,
+  dispatcherStale: boolean,
+  dispatcherError: boolean,
+): MetricTone {
+  if (!channelEnabled) return "info";
+  if (!channelConfigured) return "warning";
+  if (failedCount > 0 || dispatcherStale || dispatcherError) return "danger";
+  if (retryCount > 0) return "warning";
+  return "success";
 }
 
 function signalKey(signal: NotificationSignal): string {
@@ -96,28 +128,82 @@ export default async function NotificationsPage() {
   return (
     <>
       <AutoRefresh intervalMs={30_000} />
-      <section className={`content ${styles.notificationContent}`}>
-        <header className={styles.pageHeader}>
-          <div>
-            <p className={styles.eyebrow}>ALERTING / DELIVERY / SUPPRESSION</p>
-            <h1>通知センター</h1>
-            <p>Host・Container・Backup・SLO Burn Rateの異常をDurable Outboxへ集約し、発生・重大化・復旧・配送結果を同じ画面で追跡します。</p>
-          </div>
-          <div className={styles.headerActions}><a href="/incidents" className={styles.secondaryLink}>Incident Center</a><a href="/reliability#burn-rate" className={styles.secondaryLink}>Reliability Center</a><a href="/backups" className={styles.secondaryLink}>Backup Center</a></div>
-        </header>
+      <PageContent className={styles.notificationContent}>
+        <PageHeader
+          actions={
+            <>
+              <ActionLink href="/incidents">Incident Center</ActionLink>
+              <ActionLink href="/reliability#burn-rate">Reliability Center</ActionLink>
+              <ActionLink href="/backups">Backup Center</ActionLink>
+            </>
+          }
+          description="Host・Container・Backup・SLO Burn Rateの異常をDurable Outboxへ集約し、発生・重大化・復旧・配送結果を同じ画面で追跡します。"
+          eyebrow="ALERTING / DELIVERY / SUPPRESSION"
+          title="通知センター"
+        />
 
         {loadError ? (
-          <div className="empty error-panel" role="alert"><strong>Notification情報を取得できませんでした</strong><p>Notification RPC・Supabase Service Role接続を確認してください。</p></div>
+          <StatePanel title="Notification情報を取得できませんでした" variant="error">
+            Notification RPC・Supabase Service Role接続を確認してください。
+          </StatePanel>
         ) : summary ? (
           <>
-            <section className={styles.summaryGrid} aria-label="Notificationサマリー">
-              <article className={summary.failedCount || dispatcherStale || dispatcherError ? styles.critical : summary.retryCount ? styles.warning : undefined}><span>NOTIFICATION HEALTH</span><strong>{notificationHealth}</strong><small>{summary.channelDisplayName}</small></article>
-              <article><span>ACTIVE SIGNALS</span><strong>{summary.activeSignalCount}</strong><small>重大 {summary.activeCriticalCount} / 注意 {summary.activeWarningCount}</small></article>
-              <article className={summary.pendingCount + summary.retryCount > 0 ? styles.warning : undefined}><span>QUEUE</span><strong>{summary.pendingCount} / {summary.retryCount}</strong><small>Pending / Retry</small></article>
-              <article className={summary.failedCount > 0 ? styles.critical : undefined}><span>FAILED</span><strong>{summary.failedCount}</strong><small>最大5回Retry後</small></article>
-              <article><span>SENT 24H</span><strong>{summary.sent24hCount}</strong><small>Latest {formatDateTime(summary.lastDeliveryAt)}</small></article>
-              <article className={summary.suppressedCount > 0 ? styles.muted : undefined}><span>SUPPRESSED</span><strong>{summary.suppressedCount}</strong><small>Active rules {summary.activeSuppressionCount}</small></article>
-            </section>
+            <MetricGrid label="Notificationサマリー">
+              <MetricCard
+                detail={summary.channelDisplayName}
+                label="NOTIFICATION HEALTH"
+                tone={notificationTone(
+                  summary.channelEnabled,
+                  summary.channelConfigured,
+                  summary.failedCount,
+                  summary.retryCount,
+                  dispatcherStale,
+                  dispatcherError,
+                )}
+                value={
+                  <StatusBadge
+                    tone={notificationTone(
+                      summary.channelEnabled,
+                      summary.channelConfigured,
+                      summary.failedCount,
+                      summary.retryCount,
+                      dispatcherStale,
+                      dispatcherError,
+                    )}
+                  >
+                    {notificationHealth}
+                  </StatusBadge>
+                }
+              />
+              <MetricCard
+                detail={`重大 ${summary.activeCriticalCount} / 注意 ${summary.activeWarningCount}`}
+                label="ACTIVE SIGNALS"
+                tone={summary.activeCriticalCount > 0 ? "danger" : summary.activeWarningCount > 0 ? "warning" : "neutral"}
+                value={summary.activeSignalCount}
+              />
+              <MetricCard
+                detail="Pending / Retry"
+                label="QUEUE"
+                tone={summary.pendingCount + summary.retryCount > 0 ? "warning" : "neutral"}
+                value={`${summary.pendingCount} / ${summary.retryCount}`}
+              />
+              <MetricCard
+                detail="最大5回Retry後"
+                label="FAILED"
+                tone={summary.failedCount > 0 ? "danger" : "neutral"}
+                value={summary.failedCount}
+              />
+              <MetricCard
+                detail={`Latest ${formatDateTime(summary.lastDeliveryAt)}`}
+                label="SENT 24H"
+                value={summary.sent24hCount}
+              />
+              <MetricCard
+                detail={`Active rules ${summary.activeSuppressionCount}`}
+                label="SUPPRESSED"
+                value={summary.suppressedCount}
+              />
+            </MetricGrid>
 
             <section className={styles.channelPanel}>
               <div><p className={styles.eyebrow}>DELIVERY CHANNEL</p><h2>{summary.channelDisplayName}</h2><p>Signal判定とOutboxは常時稼働し、Discord配送だけを独立してON/OFFできます。</p></div>
@@ -127,15 +213,27 @@ export default async function NotificationsPage() {
                 <div><span>Dispatcher</span><strong>{summary.dispatcherLastInvokedAt ? formatRelative(summary.dispatcherLastInvokedAt, generatedAt) : "未実行"}</strong></div>
                 <div><span>Last Error</span><strong>{summary.dispatcherLastErrorCode ?? summary.channelLastErrorCode ?? "—"}</strong></div>
               </div>
-              {!summary.channelConfigured ? <div className={styles.setupNotice}><strong>配送セットアップ待ち</strong><p>Supabase Edge Function Secretへ<code>DISCORD_WEBHOOK_URL</code>を登録後、Channelを有効化します。Webhook URLはDB・Outbox・GitHubへ保存しません。</p></div> : null}
+              {!summary.channelConfigured ? (
+                <StatePanel className={styles.setupNotice} title="配送セットアップ待ち" variant="warning">
+                  <>Supabase Edge Function Secretへ<code>DISCORD_WEBHOOK_URL</code>を登録後、Channelを有効化します。Webhook URLはDB・Outbox・GitHubへ保存しません。</>
+                </StatePanel>
+              ) : null}
             </section>
 
             <section className={styles.sectionBlock}>
-              <div className={styles.sectionHeading}><div><span>ACTIVE SIGNALS</span><h2>現在の通知対象</h2></div><p>同じSignalは重複通知せず、Warning→CriticalだけをEscalationとして追加送信します。SLO Burn RateのCritical→Warningは無音で降格します。</p></div>
-              {signals.length === 0 ? <div className={styles.emptyState}><strong>Active Signalはありません</strong><p>Host Heartbeat・Container Event・Backup SLA・SLO Burn Rateは現在通知対象外です。</p></div> : (
+              <SectionHeader
+                description="同じSignalは重複通知せず、Warning→CriticalだけをEscalationとして追加送信します。SLO Burn RateのCritical→Warningは無音で降格します。"
+                eyebrow="ACTIVE SIGNALS"
+                title="現在の通知対象"
+              />
+              {signals.length === 0 ? (
+                <StatePanel title="Active Signalはありません">
+                  Host Heartbeat・Container Event・Backup SLA・SLO Burn Rateは現在通知対象外です。
+                </StatePanel>
+              ) : (
                 <div className={styles.signalGrid}>{signals.map((signal) => (
                   <article className={styles.signalCard} key={signal.signalKey}>
-                    <div className={styles.cardHeading}><div><p className={styles.entityType}>{signalKey(signal)}</p><h3>{signal.entityName}</h3><small>{signal.serverId}</small></div><span className={`${styles.badge} ${severityClass(signal.severity)}`}>{severityLabels[signal.severity]}</span></div>
+                    <div className={styles.cardHeading}><div><p className={styles.entityType}>{signalKey(signal)}</p><h3>{signal.entityName}</h3><small>{signal.serverId}</small></div><StatusBadge tone={severityTone(signal.severity)}>{severityLabels[signal.severity]}</StatusBadge></div>
                     <p className={styles.reason}>{signal.reason}</p>
                     <div className={styles.signalMeta}><span>開始 {formatDateTime(signal.openedAt)}</span><span>最終確認 {formatRelative(signal.lastSeenAt, generatedAt)}</span></div>
                     <a className={styles.inlineLink} href={signal.detailHref}>対象を開く</a>
@@ -145,32 +243,48 @@ export default async function NotificationsPage() {
             </section>
 
             <section className={styles.sectionBlock}>
-              <div className={styles.sectionHeading}><div><span>DELIVERY HISTORY</span><h2>通知履歴</h2></div><p>Webhook本文そのものではなく、配送判断に必要な構造化フィールドと結果だけを保持します。</p></div>
-              {deliveries.length === 0 ? <div className={styles.emptyState}>通知Outboxはまだ空です。</div> : (
-                <div className={styles.tableShell}><table><thead><tr><th>日時</th><th>対象</th><th>Transition</th><th>内容</th><th>Status</th><th>Delivery</th></tr></thead><tbody>
-                  {deliveries.map((delivery) => <tr key={delivery.rowId}>
-                    <td>{formatDateTime(delivery.occurredAt)}<small>{formatRelative(delivery.occurredAt, generatedAt)}</small></td>
-                    <td><strong>{delivery.entityName}</strong><small>{deliveryMeta(delivery)}</small></td>
-                    <td><span className={`${styles.badge} ${severityClass(delivery.severity)}`}>{transitionLabels[delivery.transition]} / {severityLabels[delivery.severity]}</span></td>
-                    <td><strong>{delivery.title}</strong><small>{delivery.message}</small><a href={delivery.detailHref}>詳細</a></td>
-                    <td><span className={`${styles.badge} ${statusClass(delivery.status)}`}>{statusLabels[delivery.status]}</span><small>{delivery.suppressionReason ?? delivery.lastErrorCode ?? "—"}</small></td>
-                    <td>{delivery.sentAt ? formatDateTime(delivery.sentAt) : "—"}<small>{delivery.attempts} attempts</small></td>
-                  </tr>)}
-                </tbody></table></div>
+              <SectionHeader
+                description="Webhook本文そのものではなく、配送判断に必要な構造化フィールドと結果だけを保持します。"
+                eyebrow="DELIVERY HISTORY"
+                title="通知履歴"
+              />
+              {deliveries.length === 0 ? (
+                <StatePanel title="通知Outboxはまだ空です" />
+              ) : (
+                <TableShell className={styles.tableShell} label="通知履歴">
+                  <table><thead><tr><th>日時</th><th>対象</th><th>Transition</th><th>内容</th><th>Status</th><th>Delivery</th></tr></thead><tbody>
+                    {deliveries.map((delivery) => <tr key={delivery.rowId}>
+                      <td>{formatDateTime(delivery.occurredAt)}<small>{formatRelative(delivery.occurredAt, generatedAt)}</small></td>
+                      <td><strong>{delivery.entityName}</strong><small>{deliveryMeta(delivery)}</small></td>
+                      <td><StatusBadge tone={severityTone(delivery.severity)}>{transitionLabels[delivery.transition]} / {severityLabels[delivery.severity]}</StatusBadge></td>
+                      <td><strong>{delivery.title}</strong><small>{delivery.message}</small><a href={delivery.detailHref}>詳細</a></td>
+                      <td><StatusBadge tone={statusTone(delivery.status)}>{statusLabels[delivery.status]}</StatusBadge><small>{delivery.suppressionReason ?? delivery.lastErrorCode ?? "—"}</small></td>
+                      <td>{delivery.sentAt ? formatDateTime(delivery.sentAt) : "—"}<small>{delivery.attempts} attempts</small></td>
+                    </tr>)}
+                  </tbody></table>
+                </TableShell>
               )}
             </section>
 
             <section className={styles.sectionBlock}>
-              <div className={styles.sectionHeading}><div><span>SUPPRESSION</span><h2>通知抑制</h2></div><p>Container Maintenanceに加え、Global / Host / Container / Backup / Reliability / Signal単位で通知だけを抑制できます。</p></div>
-              {suppressions.length === 0 ? <div className={styles.emptyState}>明示的な通知抑制ルールはありません。</div> : (
+              <SectionHeader
+                description="Container Maintenanceに加え、Global / Host / Container / Backup / Reliability / Signal単位で通知だけを抑制できます。"
+                eyebrow="SUPPRESSION"
+                title="通知抑制"
+              />
+              {suppressions.length === 0 ? (
+                <StatePanel title="明示的な通知抑制ルールはありません" />
+              ) : (
                 <div className={styles.suppressionList}>{suppressions.map((rule) => <article key={rule.rowId}><span>{rule.scopeType.toUpperCase()}</span><strong>{rule.scopeKey}</strong><p>{rule.reason}</p><small>{formatDateTime(rule.startsAt)} → {formatDateTime(rule.endsAt)}</small></article>)}</div>
               )}
             </section>
 
-            <section className={styles.notice}><strong>通知を監視処理から分離</strong><p>Host OfflineはAgent自身ではなくSupabase CronがHeartbeatを再評価し、SLO Burn Rateは認証付きReconcilerが1h / 6h / 24hの確定Coverageを評価します。配送はOutboxからClaimして最大5回Retryし、Secret・Webhook URL・生ログ・Player IP・Cookie・Tokenは通知履歴へ保存しません。</p></section>
+            <StatePanel title="通知を監視処理から分離" variant="info">
+              Host OfflineはAgent自身ではなくSupabase CronがHeartbeatを再評価し、SLO Burn Rateは認証付きReconcilerが1h / 6h / 24hの確定Coverageを評価します。配送はOutboxからClaimして最大5回Retryし、Secret・Webhook URL・生ログ・Player IP・Cookie・Tokenは通知履歴へ保存しません。
+            </StatePanel>
           </>
         ) : null}
-      </section>
+      </PageContent>
     </>
   );
 }
