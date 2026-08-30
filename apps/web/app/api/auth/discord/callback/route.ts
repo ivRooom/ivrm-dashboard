@@ -29,29 +29,15 @@ const COOKIE_BASE = {
   path: "/",
 };
 
-function clearOAuthAttemptCookie(
-  response: NextResponse,
-  cookieName: string,
-): void {
-  response.cookies.set(cookieName, "", {
-    ...COOKIE_BASE,
-    maxAge: 0,
-  });
-}
-
 function loginErrorResponse(
   request: NextRequest,
   reason: DiscordLoginFailureReason,
-  cookieName: string | null,
 ): NextResponse {
   const response = NextResponse.redirect(
     new URL(`/login?error=${encodeURIComponent(reason)}`, request.url),
   );
   response.headers.set("Cache-Control", "private, no-store, max-age=0");
   response.headers.set("X-Content-Type-Options", "nosniff");
-  if (cookieName) {
-    clearOAuthAttemptCookie(response, cookieName);
-  }
   return response;
 }
 
@@ -79,7 +65,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       reason: "configuration_error",
       guildId: null,
     });
-    return loginErrorResponse(request, "configuration_error", null);
+    return loginErrorResponse(request, "configuration_error");
   }
 
   if (!configuration) {
@@ -89,7 +75,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       reason: "configuration_error",
       guildId: null,
     });
-    return loginErrorResponse(request, "configuration_error", null);
+    return loginErrorResponse(request, "configuration_error");
   }
   guildId = configuration.guildId;
 
@@ -110,8 +96,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       reason: "oauth_state_invalid",
       guildId,
     });
-    // Slot衝突時に新しい正当なflowのCookieを消さない。
-    return loginErrorResponse(request, "oauth_state_invalid", null);
+    return loginErrorResponse(request, "oauth_state_invalid");
   }
 
   const oauthError = sanitizeDiscordOAuthProviderError(
@@ -127,7 +112,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       guildId,
       providerError: oauthError,
     });
-    return loginErrorResponse(request, reason, cookieName);
+    return loginErrorResponse(request, reason);
   }
 
   const code = request.nextUrl.searchParams.get("code");
@@ -138,7 +123,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       reason: "oauth_code_missing",
       guildId,
     });
-    return loginErrorResponse(request, "oauth_code_missing", cookieName);
+    return loginErrorResponse(request, "oauth_code_missing");
   }
 
   try {
@@ -174,7 +159,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       ...COOKIE_BASE,
       expires: expiresAt,
     });
-    clearOAuthAttemptCookie(response, cookieName);
     return response;
   } catch (error) {
     const reason = reasonFromError(error);
@@ -184,7 +168,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       reason,
       guildId,
     });
-    return loginErrorResponse(request, reason, cookieName);
+    return loginErrorResponse(request, reason);
   } finally {
     if (accessToken) {
       await revokeDiscordAccessToken(accessToken, configuration).catch(() => undefined);
