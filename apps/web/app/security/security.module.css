@@ -1,0 +1,123 @@
+.content {
+  display: grid;
+  gap: var(--page-section-gap);
+}
+
+.pageHeader,
+.metricGrid {
+  margin-bottom: 0;
+}
+
+.metricGrid {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.panel {
+  padding: var(--card-padding);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-default);
+}
+
+.toolGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.toolLink {
+  min-height: 108px;
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  text-decoration: none;
+  transition:
+    background var(--transition-fast) ease,
+    border-color var(--transition-fast) ease;
+}
+
+.toolLink:hover {
+  border-color: var(--border-interactive);
+  background: var(--surface-interactive-hover);
+}
+
+.toolLink:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: var(--focus-offset);
+}
+
+.toolLink strong {
+  font-size: var(--font-size-md);
+}
+
+.toolLink span {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-body);
+}
+
+.roleList {
+  display: grid;
+}
+
+.roleRow {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) minmax(0, 1fr) auto;
+  gap: var(--space-4);
+  align-items: center;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.roleRow:last-child {
+  border-bottom: 0;
+}
+
+.roleRow strong {
+  color: var(--text-primary);
+}
+
+.roleDescription {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-body);
+}
+
+.safetyList {
+  margin: var(--space-3) 0 0;
+  padding-left: 1.25rem;
+  color: var(--text-secondary);
+  line-height: 1.9;
+}
+
+@media (max-width: 760px) {
+  .toolGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .roleRow {
+    grid-template-columns: 1fr auto;
+    gap: var(--space-2) var(--space-3);
+  }
+
+  .roleDescription {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+@media (max-width: 520px) {
+  .roleRow {
+    grid-template-columns: 1fr;
+  }
+
+  .roleDescription {
+    grid-column: auto;
+    grid-row: auto;
+  }
+}
