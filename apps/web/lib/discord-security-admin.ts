@@ -35,6 +35,7 @@ export type DiscordAuthAuditRow = {
   targetId: string | null;
   discordUserId: string | null;
   reason: string | null;
+  providerError: string | null;
   consoleRole: ConsoleRole | null;
   occurredAt: string;
 };
@@ -53,6 +54,7 @@ export type DiscordSessionRevokeResult = {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SNOWFLAKE_PATTERN = /^[0-9]{17,20}$/;
+const PROVIDER_ERROR_PATTERN = /^[a-z0-9_]{1,64}$/;
 const SESSION_STATUSES = new Set<DiscordSessionStatus>([
   "active",
   "expired",
@@ -131,6 +133,12 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === "string";
 }
 
+function parseProviderError(value: unknown): string | null {
+  return typeof value === "string" && PROVIDER_ERROR_PATTERN.test(value)
+    ? value
+    : null;
+}
+
 function parseSessionRow(value: unknown): DiscordSessionAdminRow | null {
   if (!isRecord(value)) {
     return null;
@@ -194,6 +202,7 @@ function parseAuditRow(value: unknown): DiscordAuthAuditRow | null {
     !isNullableString(value.target_id) ||
     !isNullableString(value.discord_user_id) ||
     !isNullableString(value.reason) ||
+    !isNullableString(value.provider_error) ||
     (value.console_role !== null && !isConsoleRole(value.console_role)) ||
     typeof value.occurred_at !== "string"
   ) {
@@ -209,6 +218,7 @@ function parseAuditRow(value: unknown): DiscordAuthAuditRow | null {
     targetId: value.target_id,
     discordUserId: value.discord_user_id,
     reason: value.reason,
+    providerError: parseProviderError(value.provider_error),
     consoleRole: value.console_role as ConsoleRole | null,
     occurredAt: value.occurred_at,
   };

@@ -1,12 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
-  DISCORD_OAUTH_RETURN_COOKIE,
-  DISCORD_OAUTH_STATE_COOKIE,
   createDiscordAuthorizationUrl,
-  generateOpaqueToken,
   getDiscordAuthConfiguration,
   sanitizeReturnPath,
 } from "../../../../../lib/discord-auth";
+import { createDiscordOAuthAttempt } from "../../../../../lib/discord-oauth-cookies";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -25,18 +23,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.redirect(new URL("/login?error=auth_disabled", request.url));
     }
 
-    const state = generateOpaqueToken(32);
     const returnPath = sanitizeReturnPath(request.nextUrl.searchParams.get("returnTo"));
+    const attempt = createDiscordOAuthAttempt(returnPath, configuration.clientSecret);
     const response = NextResponse.redirect(
-      createDiscordAuthorizationUrl(configuration, state),
+      createDiscordAuthorizationUrl(configuration, attempt.state),
     );
     response.headers.set("Cache-Control", "private, no-store, max-age=0");
     response.headers.set("X-Content-Type-Options", "nosniff");
-    response.cookies.set(DISCORD_OAUTH_STATE_COOKIE, state, {
-      ...COOKIE_BASE,
-      maxAge: 600,
-    });
-    response.cookies.set(DISCORD_OAUTH_RETURN_COOKIE, returnPath, {
+    response.cookies.set(attempt.cookieName, attempt.cookieValue, {
       ...COOKIE_BASE,
       maxAge: 600,
     });

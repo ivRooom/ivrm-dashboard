@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 
 const errorMessages: Record<DiscordLoginFailureReason | "auth_disabled" | "unauthenticated", string> = {
   oauth_denied: "Discordでの認証がキャンセルされました。",
+  oauth_provider_error: "Discord側で認証を完了できませんでした。再試行しても解消しない場合は認証設定を確認してください。",
   oauth_state_invalid: "ログイン要求を確認できませんでした。最初からやり直してください。",
   oauth_code_missing: "Discordから認証コードを受け取れませんでした。",
   oauth_exchange_failed: "Discordとの認証処理に失敗しました。時間を置いて再試行してください。",
