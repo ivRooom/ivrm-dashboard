@@ -79,15 +79,19 @@ export default async function RootLayout({
     <html lang="ja">
       <body>
         <div className="console-shell">
-          <aside className="console-sidebar" aria-label="Console navigation">
-            <a className="console-brand" href="/">
-              <span>IV</span>
+          <aside className="console-sidebar">
+            <a className="console-brand" href="/" aria-label="IVRM Console Overview">
+              <span aria-hidden="true">IV</span>
               <div>
                 <strong>IVRM Console</strong>
                 <small>Operations</small>
               </div>
             </a>
-            <NavigationLinks />
+
+            <nav aria-label="管理コンソール">
+              <NavigationLinks />
+            </nav>
+
             <div className="console-sidebar-footer">
               <div className="console-environment-status">
                 <i aria-hidden="true" />
@@ -104,60 +108,15 @@ export default async function RootLayout({
               <ConsoleCurrentContext />
               <div className="console-context-actions">
                 <span className="console-environment-badge">{environment}</span>
-                <div className="console-user-context">
-                  {session.avatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      alt=""
-                      height={28}
-                      src={session.avatarUrl}
-                      width={28}
-                    />
-                  ) : null}
-                  <div>
-                    <strong>{userLabel}</strong>
-                    <small>{roleLabel}</small>
-                  </div>
-                </div>
-                {showDiscordReportLogin ? (
-                  <a
-                    className="console-report-login"
-                    href={discordReportLoginHref}
-                  >
-                    Discord認証
-                  </a>
-                ) : null}
-                <form action="/api/auth/logout" method="post" className="console-logout-form">
-                  <button className="console-logout-button" type="submit">
-                    Logout
-                  </button>
-                </form>
-              </div>
-            </header>
 
-            <header className="console-mobile-header">
-              <a className="console-mobile-brand" href="/">
-                <span>IV</span>
-                <strong>IVRM Console</strong>
-              </a>
-              <details className="console-mobile-menu">
-                <summary>
-                  <span aria-hidden="true" className="console-mobile-menu-icon">☰</span>
-                  Menu
-                </summary>
-                <div className="console-mobile-menu-panel">
-                  <div className="console-mobile-context">
-                    <ConsoleCurrentContext />
-                    <span className="console-environment-badge">{environment}</span>
-                  </div>
-                  <div className="console-mobile-session">
-                    {session.avatarUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
+                {session.authProvider !== "none" ? (
+                  <div className="console-user-context">
+                    {session.discordAvatarUrl ? (
                       <img
+                        src={session.discordAvatarUrl}
                         alt=""
-                        height={30}
-                        src={session.avatarUrl}
-                        width={30}
+                        width={28}
+                        height={28}
                       />
                     ) : null}
                     <div>
@@ -165,20 +124,77 @@ export default async function RootLayout({
                       <small>{roleLabel}</small>
                     </div>
                   </div>
+                ) : null}
+
+                {showDiscordReportLogin ? (
+                  <a
+                    className="console-report-login"
+                    href={discordReportLoginHref}
+                    aria-label="Discord認証をテストする"
+                  >
+                    Discord認証を確認
+                  </a>
+                ) : null}
+
+                {session.authProvider === "discord" ? (
+                  <form action="/api/auth/logout" method="post" className="console-logout-form">
+                    <button type="submit" className="console-logout-button">
+                      ログアウト
+                    </button>
+                  </form>
+                ) : null}
+              </div>
+            </header>
+
+            <header className="console-mobile-header">
+              <a className="console-mobile-brand" href="/" aria-label="IVRM Console Overview">
+                <span aria-hidden="true">IV</span>
+                <strong>IVRM Console</strong>
+              </a>
+
+              <details className="console-mobile-menu">
+                <summary>
+                  <span aria-hidden="true" className="console-mobile-menu-icon">☰</span>
+                  <span>メニュー</span>
+                </summary>
+                <div className="console-mobile-menu-panel">
+                  <div className="console-mobile-context">
+                    <ConsoleCurrentContext />
+                    <span className="console-environment-badge">{environment}</span>
+                  </div>
+
+                  {session.authProvider !== "none" ? (
+                    <div className="console-mobile-session">
+                      {session.discordAvatarUrl ? (
+                        <img src={session.discordAvatarUrl} alt="" width={34} height={34} />
+                      ) : null}
+                      <div>
+                        <strong>{userLabel}</strong>
+                        <small>{roleLabel}</small>
+                      </div>
+                    </div>
+                  ) : null}
+
                   {showDiscordReportLogin ? (
                     <a
                       className="console-report-login console-report-login-mobile"
                       href={discordReportLoginHref}
                     >
-                      Discord認証を完了
+                      Discord認証を確認
                     </a>
                   ) : null}
-                  <MobileNavigationLinks />
-                  <form action="/api/auth/logout" method="post" className="console-mobile-logout-form">
-                    <button className="console-mobile-logout" type="submit">
-                      Logout
-                    </button>
-                  </form>
+
+                  <nav aria-label="モバイル管理コンソール">
+                    <MobileNavigationLinks />
+                  </nav>
+
+                  {session.authProvider === "discord" ? (
+                    <form action="/api/auth/logout" method="post" className="console-mobile-logout-form">
+                      <button type="submit" className="console-mobile-logout">
+                        ログアウト
+                      </button>
+                    </form>
+                  ) : null}
                 </div>
               </details>
             </header>
