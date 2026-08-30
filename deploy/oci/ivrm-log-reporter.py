@@ -50,8 +50,11 @@ BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{8,}")
 SECRET_QUERY_PATTERN = re.compile(
     r"(?i)([?&](?:access[_-]?token|refresh[_-]?token|token|password|passwd|secret|rcon[_-]?password|forwarding[_-]?secret)=)[^&\s]+"
 )
+SECRET_QUOTED_ASSIGNMENT_PATTERN = re.compile(
+    r'''(?i)\b(authorization|access[_-]?token|refresh[_-]?token|token|password|passwd|secret|rcon(?:[._-]?password)?|forwarding(?:[._-]?secret))\b(["']?)(\s*[:=]\s*|\s+)(["'])([^"']*)\4'''
+)
 SECRET_ASSIGNMENT_PATTERN = re.compile(
-    r"(?i)\b(authorization|access[_-]?token|refresh[_-]?token|token|password|passwd|secret|rcon(?:[._-]?password)?|forwarding(?:[._-]?secret))\b(\s*[:=]\s*|\s+)([^\s,;]+)"
+    r'''(?i)\b(authorization|access[_-]?token|refresh[_-]?token|token|password|passwd|secret|rcon(?:[._-]?password)?|forwarding(?:[._-]?secret))\b(["']?)(\s*[:=]\s*|\s+)([^\s,;}"']+)'''
 )
 RFC3339_PATTERN = re.compile(
     r"^(?P<date>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?P<fraction>\.\d{1,9})?(?P<zone>Z|[+-]\d{2}:\d{2})$"
@@ -95,7 +98,8 @@ def redact_message(message: str) -> str:
     value = "".join(char if char.isprintable() else " " for char in value)
     value = BEARER_PATTERN.sub("Bearer [REDACTED]", value)
     value = SECRET_QUERY_PATTERN.sub(r"\1[REDACTED]", value)
-    value = SECRET_ASSIGNMENT_PATTERN.sub(r"\1\2[REDACTED]", value)
+    value = SECRET_QUOTED_ASSIGNMENT_PATTERN.sub(r"\1\2\3\4[REDACTED]\4", value)
+    value = SECRET_ASSIGNMENT_PATTERN.sub(r"\1\2\3[REDACTED]", value)
     value = IPV4_PATTERN.sub("[REDACTED_IP]", value)
     value = IPV6_PATTERN.sub("[REDACTED_IP]", value)
     value = IPV6_CANDIDATE_PATTERN.sub(redact_ipv6_candidate, value)
