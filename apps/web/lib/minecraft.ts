@@ -20,6 +20,16 @@ export type MinecraftEndpointOverview = {
   max: number | null;
 };
 
+export type MinecraftPerformanceOverview = {
+  source: string | null;
+  tps1m: number | null;
+  tps5m: number | null;
+  tps15m: number | null;
+  msptMedian1m: number | null;
+  msptP951m: number | null;
+  msptMax1m: number | null;
+};
+
 export type MinecraftOverview = {
   status: MinecraftOverallStatus;
   checkedAt: string | null;
@@ -36,6 +46,7 @@ export type MinecraftOverview = {
     online: number | null;
     max: number | null;
   };
+  performance: MinecraftPerformanceOverview;
   voiceChat: {
     port: 24454;
     published: boolean;
@@ -62,6 +73,13 @@ type MinecraftSampleRow = {
   proxy_port_published: boolean;
   backend_port_published: boolean;
   voice_chat_port_published: boolean;
+  performance_source: string | null;
+  tps_1m: number | null;
+  tps_5m: number | null;
+  tps_15m: number | null;
+  mspt_median_1m: number | null;
+  mspt_p95_1m: number | null;
+  mspt_max_1m: number | null;
   hosts: { server_id: string };
 };
 
@@ -87,7 +105,7 @@ async function getLatestMinecraftSample(): Promise<MinecraftSampleRow | null> {
   const { url, serviceRoleKey } = supabaseConfiguration();
   const path =
     "/rest/v1/minecraft_samples" +
-    "?select=received_at,public_reachable,public_latency_ms,public_version,public_online,public_max,backend_reachable,backend_latency_ms,backend_version,backend_online,backend_max,proxy_port_published,backend_port_published,voice_chat_port_published,hosts!inner(server_id)" +
+    "?select=received_at,public_reachable,public_latency_ms,public_version,public_online,public_max,backend_reachable,backend_latency_ms,backend_version,backend_online,backend_max,proxy_port_published,backend_port_published,voice_chat_port_published,performance_source,tps_1m,tps_5m,tps_15m,mspt_median_1m,mspt_p95_1m,mspt_max_1m,hosts!inner(server_id)" +
     `&hosts.server_id=eq.${encodeURIComponent(TARGET_SERVER_ID)}` +
     "&order=received_at.desc&limit=1";
   const response = await fetch(`${url}${path}`, {
@@ -116,6 +134,18 @@ function endpoint(
   maximum: number | null,
 ): MinecraftEndpointOverview {
   return { reachable, latencyMs, version, online, max: maximum };
+}
+
+function performance(sample: MinecraftSampleRow | null): MinecraftPerformanceOverview {
+  return {
+    source: sample?.performance_source ?? null,
+    tps1m: sample?.tps_1m ?? null,
+    tps5m: sample?.tps_5m ?? null,
+    tps15m: sample?.tps_15m ?? null,
+    msptMedian1m: sample?.mspt_median_1m ?? null,
+    msptP951m: sample?.mspt_p95_1m ?? null,
+    msptMax1m: sample?.mspt_max_1m ?? null,
+  };
 }
 
 function containerIsUnavailable(container: ContainerOverview | null): boolean {
@@ -189,6 +219,7 @@ export async function getMinecraftOverview(
     backend,
     backendProbe,
     players: { online: publicEndpoint.online, max: publicEndpoint.max },
+    performance: performance(sample),
     voiceChat: { port: 24454, published: sample?.voice_chat_port_published ?? false },
     networkPolicy: {
       proxyPortPublished: sample?.proxy_port_published ?? false,
