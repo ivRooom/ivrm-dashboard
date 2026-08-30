@@ -1,5 +1,16 @@
 import { AutoRefresh } from "../../components/auto-refresh";
 import {
+  ActionLink,
+  MetricCard,
+  MetricGrid,
+  PageContent,
+  PageHeader,
+  SectionHeader,
+  StatePanel,
+  StatusBadge,
+  type ConsoleTone,
+} from "../../components/console-ui";
+import {
   INCIDENT_RANGE_CONFIG,
   getUnifiedIncidentCenterSnapshot,
   parseIncidentRange,
@@ -90,8 +101,8 @@ function entityTypeLabel(incident: ActiveIncident | RecoveredIncident): string {
   return incident.entityType === "host" ? "HOST" : "CONTAINER";
 }
 
-function severityClass(severity: IncidentSeverity): string {
-  return severity === "critical" ? styles.critical : styles.warning;
+function severityTone(severity: IncidentSeverity): ConsoleTone {
+  return severity === "critical" ? "danger" : "warning";
 }
 
 export default async function IncidentsPage({ searchParams }: PageProps) {
@@ -116,18 +127,18 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
   return (
     <>
       <AutoRefresh intervalMs={30_000} />
-      <section className={`content ${styles.incidentContent}`}>
-        <header>
-          <div>
-            <p className={styles.eyebrow}>RELIABILITY / INCIDENT CENTER</p>
-            <h1>インシデントセンター</h1>
-            <p>現在進行中の障害と、開始・復旧を証明できた過去IncidentをHost / Container / Backup横断で確認します。</p>
-          </div>
-          <div className={styles.headerActions}>
-            <a className={styles.secondaryLink} href={`/events?range=${range}`}>生イベントを見る</a>
-            <a className={styles.secondaryLink} href={`/backups?range=${range}`}>バックアップを見る</a>
-          </div>
-        </header>
+      <PageContent className={styles.incidentContent}>
+        <PageHeader
+          actions={
+            <>
+              <ActionLink href={`/events?range=${range}`}>生イベントを見る</ActionLink>
+              <ActionLink href={`/backups?range=${range}`}>バックアップを見る</ActionLink>
+            </>
+          }
+          description="現在進行中の障害と、開始・復旧を証明できた過去IncidentをHost / Container / Backup横断で確認します。"
+          eyebrow="RELIABILITY / INCIDENT CENTER"
+          title="インシデントセンター"
+        />
 
         <nav className={styles.periodSelector} aria-label="信頼性集計期間">
           {(Object.keys(INCIDENT_RANGE_CONFIG) as IncidentRange[]).map((candidate) => (
@@ -143,63 +154,63 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
         </nav>
 
         {loadError ? (
-          <div className="empty error-panel" role="alert">
-            <strong>Incident情報を取得できませんでした</strong>
-            <p>Monitoring SnapshotとHost / Container Event RPCを確認してください。</p>
-          </div>
+          <StatePanel title="Incident情報を取得できませんでした" variant="error">
+            Monitoring SnapshotとHost / Container Event RPCを確認してください。
+          </StatePanel>
         ) : summary ? (
           <>
             {!backupDataAvailable ? (
-              <section className={styles.notice}>
-                <strong>Backup Incidentだけ取得できませんでした</strong>
-                <p>Host / Container Incidentは継続表示しています。Backup CenterのService Role RPCを確認してください。</p>
-              </section>
+              <StatePanel title="Backup Incidentだけ取得できませんでした" variant="warning">
+                Host / Container Incidentは継続表示しています。Backup CenterのService Role RPCを確認してください。
+              </StatePanel>
             ) : null}
 
-            <section className={styles.summaryGrid} aria-label="Incidentサマリー">
-              <article className={summary.activeCount > 0 ? styles.summaryAttention : undefined}>
-                <span>ACTIVE</span>
-                <strong>{summary.activeCount}</strong>
-                <small>重大 {summary.activeCriticalCount} / 注意 {summary.activeWarningCount}</small>
-              </article>
-              <article>
-                <span>RECOVERED</span>
-                <strong>{summary.recoveredCount}</strong>
-                <small>{INCIDENT_RANGE_CONFIG[range].label} / 復旧時刻を証明済み</small>
-              </article>
-              <article>
-                <span>MEDIAN RECOVERY</span>
-                <strong>{formatDuration(summary.medianRecoverySeconds)}</strong>
-                <small>{summary.exactRecoveryCount}件の確定Durationのみ</small>
-              </article>
-              <article>
-                <span>LONGEST RECOVERY</span>
-                <strong>{formatDuration(summary.longestRecoverySeconds)}</strong>
-                <small>推測Durationは含めない</small>
-              </article>
-              <article>
-                <span>AFFECTED ENTITIES</span>
-                <strong>{summary.affectedEntityCount}</strong>
-                <small>Host / Container / Backupの重複を除外</small>
-              </article>
-              <article>
-                <span>INCIDENT EVENTS</span>
-                <strong>{summary.criticalEventCount} / {summary.warningEventCount}</strong>
-                <small>Host・Container重大/注意 / Backup Active {summary.backupActiveCount}</small>
-              </article>
-            </section>
+            <MetricGrid label="Incidentサマリー">
+              <MetricCard
+                detail={`重大 ${summary.activeCriticalCount} / 注意 ${summary.activeWarningCount}`}
+                label="ACTIVE"
+                tone={summary.activeCriticalCount > 0 ? "danger" : summary.activeWarningCount > 0 ? "warning" : "neutral"}
+                value={summary.activeCount}
+              />
+              <MetricCard
+                detail={`${INCIDENT_RANGE_CONFIG[range].label} / 復旧時刻を証明済み`}
+                label="RECOVERED"
+                value={summary.recoveredCount}
+              />
+              <MetricCard
+                detail={`${summary.exactRecoveryCount}件の確定Durationのみ`}
+                label="MEDIAN RECOVERY"
+                value={formatDuration(summary.medianRecoverySeconds)}
+              />
+              <MetricCard
+                detail="推測Durationは含めない"
+                label="LONGEST RECOVERY"
+                value={formatDuration(summary.longestRecoverySeconds)}
+              />
+              <MetricCard
+                detail="Host / Container / Backupの重複を除外"
+                label="AFFECTED ENTITIES"
+                value={summary.affectedEntityCount}
+              />
+              <MetricCard
+                detail={`Host・Container重大/注意 / Backup Active ${summary.backupActiveCount}`}
+                label="INCIDENT EVENTS"
+                tone={summary.criticalEventCount > 0 ? "danger" : summary.warningEventCount > 0 ? "warning" : "neutral"}
+                value={`${summary.criticalEventCount} / ${summary.warningEventCount}`}
+              />
+            </MetricGrid>
 
             <section className={styles.sectionBlock}>
-              <div className={styles.sectionHeading}>
-                <div><span>ACTIVE NOW</span><h2>現在進行中</h2></div>
-                <p>Monitoring SnapshotとBackup HealthをSource of Truthとして判定します。</p>
-              </div>
+              <SectionHeader
+                description="Monitoring SnapshotとBackup HealthをSource of Truthとして判定します。"
+                eyebrow="ACTIVE NOW"
+                title="現在進行中"
+              />
 
               {active.length === 0 ? (
-                <div className={styles.healthyState}>
-                  <strong>Active Incidentはありません</strong>
-                  <p>Host / Container / Backupは現在確認できる期待状態に対して正常です。</p>
-                </div>
+                <StatePanel title="Active Incidentはありません">
+                  Host / Container / Backupは現在確認できる期待状態に対して正常です。
+                </StatePanel>
               ) : (
                 <div className={styles.activeGrid}>
                   {active.map((incident) => (
@@ -211,8 +222,8 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                           <small>{entityMeta(incident)}</small>
                         </div>
                         <div className={styles.badges}>
-                          <span className={`${styles.badge} ${severityClass(incident.severity)}`}>{severityLabels[incident.severity]}</span>
-                          <span className={`${styles.badge} ${styles.activeBadge}`}>ACTIVE</span>
+                          <StatusBadge tone={severityTone(incident.severity)}>{severityLabels[incident.severity]}</StatusBadge>
+                          <StatusBadge tone="danger">ACTIVE</StatusBadge>
                         </div>
                       </div>
 
@@ -240,13 +251,14 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
             </section>
 
             <section className={styles.sectionBlock}>
-              <div className={styles.sectionHeading}>
-                <div><span>RECOVERY HISTORY</span><h2>復旧済みIncident</h2></div>
-                <p>開始と復旧を構造化データから両方証明できたものだけ、Recovery Durationを算出します。</p>
-              </div>
+              <SectionHeader
+                description="開始と復旧を構造化データから両方証明できたものだけ、Recovery Durationを算出します。"
+                eyebrow="RECOVERY HISTORY"
+                title="復旧済みIncident"
+              />
 
               {recovered.length === 0 ? (
-                <div className={styles.emptyState}>選択期間にRecovery Durationを確定できるIncidentはありません。</div>
+                <StatePanel title="選択期間にRecovery Durationを確定できるIncidentはありません" />
               ) : (
                 <div className={styles.recoveredList}>
                   {recovered.map((incident) => (
@@ -259,8 +271,8 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
                             <small>{entityMeta(incident)}</small>
                           </div>
                           <div className={styles.badges}>
-                            <span className={`${styles.badge} ${severityClass(incident.severity)}`}>{severityLabels[incident.severity]}</span>
-                            <span className={`${styles.badge} ${styles.recoveredBadge}`}>RECOVERED</span>
+                            <StatusBadge tone={severityTone(incident.severity)}>{severityLabels[incident.severity]}</StatusBadge>
+                            <StatusBadge tone="success">RECOVERED</StatusBadge>
                           </div>
                         </div>
                         <p className={styles.transition}><strong>{incident.startReason}</strong><span>→</span><strong>{incident.recoveryReason}</strong></p>
@@ -280,13 +292,12 @@ export default async function IncidentsPage({ searchParams }: PageProps) {
               )}
             </section>
 
-            <section className={styles.notice}>
-              <strong>Durationを推測しない設計</strong>
-              <p>ContainerはState / Health / ExitCodeのwarning・critical開始とrecoveryを同一Entity内で追跡し、重なったシグナルがすべて復旧した時点だけCloseします。Host Heartbeat gapはgap秒数からDurationを確定します。BackupはRun failure / Checksum failureの開始と次のsuccess / SHA-256 Verifiedをimmutable Run履歴から両方証明できた場合だけMTTRへ含めます。Backup Age・Remote Sync・Restore Testなど現在Policy値に依存するSLA異常はActive表示しますが、Policy履歴がないためRecovery Durationへは混ぜません。</p>
-            </section>
+            <StatePanel className={styles.finalNotice} title="Durationを推測しない設計" variant="info">
+              ContainerはState / Health / ExitCodeのwarning・critical開始とrecoveryを同一Entity内で追跡し、重なったシグナルがすべて復旧した時点だけCloseします。Host Heartbeat gapはgap秒数からDurationを確定します。BackupはRun failure / Checksum failureの開始と次のsuccess / SHA-256 Verifiedをimmutable Run履歴から両方証明できた場合だけMTTRへ含めます。Backup Age・Remote Sync・Restore Testなど現在Policy値に依存するSLA異常はActive表示しますが、Policy履歴がないためRecovery Durationへは混ぜません。
+            </StatePanel>
           </>
         ) : null}
-      </section>
+      </PageContent>
     </>
   );
 }
