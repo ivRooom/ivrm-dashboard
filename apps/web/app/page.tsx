@@ -1,17 +1,44 @@
 import { AutoRefresh } from "../components/auto-refresh";
 import {
-  getMonitoringSnapshot,
-  type ContainerExpectedState,
-  type ContainerHealth,
-  type ContainerOverview,
-  type ContainerState,
-  type ContainerStatus,
-  type HostOverview,
-} from "../lib/monitoring";
+  ActionLink,
+  MetricCard,
+  MetricGrid,
+  PageContent,
+  PageHeader,
+  SectionHeader,
+  StatePanel,
+  StatusBadge,
+  type ConsoleTone,
+} from "../components/console-ui";
+import type { MinecraftOverallStatus } from "../lib/minecraft";
+import type { ContainerStatus, HostOverview } from "../lib/monitoring";
+import {
+  getOverviewSnapshot,
+  type OverviewActivityTone,
+} from "../lib/overview";
+import type { ReliabilityHealth } from "../lib/reliability-types";
+import styles from "./overview.module.css";
 
 export const dynamic = "force-dynamic";
 
-const labels: Record<ContainerStatus, string> = {
+const reliabilityLabels: Record<ReliabilityHealth, string> = {
+  operational: "正常",
+  degraded: "注意",
+  critical: "重大",
+  disabled: "停止中",
+  unknown: "未確認",
+};
+
+const minecraftLabels: Record<MinecraftOverallStatus, string> = {
+  operational: "正常稼働",
+  degraded: "一部低下",
+  partial_outage: "部分障害",
+  major_outage: "重大障害",
+  maintenance: "メンテナンス",
+  unknown: "未確認",
+};
+
+const containerLabels: Record<ContainerStatus, string> = {
   online: "稼働中",
   offline: "受信停止",
   stale: "更新遅延",
@@ -20,398 +47,381 @@ const labels: Record<ContainerStatus, string> = {
   maintenance: "メンテナンス",
 };
 
-const containerStateLabels: Record<ContainerState, string> = {
-  created: "作成済み",
-  running: "実行中",
-  paused: "一時停止",
-  restarting: "再起動中",
-  removing: "削除中",
-  exited: "終了",
-  dead: "異常終了",
-  unknown: "不明",
-  not_found: "未作成",
-};
-
-const containerHealthLabels: Record<ContainerHealth, string> = {
-  starting: "確認中",
-  healthy: "正常",
-  unhealthy: "異常",
-  none: "未設定",
-  unknown: "不明",
-};
-
-const expectedStateLabels: Record<ContainerExpectedState, string> = {
-  running: "稼働",
-  stopped: "停止",
-  absent: "未作成",
-};
-
-function formatGiB(bytes: number): string {
-  return (bytes / 1024 ** 3).toFixed(bytes >= 10 * 1024 ** 3 ? 0 : 1);
+function reliabilityTone(health: ReliabilityHealth): ConsoleTone {
+  if (health === "operational") return "success";
+  if (health === "degraded") return "warning";
+  if (health === "critical") return "danger";
+  return "neutral";
 }
 
-function formatBytes(bytes: number | null): string {
-  if (bytes === null) {
-    return "未取得";
-  }
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-
-  const units = ["KiB", "MiB", "GiB", "TiB", "PiB"];
-  let value = bytes;
-  let unitIndex = -1;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-  return `${value.toFixed(value >= 10 ? 1 : 2)} ${units[unitIndex]}`;
+function minecraftTone(status: MinecraftOverallStatus): ConsoleTone {
+  if (status === "operational") return "success";
+  if (status === "degraded") return "warning";
+  if (status === "partial_outage" || status === "major_outage") return "danger";
+  if (status === "maintenance") return "maintenance";
+  return "neutral";
 }
 
-function formatCapacity(total: number | null, available: number | null): string {
-  if (total === null || available === null || total <= 0) {
-    return "未取得";
-  }
-
-  const used = Math.max(0, total - available);
-  const percent = Math.min(100, Math.max(0, (used / total) * 100));
-  return `${formatGiB(used)} / ${formatGiB(total)} GiB (${percent.toFixed(0)}%)`;
-}
-
-function formatContainerMemory(container: ContainerOverview): string {
-  if (
-    container.memoryUsageBytes === null ||
-    container.memoryLimitBytes === null
-  ) {
-    return "未取得";
-  }
-
-  const percent =
-    container.memoryLimitBytes > 0
-      ? (container.memoryUsageBytes / container.memoryLimitBytes) * 100
-      : 0;
-  return `${formatBytes(container.memoryUsageBytes)} / ${formatBytes(container.memoryLimitBytes)} (${percent.toFixed(1)}%)`;
-}
-
-function formatLoad(host: HostOverview): string {
-  if (
-    host.loadAverage1 === null ||
-    host.loadAverage5 === null ||
-    host.loadAverage15 === null
-  ) {
-    return "未取得";
-  }
-
-  return [host.loadAverage1, host.loadAverage5, host.loadAverage15]
-    .map((value) => value.toFixed(2))
-    .join(" / ");
-}
-
-function formatUptime(seconds: number | null): string {
-  if (seconds === null) {
-    return "Uptime未取得";
-  }
-
-  const days = Math.floor(seconds / 86_400);
-  const hours = Math.floor((seconds % 86_400) / 3_600);
-  if (days > 0) {
-    return `Uptime ${days}日${hours}時間`;
-  }
-  return `Uptime ${hours}時間`;
+function activityLabel(tone: OverviewActivityTone): string {
+  if (tone === "danger") return "重大";
+  if (tone === "warning") return "注意";
+  if (tone === "success") return "復旧";
+  if (tone === "info") return "通知";
+  return "更新";
 }
 
 function formatRelativeTime(timestamp: string | null, reference: string): string {
-  if (!timestamp) {
-    return "未受信";
-  }
-
-  const ageSeconds = Math.max(
-    0,
-    Math.floor((Date.parse(reference) - Date.parse(timestamp)) / 1_000),
-  );
-  if (ageSeconds < 60) {
-    return `${ageSeconds}秒前`;
-  }
-  if (ageSeconds < 3_600) {
-    return `${Math.floor(ageSeconds / 60)}分前`;
-  }
-  if (ageSeconds < 86_400) {
-    return `${Math.floor(ageSeconds / 3_600)}時間前`;
-  }
-  return `${Math.floor(ageSeconds / 86_400)}日前`;
+  if (!timestamp) return "未受信";
+  const target = Date.parse(timestamp);
+  const now = Date.parse(reference);
+  if (!Number.isFinite(target) || !Number.isFinite(now)) return "時刻不明";
+  const seconds = Math.max(0, Math.floor((now - target) / 1_000));
+  if (seconds < 60) return `${seconds}秒前`;
+  if (seconds < 3_600) return `${Math.floor(seconds / 60)}分前`;
+  if (seconds < 86_400) return `${Math.floor(seconds / 3_600)}時間前`;
+  return `${Math.floor(seconds / 86_400)}日前`;
 }
 
-function formatExit(container: ContainerOverview): string {
-  if (container.oomKilled) {
-    return "OOMKilled";
-  }
-  if (container.exitCode === null) {
-    return "—";
-  }
-  return `Code ${container.exitCode}`;
+function formatLatency(value: number | null | undefined): string {
+  return value === null || value === undefined ? "未取得" : `${value} ms`;
 }
 
-function formatExpectedState(
-  expectedState: ContainerExpectedState | null,
-): string {
-  return expectedState ? expectedStateLabels[expectedState] : "未設定";
+function formatTps(values: Array<number | null>): string {
+  return values.every((value) => value !== null)
+    ? values.map((value) => (value as number).toFixed(2)).join(" / ")
+    : "未取得";
 }
 
-function formatMaintenance(container: ContainerOverview): string {
-  if (container.maintenanceActive) {
-    const reason = container.maintenanceReason ?? "実施中";
-    if (!container.maintenanceUntil) {
-      return reason;
-    }
+function formatMspt(median: number | null, p95: number | null): string {
+  return median === null || p95 === null
+    ? "未取得"
+    : `${median.toFixed(2)} / ${p95.toFixed(2)} ms`;
+}
 
-    const until = new Intl.DateTimeFormat("ja-JP", {
-      month: "numeric",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-      timeZone: "Asia/Tokyo",
-    }).format(new Date(container.maintenanceUntil));
-    return `${reason} / ${until}まで`;
-  }
+function usagePercent(total: number | null, available: number | null): number | null {
+  if (total === null || available === null || total <= 0) return null;
+  return Math.min(100, Math.max(0, ((total - available) / total) * 100));
+}
 
-  if (container.maintenanceMode) {
-    return "期限切れ";
-  }
-  return "なし";
+function maxHostUsage(
+  hosts: HostOverview[],
+  kind: "memory" | "disk",
+): number | null {
+  const values = hosts
+    .map((host) =>
+      kind === "memory"
+        ? usagePercent(host.memoryTotalBytes, host.memoryAvailableBytes)
+        : usagePercent(host.diskTotalBytes, host.diskAvailableBytes),
+    )
+    .filter((value): value is number => value !== null);
+  return values.length > 0 ? Math.max(...values) : null;
+}
+
+function maxLoad(hosts: HostOverview[]): number | null {
+  const values = hosts
+    .map((host) => host.loadAverage1)
+    .filter((value): value is number => value !== null);
+  return values.length > 0 ? Math.max(...values) : null;
+}
+
+function formatPercent(value: number | null): string {
+  return value === null ? "未取得" : `${value.toFixed(1)}%`;
+}
+
+function attentionTone(value: number | null, severity: "warning" | "danger"): "neutral" | "warning" | "danger" {
+  if (value === null || value === 0) return "neutral";
+  return severity;
 }
 
 export default async function HomePage() {
-  let hosts: HostOverview[] = [];
-  let containers: ContainerOverview[] = [];
-  let generatedAt = new Date().toISOString();
-  let hasDataError = false;
-
-  try {
-    const snapshot = await getMonitoringSnapshot();
-    hosts = snapshot.hosts;
-    containers = snapshot.containers;
-    generatedAt = snapshot.generatedAt;
-  } catch {
-    hasDataError = true;
-    console.error("監視データの取得に失敗しました");
-  }
-
-  const onlineCount = hosts.filter((host) => host.status === "online").length;
-  const normalContainerCount = containers.filter((container) =>
+  const data = await getOverviewSnapshot();
+  const hosts = data.monitoring?.hosts ?? [];
+  const containers = data.monitoring?.containers ?? [];
+  const onlineHosts = hosts.filter((host) => host.status === "online").length;
+  const stableContainers = containers.filter((container) =>
     ["online", "standby", "maintenance"].includes(container.status),
   ).length;
-  const totalMemoryBytes = hosts.reduce(
-    (total, host) => total + (host.memoryTotalBytes ?? 0),
-    0,
-  );
-  const latestHeartbeat =
-    hosts
-      .map((host) => host.receivedAt)
-      .filter((receivedAt): receivedAt is string => receivedAt !== null)
-      .sort((left, right) => Date.parse(right) - Date.parse(left))[0] ?? null;
+  const maxMemory = maxHostUsage(hosts, "memory");
+  const maxDisk = maxHostUsage(hosts, "disk");
+  const hostLoad = maxLoad(hosts);
+  const unavailableSources = Object.entries(data.sources)
+    .filter(([, available]) => !available)
+    .map(([source]) => source);
+  const minecraft = data.minecraft;
 
   return (
     <>
-      <AutoRefresh />
-      <section className="content" id="top">
-        <header>
-          <div>
-            <h1>システム概要</h1>
-            <p>OCIホストとDockerコンテナの最新状態を表示しています。</p>
-          </div>
-          <button disabled>管理者メニュー</button>
-        </header>
+      <AutoRefresh intervalMs={30_000} />
+      <PageContent className={styles.content}>
+        <PageHeader
+          eyebrow="OPERATIONS OVERVIEW"
+          title="IVRM Console Overview"
+          description="正常か、今すぐ対応が必要か、Minecraftが遊べる状態かを最初に判断するための運用Overviewです。"
+          actions={
+            <>
+              <ActionLink href="/incidents" variant="primary">Incident Center</ActionLink>
+              <ActionLink href="/reliability">Reliability</ActionLink>
+            </>
+          }
+        />
 
-        <section className="summary" aria-label="稼働状況サマリー">
-          <article>
-            <span>監視ホスト</span>
-            <strong>{hasDataError ? "—" : hosts.length}</strong>
-            <small>有効なAgent登録数</small>
-          </article>
-          <article>
-            <span>コンテナ正常</span>
-            <strong>
-              {hasDataError ? "—" : `${normalContainerCount} / ${containers.length}`}
-            </strong>
-            <small>稼働・待機・メンテナンス</small>
-          </article>
-          <article>
-            <span>ホストメモリ</span>
-            <strong>
-              {hasDataError || totalMemoryBytes === 0
-                ? "—"
-                : `${formatGiB(totalMemoryBytes)} GiB`}
-            </strong>
-            <small>Agent報告値の合計</small>
-          </article>
-          <article>
-            <span>最終受信</span>
-            <strong>{formatRelativeTime(latestHeartbeat, generatedAt)}</strong>
-            <small>{onlineCount}ホスト正常 / 15秒更新</small>
-          </article>
+        {unavailableSources.length > 0 ? (
+          <StatePanel title="一部データソースを取得できませんでした" variant="warning">
+            {`${unavailableSources.join(" / ")} は未取得です。取得できた領域は継続表示しています。`}
+          </StatePanel>
+        ) : null}
+
+        <section className={styles.section} aria-labelledby="system-status-title">
+          <SectionHeader
+            eyebrow="SYSTEM STATUS"
+            title="現在のサービス状態"
+            description="主要5領域を同じ基準で確認し、異常時は詳細画面へ直接移動できます。"
+          />
+          <div className={styles.systemGrid}>
+            <a className={styles.statusCard} href="/minecraft">
+              <div className={styles.statusTop}>
+                <span>Minecraft</span>
+                <StatusBadge tone={minecraftTone(data.status.minecraft)}>
+                  {minecraftLabels[data.status.minecraft]}
+                </StatusBadge>
+              </div>
+              <div>
+                <strong>
+                  {minecraft?.players.online ?? "—"} / {minecraft?.players.max ?? "—"} players
+                </strong>
+                <small>{formatRelativeTime(minecraft?.checkedAt ?? null, data.generatedAt)}にProbe更新</small>
+              </div>
+            </a>
+
+            <a className={styles.statusCard} href="/inventory">
+              <div className={styles.statusTop}>
+                <span>Infrastructure</span>
+                <StatusBadge tone={reliabilityTone(data.status.infrastructure)}>
+                  {reliabilityLabels[data.status.infrastructure]}
+                </StatusBadge>
+              </div>
+              <div>
+                <strong>{onlineHosts} / {hosts.length} hosts</strong>
+                <small>{stableContainers} / {containers.length} containers 正常・待機</small>
+              </div>
+            </a>
+
+            <a className={styles.statusCard} href="/backups?range=24h">
+              <div className={styles.statusTop}>
+                <span>Backup</span>
+                <StatusBadge tone={reliabilityTone(data.status.backup)}>
+                  {reliabilityLabels[data.status.backup]}
+                </StatusBadge>
+              </div>
+              <div>
+                <strong>{data.incidents?.summary.backupActiveCount ?? "—"} active</strong>
+                <small>24時間Incidentと保護状態から判定</small>
+              </div>
+            </a>
+
+            <a className={styles.statusCard} href="/notifications">
+              <div className={styles.statusTop}>
+                <span>Notification</span>
+                <StatusBadge tone={reliabilityTone(data.status.notifications)}>
+                  {reliabilityLabels[data.status.notifications]}
+                </StatusBadge>
+              </div>
+              <div>
+                <strong>{data.notification?.failedCount ?? "—"} failed</strong>
+                <small>Retry {data.notification?.retryCount ?? "—"} / Pending {data.notification?.pendingCount ?? "—"}</small>
+              </div>
+            </a>
+
+            <a className={styles.statusCard} href="/reliability">
+              <div className={styles.statusTop}>
+                <span>Reliability</span>
+                <StatusBadge tone={reliabilityTone(data.status.reliability)}>
+                  {reliabilityLabels[data.status.reliability]}
+                </StatusBadge>
+              </div>
+              <div>
+                <strong>{data.incidents?.summary.activeCount ?? "—"} active incidents</strong>
+                <small>Raw Incident + Backup + Notification health</small>
+              </div>
+            </a>
+          </div>
         </section>
 
-        <section id="hosts">
-          <div className="heading">
-            <div>
-              <h2>ホスト</h2>
-              <p>CPU、メモリ、ディスク、Load Average、Uptimeの現在値です。</p>
-            </div>
-            <small>自動更新 15秒</small>
-          </div>
+        <section className={styles.section} aria-labelledby="attention-title">
+          <SectionHeader
+            eyebrow="NEEDS ATTENTION"
+            title="要対応"
+            description="0件なら正常です。件数がある項目から詳細画面へ進んでください。"
+            aside={<ActionLink href="/incidents">すべてのIncident</ActionLink>}
+          />
+          <MetricGrid className={styles.attentionGrid} label="要対応サマリー">
+            <MetricCard
+              label="ACTIVE CRITICAL"
+              value={data.attention.activeCritical ?? "—"}
+              detail="重大Incident"
+              tone={attentionTone(data.attention.activeCritical, "danger")}
+            />
+            <MetricCard
+              label="ACTIVE WARNING"
+              value={data.attention.activeWarning ?? "—"}
+              detail="注意Incident"
+              tone={attentionTone(data.attention.activeWarning, "warning")}
+            />
+            <MetricCard
+              label="FAILED NOTIFICATION"
+              value={data.attention.failedNotifications ?? "—"}
+              detail="配送失敗"
+              tone={attentionTone(data.attention.failedNotifications, "danger")}
+            />
+            <MetricCard
+              label="BACKUP CRITICAL"
+              value={data.attention.backupCritical ?? "—"}
+              detail="重大Backup Incident"
+              tone={attentionTone(data.attention.backupCritical, "danger")}
+            />
+            <MetricCard
+              label="STALE / OFFLINE"
+              value={data.attention.staleOrOffline ?? "—"}
+              detail="Host + Container"
+              tone={attentionTone(data.attention.staleOrOffline, "warning")}
+            />
+          </MetricGrid>
+        </section>
 
-          {hasDataError ? (
-            <div className="empty error-panel" role="alert">
-              <strong>監視データを取得できませんでした</strong>
-              <p>VercelのSupabase環境変数とAPI稼働状況を確認してください。</p>
-            </div>
-          ) : hosts.length === 0 ? (
-            <div className="empty">
-              <strong>監視対象がありません</strong>
-              <p>有効なホストとHeartbeatが登録されると、ここへ表示されます。</p>
-            </div>
-          ) : (
-            <div className="list">
-              {hosts.map((host) => (
-                <article className="row" key={host.id}>
-                  <div className="identity">
-                    <b>{host.displayName.slice(0, 1).toUpperCase()}</b>
-                    <div>
-                      <h3>{host.displayName}</h3>
-                      <p>
-                        {host.provider.toUpperCase()} / {host.environment} /{" "}
-                        {host.cpuCount ?? "—"} vCPU /{" "}
-                        {formatUptime(host.uptimeSeconds)}
-                      </p>
-                    </div>
+        <section className={styles.section} aria-labelledby="quick-status-title">
+          <SectionHeader
+            eyebrow="QUICK STATUS"
+            title="Minecraft / Infrastructure"
+            description="詳細画面へ移動する前に、ゲーム状態とホスト余力を短時間で確認します。"
+          />
+          <div className={styles.quickGrid}>
+            <article className={styles.panel}>
+              <div className={styles.panelHeader}>
+                <div>
+                  <h3>Minecraft</h3>
+                  <p>Public Probe、Backend Probe、Spark performance、主要Containerの現在値。</p>
+                </div>
+                <ActionLink href="/minecraft">Minecraft詳細</ActionLink>
+              </div>
+              {minecraft ? (
+                <div className={styles.factGrid}>
+                  <div className={styles.fact}>
+                    <span>Players</span>
+                    <strong>{minecraft.players.online ?? "—"} / {minecraft.players.max ?? "—"}</strong>
+                    <small>Online / Max</small>
                   </div>
-                  <span className={`status ${host.status}`}>
-                    {labels[host.status]}
-                  </span>
-                  <div className="metric">
-                    <small>LOAD 1 / 5 / 15</small>
-                    <strong>{formatLoad(host)}</strong>
+                  <div className={styles.fact}>
+                    <span>TPS 1 / 5 / 15m</span>
+                    <strong>{formatTps([minecraft.performance.tps1m, minecraft.performance.tps5m, minecraft.performance.tps15m])}</strong>
+                    <small>{minecraft.performance.source ?? "performance source未取得"}</small>
                   </div>
-                  <div className="metric">
-                    <small>メモリ</small>
-                    <strong>
-                      {formatCapacity(
-                        host.memoryTotalBytes,
-                        host.memoryAvailableBytes,
-                      )}
-                    </strong>
+                  <div className={styles.fact}>
+                    <span>MSPT Median / P95</span>
+                    <strong>{formatMspt(minecraft.performance.msptMedian1m, minecraft.performance.msptP951m)}</strong>
+                    <small>1 minute window</small>
                   </div>
-                  <div className="metric">
-                    <small>ディスク</small>
-                    <strong>
-                      {formatCapacity(
-                        host.diskTotalBytes,
-                        host.diskAvailableBytes,
-                      )}
-                    </strong>
+                  <div className={styles.fact}>
+                    <span>Public / Backend</span>
+                    <strong>{formatLatency(minecraft.publicEndpoint.latencyMs)} / {formatLatency(minecraft.backendProbe.latencyMs)}</strong>
+                    <small>接続Latency</small>
                   </div>
-                  <time dateTime={host.receivedAt ?? undefined}>
-                    {formatRelativeTime(host.receivedAt, generatedAt)}
-                    <small>Agent {host.agentVersion ?? "未受信"}</small>
+                  <div className={styles.fact}>
+                    <span>Velocity</span>
+                    <strong>{minecraft.velocity ? containerLabels[minecraft.velocity.status] : "未受信"}</strong>
+                    <small>{minecraft.velocity?.state ?? "Container未取得"}</small>
+                  </div>
+                  <div className={styles.fact}>
+                    <span>Backend</span>
+                    <strong>{minecraft.backend ? containerLabels[minecraft.backend.status] : "未受信"}</strong>
+                    <small>{minecraft.backend?.state ?? "Container未取得"}</small>
+                  </div>
+                </div>
+              ) : (
+                <StatePanel title="Minecraft情報を取得できませんでした" variant="warning">
+                  MonitoringまたはMinecraft Probeの取得状態を確認してください。
+                </StatePanel>
+              )}
+            </article>
+
+            <article className={styles.panel}>
+              <div className={styles.panelHeader}>
+                <div>
+                  <h3>Infrastructure</h3>
+                  <p>Hostの現在値とContainer状態を集約。CPU使用率は現行Heartbeatにないため推測しません。</p>
+                </div>
+                <ActionLink href="/hosts">Host詳細</ActionLink>
+              </div>
+              {data.monitoring ? (
+                <div className={styles.factGrid}>
+                  <div className={styles.fact}>
+                    <span>Host Load 1m</span>
+                    <strong>{hostLoad === null ? "未取得" : hostLoad.toFixed(2)}</strong>
+                    <small>監視Hostの最大Load Average</small>
+                  </div>
+                  <div className={styles.fact}>
+                    <span>Memory</span>
+                    <strong>{formatPercent(maxMemory)}</strong>
+                    <small>Host最大使用率</small>
+                  </div>
+                  <div className={styles.fact}>
+                    <span>Disk</span>
+                    <strong>{formatPercent(maxDisk)}</strong>
+                    <small>Host最大使用率</small>
+                  </div>
+                  <div className={styles.fact}>
+                    <span>Hosts</span>
+                    <strong>{onlineHosts} / {hosts.length}</strong>
+                    <small>Online / Total</small>
+                  </div>
+                  <div className={styles.fact}>
+                    <span>Containers</span>
+                    <strong>{stableContainers} / {containers.length}</strong>
+                    <small>正常・待機・Maintenance / Total</small>
+                  </div>
+                  <div className={styles.fact}>
+                    <span>Freshness</span>
+                    <strong>{formatRelativeTime(data.monitoring.generatedAt, data.generatedAt)}</strong>
+                    <small>Monitoring Snapshot</small>
+                  </div>
+                </div>
+              ) : (
+                <StatePanel title="Infrastructure情報を取得できませんでした" variant="warning">
+                  Monitoring SnapshotのServer-side接続を確認してください。
+                </StatePanel>
+              )}
+            </article>
+          </div>
+        </section>
+
+        <section className={styles.section} aria-labelledby="recent-activity-title">
+          <SectionHeader
+            eyebrow="RECENT ACTIVITY"
+            title="直近の運用変化"
+            description="生ログではなく、既存の構造化Incident・Recovery・Backup Incident・Notification情報だけを表示します。"
+            aside={<span className={styles.sourceNote}>24時間 / 最大6件</span>}
+          />
+          {data.activities.length > 0 ? (
+            <div className={styles.activityList}>
+              {data.activities.map((activity) => (
+                <a className={styles.activityLink} href={activity.href} key={activity.id}>
+                  <StatusBadge tone={activity.tone}>{activityLabel(activity.tone)}</StatusBadge>
+                  <div className={styles.activityCopy}>
+                    <strong>{activity.title}</strong>
+                    <small>{activity.detail}</small>
+                  </div>
+                  <time className={styles.activityTime} dateTime={activity.occurredAt}>
+                    {formatRelativeTime(activity.occurredAt, data.generatedAt)}
                   </time>
-                </article>
+                </a>
               ))}
             </div>
-          )}
-        </section>
-
-        <section id="containers">
-          <div className="heading">
-            <div>
-              <h2>Dockerコンテナ</h2>
-              <p>状態、期待値、CPU、メモリ、I/O、PIDsを表示します。</p>
-            </div>
-            <small>
-              {normalContainerCount} / {containers.length} 正常・待機
-            </small>
-          </div>
-
-          {hasDataError ? (
-            <div className="empty error-panel" role="alert">
-              <strong>コンテナ状態を取得できませんでした</strong>
-              <p>SupabaseのMigrationと監視APIを確認してください。</p>
-            </div>
-          ) : containers.length === 0 ? (
-            <div className="empty">
-              <strong>Dockerスナップショットがありません</strong>
-              <p>OCIへスナップショット収集Timerを配置すると表示されます。</p>
-            </div>
           ) : (
-            <div className="list">
-              {containers.map((container) => (
-                <article
-                  className="row container-row"
-                  key={`${container.hostId}:${container.name}`}
-                >
-                  <div className="identity">
-                    <b>{container.name.slice(0, 1).toUpperCase()}</b>
-                    <div>
-                      <h3>{container.name}</h3>
-                      <p>
-                        {container.hostDisplayName} / 期待: {" "}
-                        {formatExpectedState(container.expectedState)}
-                      </p>
-                    </div>
-                  </div>
-                  <span className={`status ${container.status}`}>
-                    {labels[container.status]}
-                  </span>
-                  <div className="metric">
-                    <small>STATE / HEALTH</small>
-                    <strong>
-                      {containerStateLabels[container.state]} / {" "}
-                      {containerHealthLabels[container.health]}
-                    </strong>
-                    <span className="metric-detail">
-                      Restart {container.restartCount} / {formatExit(container)}
-                    </span>
-                  </div>
-                  <div className="metric">
-                    <small>CPU / PIDS</small>
-                    <strong>
-                      {container.cpuPercent === null
-                        ? "未取得"
-                        : `${container.cpuPercent.toFixed(2)}% / ${container.pids ?? "—"}`}
-                    </strong>
-                  </div>
-                  <div className="metric">
-                    <small>MEMORY</small>
-                    <strong>{formatContainerMemory(container)}</strong>
-                  </div>
-                  <div className="metric">
-                    <small>NETWORK RX / TX</small>
-                    <strong>
-                      {formatBytes(container.networkRxBytes)} / {" "}
-                      {formatBytes(container.networkTxBytes)}
-                    </strong>
-                  </div>
-                  <div className="metric">
-                    <small>BLOCK READ / WRITE</small>
-                    <strong>
-                      {formatBytes(container.blockReadBytes)} / {" "}
-                      {formatBytes(container.blockWriteBytes)}
-                    </strong>
-                  </div>
-                  <div className="metric">
-                    <small>メンテナンス</small>
-                    <strong>{formatMaintenance(container)}</strong>
-                  </div>
-                  <time dateTime={container.receivedAt}>
-                    {formatRelativeTime(container.receivedAt, generatedAt)}
-                    <small>{labels[container.status]}</small>
-                  </time>
-                </article>
-              ))}
-            </div>
+            <StatePanel title="直近24時間に表示する運用変化はありません">
+              Incident、Recovery、Backup保護イベント、通知配送が発生するとここへ表示されます。
+            </StatePanel>
           )}
         </section>
-      </section>
+      </PageContent>
     </>
   );
 }
