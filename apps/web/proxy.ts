@@ -172,6 +172,6 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|cdn-cgi/|api/health|api/agent/heartbeat|api/reliability/burn-reconcile(?:/)?$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|cdn-cgi/|api/health|api/agent/heartbeat|api/public/status-feed(?:/)?$|api/reliability/burn-reconcile(?:/)?$).*)",
   ],
 };
