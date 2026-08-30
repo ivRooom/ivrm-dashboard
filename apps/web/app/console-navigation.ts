@@ -119,6 +119,12 @@ export const consoleNavigationItems: readonly ConsoleNavigationItem[] = [
     description: "通知SignalとDelivery",
   },
   {
+    href: "/status-center",
+    label: "Status公開",
+    group: "administration",
+    description: "公開Incident・Maintenance・お知らせ",
+  },
+  {
     href: "/security",
     label: "認証・権限",
     group: "administration",
