@@ -167,6 +167,18 @@
   line-height: 1.45;
 }
 
+.currentGrid + [data-variant] {
+  margin-top: 16px;
+}
+
+.containerContent > div:has(+ .periodSelector) {
+  margin-top: 28px;
+}
+
+.containerContent > [data-variant]:last-child {
+  margin-top: 16px;
+}
+
 .sectionHeading {
   display: flex;
   justify-content: space-between;
