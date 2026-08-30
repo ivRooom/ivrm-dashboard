@@ -205,7 +205,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
     const startsMs = Date.parse(startsAt);
     const endsMs = Date.parse(endsAt);
-    if (endsMs <= startsMs || endsMs - startsMs > MAX_DURATION_MS || endsMs <= Date.now()) {
+    // Only deterministic schedule shape is checked here. Whether the schedule is still
+    // eligible at the current time is decided in the idempotent RPC after it first
+    // resolves an existing create_request_id, so retries remain stable over time.
+    if (endsMs <= startsMs || endsMs - startsMs > MAX_DURATION_MS) {
       return wantsJson(request)
         ? jsonResponse({ error: "maintenance_schedule_invalid" }, 400)
         : redirectResult(request, "create_invalid");
