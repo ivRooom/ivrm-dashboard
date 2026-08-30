@@ -28,6 +28,8 @@ type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
+type MetricTone = Exclude<ConsoleTone, "maintenance">;
+
 const healthLabels: Record<BackupHealth, string> = {
   healthy: "正常",
   warning: "注意",
@@ -61,14 +63,14 @@ const failureLabels: Record<BackupFailureCode, string> = {
   unknown: "原因未分類",
 };
 
-function healthTone(health: BackupHealth): ConsoleTone {
+function healthTone(health: BackupHealth): MetricTone {
   if (health === "healthy") return "success";
   if (health === "warning") return "warning";
   if (health === "critical") return "danger";
   return "neutral";
 }
 
-function outcomeTone(outcome: BackupOutcome): ConsoleTone {
+function outcomeTone(outcome: BackupOutcome): MetricTone {
   if (outcome === "success") return "success";
   if (outcome === "failed") return "danger";
   if (outcome === "running") return "warning";
@@ -221,7 +223,7 @@ export default async function BackupsPage({ searchParams }: PageProps) {
               <MetricCard
                 detail={`正常 ${summary.healthyCount} / 注意 ${summary.warningCount} / 重大 ${summary.criticalCount} / 未確認 ${summary.unknownCount}`}
                 label="BACKUP HEALTH"
-                tone={healthTone(summary.overallHealth) === "maintenance" ? "neutral" : healthTone(summary.overallHealth)}
+                tone={healthTone(summary.overallHealth)}
                 value={
                   <StatusBadge tone={healthTone(summary.overallHealth)}>
                     {healthLabels[summary.overallHealth]}
