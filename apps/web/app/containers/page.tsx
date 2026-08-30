@@ -1,5 +1,15 @@
 import { AutoRefresh } from "../../components/auto-refresh";
 import {
+  ActionLink,
+  MetricCard,
+  MetricGrid,
+  PageContent,
+  PageHeader,
+  StatePanel,
+  StatusBadge,
+  type ConsoleTone,
+} from "../../components/console-ui";
+import {
   getMonitoringSnapshot,
   type ContainerExpectedState,
   type ContainerOverview,
@@ -25,10 +35,16 @@ const expectedStateLabels: Record<ContainerExpectedState, string> = {
   absent: "未作成",
 };
 
+function statusTone(status: ContainerStatus): ConsoleTone {
+  if (status === "online") return "success";
+  if (status === "standby") return "info";
+  if (status === "maintenance") return "maintenance";
+  if (status === "stale") return "warning";
+  return "danger";
+}
+
 function formatBytes(bytes: number | null): string {
-  if (bytes === null) {
-    return "未取得";
-  }
+  if (bytes === null) return "未取得";
   const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
   let value = bytes;
   let unitIndex = 0;
@@ -54,9 +70,7 @@ function formatMemory(container: ContainerOverview): string {
 function formatRelativeTime(timestamp: string, reference: string): string {
   const target = Date.parse(timestamp);
   const now = Date.parse(reference);
-  if (!Number.isFinite(target) || !Number.isFinite(now)) {
-    return "時刻不明";
-  }
+  if (!Number.isFinite(target) || !Number.isFinite(now)) return "時刻不明";
   const ageSeconds = Math.max(0, Math.floor((now - target) / 1_000));
   if (ageSeconds < 60) return `${ageSeconds}秒前`;
   if (ageSeconds < 3_600) return `${Math.floor(ageSeconds / 60)}分前`;
@@ -104,56 +118,53 @@ export default async function ContainersPage() {
   return (
     <>
       <AutoRefresh intervalMs={15_000} />
-      <section className={`content ${styles.containerContent}`}>
-        <header>
-          <div>
-            <p className={styles.eyebrow}>CONTAINER INVENTORY</p>
-            <h1>Dockerコンテナ</h1>
-            <p>監視対象を選択して、現在値と個別の時系列履歴へ掘り下げます。</p>
-          </div>
-          <div className={styles.headerActions}>
-            <a className={styles.secondaryLink} href="/">
-              システム概要
-            </a>
-            <a className={styles.secondaryLink} href="/history">
-              全体履歴
-            </a>
-          </div>
-        </header>
+      <PageContent className={styles.containerContent}>
+        <PageHeader
+          eyebrow="CONTAINER INVENTORY"
+          title="Dockerコンテナ"
+          description="監視対象を選択して、現在値と個別の時系列履歴へ掘り下げます。"
+          actions={
+            <>
+              <ActionLink href="/">システム概要</ActionLink>
+              <ActionLink href="/history">全体履歴</ActionLink>
+            </>
+          }
+        />
 
-        <section className={styles.summaryGrid} aria-label="コンテナ監視サマリー">
-          <article>
-            <span>監視コンテナ</span>
-            <strong>{hasDataError ? "—" : containers.length}</strong>
-            <small>{hosts.length}ホストから受信</small>
-          </article>
-          <article>
-            <span>正常・待機</span>
-            <strong>{hasDataError ? "—" : healthyCount}</strong>
-            <small>稼働・待機・メンテナンス</small>
-          </article>
-          <article>
-            <span>要確認</span>
-            <strong>{hasDataError ? "—" : issueCount}</strong>
-            <small>受信停止・遅延・異常</small>
-          </article>
-          <article>
-            <span>メンテナンス</span>
-            <strong>{hasDataError ? "—" : maintenanceCount}</strong>
-            <small>現在有効な計画作業</small>
-          </article>
-        </section>
+        <MetricGrid label="コンテナ監視サマリー">
+          <MetricCard
+            label="MONITORED"
+            value={hasDataError ? "—" : containers.length}
+            detail={`${hosts.length}ホストから受信`}
+          />
+          <MetricCard
+            label="HEALTHY / STANDBY"
+            value={hasDataError ? "—" : healthyCount}
+            detail="稼働・待機・メンテナンス"
+            tone={hasDataError ? "neutral" : "success"}
+          />
+          <MetricCard
+            label="NEEDS ATTENTION"
+            value={hasDataError ? "—" : issueCount}
+            detail="受信停止・遅延・異常"
+            tone={!hasDataError && issueCount > 0 ? "danger" : "neutral"}
+          />
+          <MetricCard
+            label="MAINTENANCE"
+            value={hasDataError ? "—" : maintenanceCount}
+            detail="現在有効な計画作業"
+            tone="neutral"
+          />
+        </MetricGrid>
 
         {hasDataError ? (
-          <div className="empty error-panel" role="alert">
-            <strong>コンテナ一覧を取得できませんでした</strong>
-            <p>監視データの取得経路を確認してください。</p>
-          </div>
+          <StatePanel title="コンテナ一覧を取得できませんでした" variant="error">
+            監視データの取得経路を確認してください。
+          </StatePanel>
         ) : containers.length === 0 ? (
-          <div className="empty">
-            <strong>監視対象のコンテナがありません</strong>
-            <p>AgentからDocker Snapshotを受信するとここへ表示されます。</p>
-          </div>
+          <StatePanel title="監視対象のコンテナがありません">
+            AgentからDocker Snapshotを受信するとここへ表示されます。
+          </StatePanel>
         ) : (
           <section className={styles.containerGrid} aria-label="コンテナ一覧">
             {containers.map((container) => {
@@ -180,9 +191,9 @@ export default async function ContainersPage() {
                         )}
                       </h2>
                     </div>
-                    <span className={`status ${container.status}`}>
+                    <StatusBadge tone={statusTone(container.status)}>
                       {statusLabels[container.status]}
-                    </span>
+                    </StatusBadge>
                   </div>
 
                   <div className={styles.metaGrid}>
@@ -222,16 +233,14 @@ export default async function ContainersPage() {
                   </div>
 
                   {detailHref ? (
-                    <a className={styles.secondaryLink} href={detailHref}>
-                      現在値と履歴を開く →
-                    </a>
+                    <ActionLink href={detailHref}>現在値と履歴を開く →</ActionLink>
                   ) : null}
                 </article>
               );
             })}
           </section>
         )}
-      </section>
+      </PageContent>
     </>
   );
 }
