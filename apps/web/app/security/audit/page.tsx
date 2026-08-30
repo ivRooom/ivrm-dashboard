@@ -1,6 +1,15 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import {
+  ActionLink,
+  PageContent,
+  PageHeader,
+  StatePanel,
+  StatusBadge,
+  TableShell,
+  type ConsoleTone,
+} from "../../../components/console-ui";
+import {
   getConsoleSession,
   hasConsoleRole,
   type ConsoleRole,
@@ -15,6 +24,7 @@ import {
   type DiscordAuthAuditAction,
   type DiscordAuthAuditRow,
 } from "../../../lib/discord-security-admin";
+import styles from "./audit.module.css";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +94,12 @@ function formatDateTime(value: string): string {
   }).format(date);
 }
 
+function resultTone(result: AuditResult): ConsoleTone {
+  if (result === "success") return "success";
+  if (result === "conflict") return "warning";
+  return "danger";
+}
+
 function buildNextHref(
   action: DiscordAuthAuditAction | null,
   result: AuditResult | null,
@@ -145,229 +161,104 @@ export default async function DiscordAuthAuditPage({ searchParams }: PageProps) 
   const nextHref = logs.length === 50 && last ? buildNextHref(action, result, last) : null;
 
   return (
-    <main style={pageStyle}>
-      <section style={{ maxWidth: 1240, margin: "0 auto" }}>
-        <a href="/security" style={backLinkStyle}>
-          ← 認証・権限へ戻る
-        </a>
-        <header style={{ margin: "28px 0" }}>
-          <p style={eyebrowStyle}>AUTHENTICATION AUDIT</p>
-          <h1 style={{ fontSize: "clamp(2rem, 5vw, 3.5rem)", margin: "8px 0" }}>
-            Discord認証監査
-          </h1>
-          <p style={leadStyle}>
-            Discordログインの成功・拒否・Logout・管理失効だけを表示します。Token、Cookie、Session Hash、Role ID一覧、IP、Providerの詳細文は表示しません。
-          </p>
-        </header>
+    <PageContent className={styles.content}>
+      <PageHeader
+        actions={<ActionLink href="/security">認証・権限へ戻る</ActionLink>}
+        className={styles.pageHeader}
+        description="Discordログインの成功・拒否・Logout・管理失効だけを表示します。Token、Cookie、Session Hash、Role ID一覧、IP、Providerの詳細文は表示しません。"
+        eyebrow="AUTHENTICATION AUDIT"
+        title="Discord認証監査"
+      />
 
-        <form method="get" style={filterFormStyle}>
-          <label style={labelStyle}>
-            操作
-            <select name="action" defaultValue={action || ""} style={selectStyle}>
-              <option value="">すべて</option>
-              {Object.entries(actionLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label style={labelStyle}>
-            結果
-            <select name="result" defaultValue={result || ""} style={selectStyle}>
-              <option value="">すべて</option>
-              {Object.entries(resultLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button type="submit" style={buttonStyle}>
-            絞り込む
-          </button>
-          <a href="/security/audit" style={clearLinkStyle}>
-            クリア
-          </a>
-        </form>
+      <form className={styles.filterForm} method="get">
+        <label>
+          操作
+          <select name="action" defaultValue={action || ""}>
+            <option value="">すべて</option>
+            {Object.entries(actionLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          結果
+          <select name="result" defaultValue={result || ""}>
+            <option value="">すべて</option>
+            {Object.entries(resultLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button className={styles.filterButton} type="submit">
+          絞り込む
+        </button>
+        <ActionLink href="/security/audit">クリア</ActionLink>
+      </form>
 
-        {loadError ? (
-          <div role="alert" style={errorStyle}>
-            認証監査ログを取得できませんでした。Filter、Session、権限を確認してください。
-          </div>
-        ) : null}
+      {loadError ? (
+        <StatePanel title="認証監査ログを取得できませんでした" variant="error">
+          Filter、Session、権限を確認してください。
+        </StatePanel>
+      ) : null}
 
-        {!loadError && logs.length === 0 ? (
-          <section style={cardStyle}>
-            <h2 style={{ marginTop: 0 }}>対象ログはありません</h2>
-            <p style={leadStyle}>選択した条件に一致するDiscord認証監査ログはありません。</p>
-          </section>
-        ) : null}
+      {!loadError && logs.length === 0 ? (
+        <StatePanel title="対象ログはありません">
+          選択した条件に一致するDiscord認証監査ログはありません。
+        </StatePanel>
+      ) : null}
 
-        {logs.length > 0 ? (
-          <div style={tableShellStyle}>
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={headerCellStyle}>日時</th>
-                  <th style={headerCellStyle}>操作</th>
-                  <th style={headerCellStyle}>結果</th>
-                  <th style={headerCellStyle}>対象Discord User</th>
-                  <th style={headerCellStyle}>ロール</th>
-                  <th style={headerCellStyle}>理由</th>
-                  <th style={headerCellStyle}>Provider Error</th>
-                  <th style={headerCellStyle}>Request ID</th>
+      {logs.length > 0 ? (
+        <TableShell className={styles.tableShell} label="Discord認証監査ログ">
+          <table>
+            <thead>
+              <tr>
+                <th>日時</th>
+                <th>操作</th>
+                <th>結果</th>
+                <th>対象Discord User</th>
+                <th>ロール</th>
+                <th>理由</th>
+                <th>Provider Error</th>
+                <th>Request ID</th>
+              </tr>
+            </thead>
+            <tbody>
+              {logs.map((log) => (
+                <tr key={log.auditId}>
+                  <td>{formatDateTime(log.occurredAt)}</td>
+                  <td>{actionLabels[log.action]}</td>
+                  <td>
+                    <StatusBadge tone={resultTone(log.result)}>
+                      {resultLabels[log.result]}
+                    </StatusBadge>
+                  </td>
+                  <td>{log.discordUserId || "不明"}</td>
+                  <td>
+                    {log.consoleRole
+                      ? roleLabels[log.consoleRole]
+                      : log.actorRole
+                        ? roleLabels[log.actorRole]
+                        : "—"}
+                  </td>
+                  <td>{log.reason ? reasonLabels[log.reason] || log.reason : "—"}</td>
+                  <td className={styles.mono}>{log.providerError || "—"}</td>
+                  <td className={styles.mono}>{log.requestId}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {logs.map((log) => (
-                  <tr key={log.auditId}>
-                    <td style={cellStyle}>{formatDateTime(log.occurredAt)}</td>
-                    <td style={cellStyle}>{actionLabels[log.action]}</td>
-                    <td style={cellStyle}>
-                      <span style={resultBadgeStyle(log.result)}>
-                        {resultLabels[log.result]}
-                      </span>
-                    </td>
-                    <td style={cellStyle}>{log.discordUserId || "不明"}</td>
-                    <td style={cellStyle}>
-                      {log.consoleRole
-                        ? roleLabels[log.consoleRole]
-                        : log.actorRole
-                          ? roleLabels[log.actorRole]
-                          : "—"}
-                    </td>
-                    <td style={cellStyle}>
-                      {log.reason ? reasonLabels[log.reason] || log.reason : "—"}
-                    </td>
-                    <td style={{ ...cellStyle, fontFamily: "ui-monospace, monospace" }}>
-                      {log.providerError || "—"}
-                    </td>
-                    <td style={{ ...cellStyle, fontFamily: "ui-monospace, monospace" }}>
-                      {log.requestId}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
+              ))}
+            </tbody>
+          </table>
+        </TableShell>
+      ) : null}
 
-        {nextHref ? (
-          <div style={{ marginTop: 20 }}>
-            <a href={nextHref} style={clearLinkStyle}>
-              次の50件を表示
-            </a>
-          </div>
-        ) : null}
-      </section>
-    </main>
+      {nextHref ? (
+        <div className={styles.pagination}>
+          <ActionLink href={nextHref}>次の50件を表示</ActionLink>
+        </div>
+      ) : null}
+    </PageContent>
   );
 }
-
-function resultBadgeStyle(result: AuditResult) {
-  const colors = {
-    success: { color: "#86efac", background: "rgba(22,101,52,.25)" },
-    denied: { color: "#fca5a5", background: "rgba(127,29,29,.25)" },
-    conflict: { color: "#fde68a", background: "rgba(113,63,18,.25)" },
-    error: { color: "#fda4af", background: "rgba(136,19,55,.25)" },
-  }[result];
-  return {
-    display: "inline-flex",
-    borderRadius: 999,
-    padding: "5px 9px",
-    fontSize: 12,
-    fontWeight: 800,
-    ...colors,
-  } as const;
-}
-
-const pageStyle = {
-  minHeight: "100vh",
-  background: "#07111f",
-  color: "#e8eef7",
-  padding: "72px 20px 80px",
-  fontFamily: "system-ui, sans-serif",
-} as const;
-const backLinkStyle = { color: "#9cc5ff", textDecoration: "none" } as const;
-const eyebrowStyle = { color: "#8ba4c7", letterSpacing: ".12em" } as const;
-const leadStyle = { color: "#b8c7dc", lineHeight: 1.8 } as const;
-const cardStyle = {
-  border: "1px solid rgba(148,163,184,.22)",
-  borderRadius: 18,
-  padding: 22,
-  background: "rgba(15,27,45,.82)",
-} as const;
-const filterFormStyle = {
-  ...cardStyle,
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 14,
-  alignItems: "end",
-  marginBottom: 20,
-} as const;
-const labelStyle = {
-  display: "grid",
-  gap: 7,
-  color: "#b8c7dc",
-  fontSize: 13,
-} as const;
-const selectStyle = {
-  minWidth: 210,
-  border: "1px solid rgba(148,163,184,.35)",
-  borderRadius: 10,
-  padding: "9px 11px",
-  background: "#07111f",
-  color: "#e8eef7",
-} as const;
-const buttonStyle = {
-  border: "1px solid rgba(96,165,250,.5)",
-  borderRadius: 10,
-  padding: "10px 14px",
-  background: "rgba(30,64,175,.28)",
-  color: "#dbeafe",
-  fontWeight: 800,
-  cursor: "pointer",
-} as const;
-const clearLinkStyle = {
-  display: "inline-flex",
-  border: "1px solid rgba(148,163,184,.3)",
-  borderRadius: 10,
-  padding: "9px 13px",
-  color: "#dbeafe",
-  textDecoration: "none",
-  background: "rgba(15,27,45,.72)",
-  fontWeight: 700,
-  fontSize: 13,
-} as const;
-const errorStyle = {
-  ...cardStyle,
-  borderColor: "rgba(248,113,113,.5)",
-  color: "#fecaca",
-  marginBottom: 18,
-} as const;
-const tableShellStyle = {
-  overflowX: "auto",
-  border: "1px solid rgba(148,163,184,.22)",
-  borderRadius: 18,
-  background: "rgba(15,27,45,.82)",
-} as const;
-const tableStyle = {
-  width: "100%",
-  minWidth: 1200,
-  borderCollapse: "collapse",
-} as const;
-const headerCellStyle = {
-  padding: "14px 16px",
-  textAlign: "left",
-  color: "#8ba4c7",
-  borderBottom: "1px solid rgba(148,163,184,.22)",
-  fontSize: 12,
-  letterSpacing: ".06em",
-} as const;
-const cellStyle = {
-  padding: "16px",
-  verticalAlign: "top",
-  borderBottom: "1px solid rgba(148,163,184,.12)",
-  fontSize: 14,
-} as const;
