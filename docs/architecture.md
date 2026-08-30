@@ -52,6 +52,19 @@ Navigation IAは以下とする。
 
 `/login`など`isPublicConsoleRoute()`でPublicと判定されるRouteにはConsole Shellを表示しない。Navigationのために監視データ取得をClientへ移さず、Client ComponentはPath判定とMobile interactionなど必要最小限に限定する。
 
+## Console Design System
+
+Consoleの視覚仕様は、大型Theme libraryを追加せずCSS custom propertiesと小さなShared Componentで段階的に統一する。
+
+- `apps/web/app/design-tokens.css`: Surface / Border / Text / State / Spacing / Radius / Typography / Focus / Interactive / Layout rhythmのSemantic Tokenを定義する。
+- `apps/web/app/globals.css`: 既存Primitive TokenとLegacy page styleを保持し、既存Routeを一括変更せず段階移行する。
+- `apps/web/components/console-ui.tsx`: `PageHeader`、`SectionHeader`、`MetricCard`、`StatusBadge`、`ActionLink`、`StatePanel`、`TableShell`など、データ取得や認証へ依存しない表示Primitiveを提供する。
+- Statusはラベルを必ず表示し、色だけへ意味を依存させない。
+- Interactive要素は`focus-visible`を持ち、`prefers-reduced-motion`では共通transition tokenを0msへ落とす。
+- Page Componentの認証、RBAC、Server-side data fetching、mutationはShared Componentへ移さない。
+
+Phase Bでは代表Routeから段階移行し、Overviewの情報設計変更はPhase Cへ分離する。
+
 ## Heartbeat認証
 
 Agentは毎回、次のヘッダーを付与する。
