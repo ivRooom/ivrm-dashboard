@@ -1,0 +1,171 @@
+.loginPage {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding:
+    calc(var(--space-6) + env(safe-area-inset-top))
+    calc(var(--space-4) + env(safe-area-inset-right))
+    calc(var(--space-6) + env(safe-area-inset-bottom))
+    calc(var(--space-4) + env(safe-area-inset-left));
+  background:
+    radial-gradient(circle at 50% -10%, rgb(184 255 61 / 10%), transparent 34%),
+    radial-gradient(circle at 100% 0%, rgb(88 101 242 / 11%), transparent 28%),
+    var(--surface-canvas);
+  color: var(--text-primary);
+}
+
+.loginCard {
+  width: min(100%, 560px);
+  padding: clamp(var(--space-6), 6vw, var(--space-8));
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  background: linear-gradient(
+    180deg,
+    rgb(23 27 36 / 96%),
+    rgb(17 20 27 / 98%)
+  );
+  box-shadow: 0 24px 80px rgb(0 0 0 / 32%);
+}
+
+.brandLockup {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-7);
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.06em;
+}
+
+.brandMark {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--text-accent);
+  color: #080a0d;
+  font-size: var(--font-size-lg);
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.loginHeader {
+  margin-bottom: var(--space-6);
+}
+
+.messageStack {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.successNotice {
+  padding: var(--card-padding);
+  border: 1px solid var(--state-success-border);
+  border-radius: var(--radius-lg);
+  background: var(--state-success-bg);
+}
+
+.successNotice strong,
+.successNotice span {
+  display: block;
+}
+
+.successNotice strong {
+  color: var(--text-success);
+  font-size: var(--font-size-md);
+}
+
+.successNotice span {
+  margin-top: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-body);
+}
+
+.discordButton {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: 12px 18px;
+  border: 1px solid rgb(122 132 255 / 70%);
+  border-radius: var(--radius-lg);
+  background: #5865f2;
+  color: #fff;
+  font-weight: var(--font-weight-bold);
+  line-height: 1.3;
+  text-decoration: none;
+  box-shadow: 0 12px 30px rgb(88 101 242 / 24%);
+  transition:
+    background var(--transition-fast) ease,
+    border-color var(--transition-fast) ease,
+    box-shadow var(--transition-fast) ease;
+}
+
+.discordButton:hover {
+  border-color: rgb(184 255 61 / 55%);
+  background: #6571f4;
+  box-shadow: 0 14px 34px rgb(88 101 242 / 30%);
+}
+
+.discordButton:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: var(--focus-offset);
+}
+
+.discordButton:active {
+  background: #4f5be0;
+}
+
+.discordIcon {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+}
+
+.configWarning {
+  margin-top: var(--space-2);
+}
+
+.securityNotes {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-7);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-default);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-body);
+}
+
+.securityNotes strong {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+@media (max-width: 620px) {
+  .loginPage {
+    place-items: stretch center;
+    align-content: center;
+  }
+
+  .loginCard {
+    padding: var(--space-6) var(--space-5);
+    border-radius: var(--radius-lg);
+  }
+
+  .brandLockup {
+    margin-bottom: var(--space-6);
+  }
+
+  .securityNotes {
+    margin-top: var(--space-6);
+  }
+}
