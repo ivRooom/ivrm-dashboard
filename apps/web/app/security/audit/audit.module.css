@@ -1,0 +1,127 @@
+.content {
+  display: grid;
+  gap: var(--page-section-gap);
+}
+
+.pageHeader {
+  margin-bottom: 0;
+}
+
+.filterForm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: end;
+  padding: var(--card-padding);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-default);
+}
+
+.filterForm label {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.filterForm select {
+  min-width: 210px;
+  min-height: var(--control-height);
+  padding: 8px 11px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.filterForm select:focus-visible,
+.filterButton:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: var(--focus-offset);
+}
+
+.filterButton {
+  min-height: var(--control-height);
+  padding: 8px 14px;
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-md);
+  background: var(--surface-accent-subtle);
+  color: var(--text-accent);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.filterButton:hover {
+  border-color: var(--border-interactive);
+  background: var(--surface-interactive-hover);
+}
+
+.tableShell table {
+  width: 100%;
+  min-width: 1200px;
+  border-collapse: collapse;
+}
+
+.tableShell th,
+.tableShell td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-default);
+  vertical-align: top;
+  text-align: left;
+}
+
+.tableShell th {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.tableShell td {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.tableShell tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+.pagination {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 620px) {
+  .filterForm {
+    align-items: stretch;
+  }
+
+  .filterForm label,
+  .filterForm select,
+  .filterButton {
+    width: 100%;
+  }
+
+  .filterForm select {
+    min-width: 0;
+  }
+
+  .pagination {
+    justify-content: stretch;
+  }
+
+  .pagination > a {
+    width: 100%;
+  }
+}
