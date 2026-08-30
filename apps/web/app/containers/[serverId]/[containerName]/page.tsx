@@ -2,6 +2,17 @@ import { notFound } from "next/navigation";
 import { AutoRefresh } from "../../../../components/auto-refresh";
 import { ContainerEventPanel } from "../../../../components/container-event-panel";
 import {
+  ActionLink,
+  MetricCard,
+  MetricGrid,
+  PageContent,
+  PageHeader,
+  SectionHeader,
+  StatePanel,
+  StatusBadge,
+  type ConsoleTone,
+} from "../../../../components/console-ui";
+import {
   MetricLineChart,
   type MetricChartMarker,
 } from "../../../../components/metric-line-chart";
@@ -42,6 +53,14 @@ const statusLabels: Record<ContainerStatus, string> = {
   standby: "待機中",
   maintenance: "メンテナンス",
 };
+
+function statusTone(status: ContainerStatus): ConsoleTone {
+  if (status === "online") return "success";
+  if (status === "standby") return "info";
+  if (status === "maintenance") return "maintenance";
+  if (status === "stale") return "warning";
+  return "danger";
+}
 
 const stateLabels: Record<ContainerState, string> = {
   created: "作成済み",
@@ -331,58 +350,60 @@ export default async function ContainerDetailPage({ params, searchParams }: Page
   return (
     <>
       <AutoRefresh intervalMs={rangeConfig.refreshMs} />
-      <section className={`content ${styles.containerContent}`}>
-        <header>
-          <div>
-            <p className={styles.eyebrow}>CONTAINER DETAIL</p>
-            <h1>{containerName}</h1>
-            <p>{host?.displayName ?? serverId}の現在値、履歴、状態変化を確認します。</p>
-          </div>
-          <div className={styles.headerActions}>
-            <a className={styles.secondaryLink} href="/containers">コンテナ一覧</a>
-            <a className={styles.secondaryLink} href={`/history?range=${range}`}>全体履歴</a>
-            <a
-              className={styles.secondaryLink}
-              href={`/events?range=${range}&target=${encodeURIComponent(`${serverId}/${containerName}`)}`}
-            >
-              全イベント
-            </a>
-          </div>
-        </header>
+      <PageContent className={styles.containerContent}>
+        <PageHeader
+          actions={
+            <>
+              <ActionLink href="/containers">コンテナ一覧</ActionLink>
+              <ActionLink href={`/history?range=${range}`}>全体履歴</ActionLink>
+              <ActionLink
+                href={`/events?range=${range}&target=${encodeURIComponent(`${serverId}/${containerName}`)}`}
+              >
+                全イベント
+              </ActionLink>
+            </>
+          }
+          description={`${host?.displayName ?? serverId}の現在値、履歴、状態変化を確認します。`}
+          eyebrow="CONTAINER DETAIL"
+          title={containerName}
+        />
 
         {currentError ? (
-          <div className="empty error-panel" role="alert" style={{ marginTop: 28 }}>
-            <strong>現在値を取得できませんでした</strong>
-            <p>監視データの取得経路を確認してください。</p>
-          </div>
+          <StatePanel title="現在値を取得できませんでした" variant="error">
+            監視データの取得経路を確認してください。
+          </StatePanel>
         ) : container ? (
           <>
-            <section className={styles.summaryGrid} aria-label="現在値サマリー">
-              <article>
-                <span>運用状態</span>
-                <strong>{statusLabels[container.status]}</strong>
-                <small>{stateLabels[container.state]} / {healthLabels[container.health]}</small>
-              </article>
-              <article>
-                <span>CPU / PIDs</span>
-                <strong>
-                  {container.cpuPercent === null
+            <MetricGrid label="現在値サマリー">
+              <MetricCard
+                detail={`${stateLabels[container.state]} / ${healthLabels[container.health]}`}
+                label="運用状態"
+                value={
+                  <StatusBadge tone={statusTone(container.status)}>
+                    {statusLabels[container.status]}
+                  </StatusBadge>
+                }
+              />
+              <MetricCard
+                detail="最新Snapshot"
+                label="CPU / PIDs"
+                value={
+                  container.cpuPercent === null
                     ? "未取得"
-                    : `${container.cpuPercent.toFixed(2)}% / ${container.pids ?? "—"}`}
-                </strong>
-                <small>最新Snapshot</small>
-              </article>
-              <article>
-                <span>Memory</span>
-                <strong>{memoryPercent(container)?.toFixed(2) ?? "—"}%</strong>
-                <small>{formatMemory(container)}</small>
-              </article>
-              <article>
-                <span>最終受信</span>
-                <strong>{formatRelativeTime(container.receivedAt, generatedAt)}</strong>
-                <small>{formatDateTime(container.receivedAt)}</small>
-              </article>
-            </section>
+                    : `${container.cpuPercent.toFixed(2)}% / ${container.pids ?? "—"}`
+                }
+              />
+              <MetricCard
+                detail={formatMemory(container)}
+                label="Memory"
+                value={`${memoryPercent(container)?.toFixed(2) ?? "—"}%`}
+              />
+              <MetricCard
+                detail={formatDateTime(container.receivedAt)}
+                label="最終受信"
+                value={formatRelativeTime(container.receivedAt, generatedAt)}
+              />
+            </MetricGrid>
 
             <section className={styles.currentGrid} aria-label="コンテナ現在値詳細">
               <div><span>EXPECTED STATE</span><strong>{formatExpectedState(container.expectedState)}</strong></div>
@@ -394,18 +415,21 @@ export default async function ContainerDetailPage({ params, searchParams }: Page
             </section>
 
             {container.maintenanceMode ? (
-              <section className={`${styles.notice} ${styles.maintenance}`}>
-                <strong>{container.maintenanceActive ? "メンテナンス中" : "メンテナンス設定は期限切れ"}</strong>
-                <p>{container.maintenanceReason ?? "理由未設定"} / 期限 {formatDateTime(container.maintenanceUntil)}</p>
-              </section>
+              <StatePanel
+                title={container.maintenanceActive ? "メンテナンス中" : "メンテナンス設定は期限切れ"}
+                variant={container.maintenanceActive ? "info" : "warning"}
+              >
+                {container.maintenanceReason ?? "理由未設定"} / 期限 {formatDateTime(container.maintenanceUntil)}
+              </StatePanel>
             ) : null}
           </>
         ) : null}
 
-        <div className={styles.sectionHeading}>
-          <div><span>HISTORY</span><h2>個別リソース履歴</h2></div>
-          <p>縦の破線は同じ期間に発生したState / Health / Restart / OOMなどの監視イベントです。</p>
-        </div>
+        <SectionHeader
+          description="縦の破線は同じ期間に発生したState / Health / Restart / OOMなどの監視イベントです。"
+          eyebrow="HISTORY"
+          title="個別リソース履歴"
+        />
 
         <nav className={styles.periodSelector} aria-label="表示期間">
           {(Object.keys(HISTORY_RANGE_CONFIG) as HistoryRange[]).map((item) => (
@@ -420,22 +444,21 @@ export default async function ContainerDetailPage({ params, searchParams }: Page
           ))}
         </nav>
 
-        <section className={styles.summaryGrid} aria-label="選択期間の履歴サマリー">
-          <div><span>表示期間</span><strong>{rangeConfig.label}</strong><small>{rangeConfig.aggregationLabel}</small></div>
-          <div><span>Peak CPU</span><strong>{peakCpu === null ? "—" : `${peakCpu.toFixed(2)}%`}</strong><small>選択期間の最大値</small></div>
-          <div><span>Peak Memory</span><strong>{peakMemory === null ? "—" : `${peakMemory.toFixed(2)}%`}</strong><small>選択期間の最大値</small></div>
-          <div><span>Peak PIDs</span><strong>{peakPids === null ? "—" : Math.round(peakPids)}</strong><small>選択期間の最大値</small></div>
-          <div><span>RestartCount</span><strong>{latestRestart === null ? "—" : Math.round(latestRestart)}</strong><small>期間内の最新値</small></div>
-          <div><span>監視イベント</span><strong>{eventError ? "—" : events.length}</strong><small>同期間の状態変化</small></div>
-          <div><span>集約元Sample</span><strong>{historyError ? "—" : totalSamples.toLocaleString("ja-JP")}</strong><small>{dataSourceLabels[historyDataSource]}</small></div>
-          <div><span>Data Source</span><strong>{dataSourceLabels[historyDataSource]}</strong><small>{expectedIntervalSeconds}秒Bucket</small></div>
-        </section>
+        <MetricGrid label="選択期間の履歴サマリー">
+          <MetricCard detail={rangeConfig.aggregationLabel} label="表示期間" value={rangeConfig.label} />
+          <MetricCard detail="選択期間の最大値" label="Peak CPU" value={peakCpu === null ? "—" : `${peakCpu.toFixed(2)}%`} />
+          <MetricCard detail="選択期間の最大値" label="Peak Memory" value={peakMemory === null ? "—" : `${peakMemory.toFixed(2)}%`} />
+          <MetricCard detail="選択期間の最大値" label="Peak PIDs" value={peakPids === null ? "—" : Math.round(peakPids)} />
+          <MetricCard detail="期間内の最新値" label="RestartCount" value={latestRestart === null ? "—" : Math.round(latestRestart)} />
+          <MetricCard detail="同期間の状態変化" label="監視イベント" value={eventError ? "—" : events.length} />
+          <MetricCard detail={dataSourceLabels[historyDataSource]} label="集約元Sample" value={historyError ? "—" : totalSamples.toLocaleString("ja-JP")} />
+          <MetricCard detail={`${expectedIntervalSeconds}秒Bucket`} label="Data Source" value={dataSourceLabels[historyDataSource]} />
+        </MetricGrid>
 
         {historyError ? (
-          <div className="empty error-panel" role="alert">
-            <strong>個別履歴を取得できませんでした</strong>
-            <p>履歴RPCの状態を確認してください。現在値・イベント表示には影響しません。</p>
-          </div>
+          <StatePanel title="個別履歴を取得できませんでした" variant="error">
+            履歴RPCの状態を確認してください。現在値・イベント表示には影響しません。
+          </StatePanel>
         ) : (
           <div className={styles.chartGrid}>
             <MetricLineChart aggregationLabel={rangeConfig.aggregationLabel} description="Docker CPU使用率の推移です。" endAt={endAt} expectedIntervalSeconds={expectedIntervalSeconds} markers={markers} periodLabel={rangeConfig.label} series={singleSeries(history,"cpu",seriesLabel,(point)=>point.cpuPercent)} startAt={startAt} title="CPU使用率" unit="%" />
@@ -455,11 +478,10 @@ export default async function ContainerDetailPage({ params, searchParams }: Page
           serverId={serverId}
         />
 
-        <section className={styles.notice}>
-          <strong>読み取り専用</strong>
-          <p>この画面は監視Snapshot・履歴RPC・構造化イベントだけを利用します。Docker操作、Shell、RCON、Secret、ログ本文は扱いません。</p>
-        </section>
-      </section>
+        <StatePanel title="読み取り専用" variant="info">
+          この画面は監視Snapshot・履歴RPC・構造化イベントだけを利用します。Docker操作、Shell、RCON、Secret、ログ本文は扱いません。
+        </StatePanel>
+      </PageContent>
     </>
   );
 }
