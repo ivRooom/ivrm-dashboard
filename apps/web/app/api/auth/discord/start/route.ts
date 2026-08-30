@@ -5,7 +5,12 @@ import {
   getDiscordAuthConfiguration,
   sanitizeReturnPath,
 } from "../../../../../lib/discord-auth";
-import { getDiscordOAuthCookieNames } from "../../../../../lib/discord-oauth-cookies";
+import {
+  encodeDiscordOAuthStateCookie,
+  getDiscordOAuthCookieNames,
+  getDiscordOAuthCookieNamesToPrune,
+  MAX_DISCORD_OAUTH_ATTEMPTS,
+} from "../../../../../lib/discord-oauth-cookies";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -36,7 +41,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
     response.headers.set("Cache-Control", "private, no-store, max-age=0");
     response.headers.set("X-Content-Type-Options", "nosniff");
-    response.cookies.set(cookieNames.state, state, {
+
+    const staleCookieNames = getDiscordOAuthCookieNamesToPrune(
+      request.cookies.getAll(),
+      MAX_DISCORD_OAUTH_ATTEMPTS - 1,
+    );
+    for (const staleCookieName of staleCookieNames) {
+      response.cookies.set(staleCookieName, "", {
+        ...COOKIE_BASE,
+        maxAge: 0,
+      });
+    }
+
+    response.cookies.set(cookieNames.state, encodeDiscordOAuthStateCookie(state), {
       ...COOKIE_BASE,
       maxAge: 600,
     });
