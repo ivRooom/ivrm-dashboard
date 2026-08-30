@@ -37,6 +37,21 @@ class LogReporterTests(unittest.TestCase):
         self.assertIn("[REDACTED]", value)
         self.assertGreaterEqual(value.count("[REDACTED_IP]"), 3)
 
+    def test_redacts_json_and_quoted_secret_values(self):
+        value = module.redact_message(
+            '{"token":"json-token-123","password":"two words","nested":{"secret":"keep-me-secret"}} '
+            "rcon_password='rcon secret value' forwarding-secret=forwarding123"
+        )
+        self.assertNotIn("json-token-123", value)
+        self.assertNotIn("two words", value)
+        self.assertNotIn("keep-me-secret", value)
+        self.assertNotIn("rcon secret value", value)
+        self.assertNotIn("forwarding123", value)
+        self.assertIn('"token":"[REDACTED]"', value)
+        self.assertIn('"password":"[REDACTED]"', value)
+        self.assertIn('"secret":"[REDACTED]"', value)
+        self.assertIn("rcon_password='[REDACTED]'", value)
+
     def test_classify_level(self):
         self.assertEqual(module.classify_level("[Server thread/ERROR] failed"), "error")
         self.assertEqual(module.classify_level("[WARN] slow"), "warning")
