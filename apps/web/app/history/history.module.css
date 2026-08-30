@@ -2,6 +2,10 @@
   max-width: 1540px;
 }
 
+.historyContent > :last-child {
+  margin-top: 24px;
+}
+
 .secondaryLink {
   padding: 10px 14px;
   border: 1px solid var(--line);

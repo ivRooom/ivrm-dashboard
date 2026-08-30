@@ -1,4 +1,12 @@
 import { AutoRefresh } from "../../components/auto-refresh";
+import {
+  ActionLink,
+  MetricCard,
+  MetricGrid,
+  PageContent,
+  PageHeader,
+  StatePanel,
+} from "../../components/console-ui";
 import { MetricLineChart } from "../../components/metric-line-chart";
 import {
   HISTORY_RANGE_CONFIG,
@@ -396,53 +404,35 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
   return (
     <>
       <AutoRefresh intervalMs={rangeConfig.refreshMs} />
-      <section className={`content ${styles.historyContent}`}>
-        <header>
-          <div>
-            <h1>監視履歴</h1>
-            <p>
-              Minecraft、ホスト、Dockerコンテナの負荷・利用状況・I/O推移を時系列で確認できます。
-            </p>
-          </div>
-          <a className={styles.secondaryLink} href="/">
-            現在値へ戻る
-          </a>
-        </header>
+      <PageContent className={styles.historyContent}>
+        <PageHeader
+          actions={<ActionLink href="/">現在値へ戻る</ActionLink>}
+          description="Minecraft、ホスト、Dockerコンテナの負荷・利用状況・I/O推移を時系列で確認できます。"
+          eyebrow="OBSERVABILITY / HISTORY"
+          title="監視履歴"
+        />
 
-        <section className={styles.summary} aria-label="履歴表示条件">
-          <div>
-            <span>表示期間</span>
-            <strong>直近{rangeConfig.label}</strong>
-          </div>
-          <div>
-            <span>集約粒度</span>
-            <strong>{rangeConfig.aggregationLabel}</strong>
-          </div>
-          <div>
-            <span>データソース</span>
-            <strong>{sourceLabel}</strong>
-          </div>
-          <div>
-            <span>ホスト</span>
-            <strong>{hostDataError ? "—" : hostHistory.length}</strong>
-          </div>
-          <div>
-            <span>コンテナ</span>
-            <strong>{containerDataError ? "—" : containerHistory.length}</strong>
-          </div>
-          <div>
-            <span>集約元サンプル</span>
-            <strong className={styles.compactValue}>
-              H {hostDataError ? "—" : hostSampleCount.toLocaleString("ja-JP")} / C{" "}
-              {containerDataError
-                ? "—"
-                : containerSampleCount.toLocaleString("ja-JP")} / MC{" "}
-              {minecraftDataError
-                ? "—"
-                : minecraftSampleCount.toLocaleString("ja-JP")}
-            </strong>
-          </div>
-        </section>
+        <MetricGrid label="履歴表示条件">
+          <MetricCard label="表示期間" value={`直近${rangeConfig.label}`} />
+          <MetricCard label="集約粒度" value={rangeConfig.aggregationLabel} />
+          <MetricCard label="データソース" value={sourceLabel} />
+          <MetricCard
+            label="ホスト"
+            tone={hostDataError ? "danger" : "neutral"}
+            value={hostDataError ? "—" : hostHistory.length}
+          />
+          <MetricCard
+            label="コンテナ"
+            tone={containerDataError ? "danger" : "neutral"}
+            value={containerDataError ? "—" : containerHistory.length}
+          />
+          <MetricCard
+            detail="Host / Container / Minecraft"
+            label="集約元サンプル"
+            tone={hostDataError || containerDataError || minecraftDataError ? "warning" : "neutral"}
+            value={`H ${hostDataError ? "—" : hostSampleCount.toLocaleString("ja-JP")} / C ${containerDataError ? "—" : containerSampleCount.toLocaleString("ja-JP")} / MC ${minecraftDataError ? "—" : minecraftSampleCount.toLocaleString("ja-JP")}`}
+          />
+        </MetricGrid>
 
         <div className={styles.toolbar}>
           <nav className={styles.periodSelector} aria-label="表示期間">
@@ -480,9 +470,9 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
           </div>
 
           {retentionDataError || !retentionState ? (
-            <div className={styles.retentionAlert} role="alert">
-              Retention状態を取得できませんでした。履歴グラフ自体は継続して利用できます。
-            </div>
+            <StatePanel title="Retention状態を取得できませんでした" variant="error">
+              履歴グラフ自体は継続して利用できます。
+            </StatePanel>
           ) : (
             <>
               <div className={styles.retentionGrid}>
@@ -531,9 +521,9 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
         </section>
 
         {overlayDataError ? (
-          <div className={styles.retentionAlert} role="alert">
-            状態期間Overlayを取得できませんでした。メトリクス履歴自体は継続して利用できます。
-          </div>
+          <StatePanel title="状態期間Overlayを取得できませんでした" variant="error">
+            メトリクス履歴自体は継続して利用できます。
+          </StatePanel>
         ) : null}
 
         <section
@@ -552,10 +542,9 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
           </div>
 
           {minecraftDataError ? (
-            <div className="empty error-panel" role="alert">
-              <strong>Minecraft履歴を取得できませんでした</strong>
-              <p>SupabaseのMinecraft履歴RPCを確認してください。</p>
-            </div>
+            <StatePanel title="Minecraft履歴を取得できませんでした" variant="error">
+              SupabaseのMinecraft履歴RPCを確認してください。
+            </StatePanel>
           ) : (
             <div className={styles.chartGrid}>
               <MetricLineChart
@@ -608,10 +597,9 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
           </div>
 
           {hostDataError ? (
-            <div className="empty error-panel" role="alert">
-              <strong>ホスト履歴を取得できませんでした</strong>
-              <p>Supabaseのホスト履歴RPCを確認してください。</p>
-            </div>
+            <StatePanel title="ホスト履歴を取得できませんでした" variant="error">
+              Supabaseのホスト履歴RPCを確認してください。
+            </StatePanel>
           ) : (
             <div className={styles.chartGrid}>
               <MetricLineChart
@@ -656,10 +644,9 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
           </div>
 
           {containerDataError ? (
-            <div className="empty error-panel" role="alert">
-              <strong>Docker監視履歴を取得できませんでした</strong>
-              <p>SupabaseのDocker履歴RPCを確認してください。</p>
-            </div>
+            <StatePanel title="Docker監視履歴を取得できませんでした" variant="error">
+              SupabaseのDocker履歴RPCを確認してください。
+            </StatePanel>
           ) : (
             <div className={styles.chartGrid}>
               <MetricLineChart
@@ -717,13 +704,10 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
           )}
         </section>
 
-        <section className={styles.note}>
-          <strong>データ保持・状態Overlayについて</strong>
-          <p>
-            1時間・6時間・24時間は生データから期間に応じて集約し、7日・30日は5分ロールアップを再集約します。Rawは既定7日、5分Rollupは既定90日保持します。Minecraft Rawも対応する5分Rollupを確認してから削除します。Spark TPS/MSPTはPerformance取得成功Sampleだけを集約し、MSPT Maxは期間内最大値を維持します。グラフ背景帯はHeartbeat gap、構造化Container Transition、Maintenanceイベントと最新SnapshotからStale・Offline・Error・Maintenanceの継続期間を復元します。
-          </p>
-        </section>
-      </section>
+        <StatePanel title="データ保持・状態Overlayについて" variant="info">
+          1時間・6時間・24時間は生データから期間に応じて集約し、7日・30日は5分ロールアップを再集約します。Rawは既定7日、5分Rollupは既定90日保持します。Minecraft Rawも対応する5分Rollupを確認してから削除します。Spark TPS/MSPTはPerformance取得成功Sampleだけを集約し、MSPT Maxは期間内最大値を維持します。グラフ背景帯はHeartbeat gap、構造化Container Transition、Maintenanceイベントと最新SnapshotからStale・Offline・Error・Maintenanceの継続期間を復元します。
+        </StatePanel>
+      </PageContent>
     </>
   );
 }
