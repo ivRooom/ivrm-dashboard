@@ -22,7 +22,8 @@ const IPV6_PATTERN = /(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{1,4}:){2,7}[0-9A-Fa-f]{0,4
 const IPV6_CANDIDATE_PATTERN = /(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?![0-9A-Fa-f:])/g;
 const BEARER_PATTERN = /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi;
 const SECRET_QUERY_PATTERN = /([?&](?:access[_-]?token|refresh[_-]?token|token|password|passwd|secret|rcon[_-]?password|forwarding[_-]?secret)=)[^&\s]+/gi;
-const SECRET_ASSIGNMENT_PATTERN = /\b(authorization|access[_-]?token|refresh[_-]?token|token|password|passwd|secret|rcon(?:[._-]?password)?|forwarding(?:[._-]?secret))\b(\s*[:=]\s*|\s+)([^\s,;]+)/gi;
+const SECRET_QUOTED_ASSIGNMENT_PATTERN = /\b(authorization|access[_-]?token|refresh[_-]?token|token|password|passwd|secret|rcon(?:[._-]?password)?|forwarding(?:[._-]?secret))\b(["']?)(\s*[:=]\s*|\s+)(["'])([^"']*)\4/gi;
+const SECRET_ASSIGNMENT_PATTERN = /\b(authorization|access[_-]?token|refresh[_-]?token|token|password|passwd|secret|rcon(?:[._-]?password)?|forwarding(?:[._-]?secret))\b(["']?)(\s*[:=]\s*|\s+)([^\s,;}"']+)/gi;
 const CONTROL_PATTERN = /[\u0000-\u001f\u007f]/g;
 
 export const MAX_LOG_REPORT_BODY_BYTES = 64 * 1024;
@@ -80,7 +81,8 @@ export function redactConsoleLogMessage(message: string): string {
       .replace(CONTROL_PATTERN, " ")
       .replace(BEARER_PATTERN, "Bearer [REDACTED]")
       .replace(SECRET_QUERY_PATTERN, "$1[REDACTED]")
-      .replace(SECRET_ASSIGNMENT_PATTERN, "$1$2[REDACTED]")
+      .replace(SECRET_QUOTED_ASSIGNMENT_PATTERN, "$1$2$3$4[REDACTED]$4")
+      .replace(SECRET_ASSIGNMENT_PATTERN, "$1$2$3[REDACTED]")
       .replace(IPV4_PATTERN, "[REDACTED_IP]")
       .replace(IPV6_PATTERN, "[REDACTED_IP]"),
   )
