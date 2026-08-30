@@ -41,8 +41,8 @@ function formatDateTime(value: string | null): string {
   }).format(date);
 }
 
-function defaultJstDateTimeLocal(): string {
-  const date = new Date(Date.now() + 9 * 3_600_000);
+function jstDateTimeLocalAfter(minutes = 0): string {
+  const date = new Date(Date.now() + minutes * 60_000 + 9 * 3_600_000);
   return date.toISOString().slice(0, 16);
 }
 
@@ -67,7 +67,23 @@ function impactTone(impact: StatusCenterIncident["impact"]) {
   return "neutral" as const;
 }
 
-function mutationMessage(outcome: string | null): { title: string; variant: "info" | "warning" | "error" } | null {
+function maintenanceLifecycle(item: StatusCenterMaintenance, now = Date.now()) {
+  if (item.publicationState === "draft") return "draft" as const;
+  if (item.publicationState === "cancelled") return "cancelled" as const;
+  if (now < Date.parse(item.startsAt)) return "scheduled" as const;
+  if (now < Date.parse(item.endsAt)) return "in_progress" as const;
+  return "completed" as const;
+}
+
+function maintenanceLifecycleTone(state: ReturnType<typeof maintenanceLifecycle>) {
+  if (state === "in_progress") return "warning" as const;
+  if (state === "completed") return "success" as const;
+  if (state === "cancelled") return "neutral" as const;
+  if (state === "scheduled") return "info" as const;
+  return "warning" as const;
+}
+
+function incidentMutationMessage(outcome: string | null): { title: string; variant: "info" | "warning" | "error" } | null {
   if (!outcome) return null;
   if (outcome === "created") return { title: "Incident draftを作成しました", variant: "info" };
   if (outcome === "published") return { title: "Incidentを公開しました", variant: "info" };
@@ -76,6 +92,16 @@ function mutationMessage(outcome: string | null): { title: string; variant: "inf
   if (outcome === "acknowledgement_required") return { title: "公開・復旧には確認チェックが必要です", variant: "warning" };
   if (outcome.endsWith("_invalid") || outcome === "identity_invalid") return { title: "入力内容を確認してください", variant: "warning" };
   return { title: "Incident操作に失敗しました", variant: "error" };
+}
+
+function maintenanceMutationMessage(outcome: string | null): { title: string; variant: "info" | "warning" | "error" } | null {
+  if (!outcome) return null;
+  if (outcome === "created") return { title: "Maintenance draftを作成しました", variant: "info" };
+  if (outcome === "published") return { title: "Maintenanceを予約公開しました", variant: "info" };
+  if (outcome === "cancelled") return { title: "Maintenanceを取消しました", variant: "info" };
+  if (outcome === "acknowledgement_required") return { title: "公開・取消には確認チェックが必要です", variant: "warning" };
+  if (outcome.endsWith("_invalid") || outcome === "identity_invalid") return { title: "Maintenance入力内容を確認してください", variant: "warning" };
+  return { title: "Maintenance操作に失敗しました", variant: "error" };
 }
 
 function IncidentTable({ incidents }: { incidents: StatusCenterIncident[] }) {
@@ -110,7 +136,7 @@ function IncidentCreateForm() {
       <input type="hidden" name="idempotencyKey" value={randomUUID()} />
       <label className={styles.fieldWide}>タイトル<input name="title" required maxLength={160} placeholder="Minecraft Network 接続障害" /></label>
       <label>影響<select name="impact" defaultValue="major"><option value="none">none</option><option value="minor">minor</option><option value="major">major</option><option value="critical">critical</option></select></label>
-      <label>発生日時（JST）<input type="datetime-local" name="startedAt" required defaultValue={defaultJstDateTimeLocal()} /></label>
+      <label>発生日時（JST）<input type="datetime-local" name="startedAt" required defaultValue={jstDateTimeLocalAfter()} /></label>
       <label className={styles.fieldWide}>対象Service ID（カンマ区切り）<input name="serviceIds" required defaultValue="minecraft-network" placeholder="minecraft-network,herta-discord-bot" /></label>
       <label className={styles.fieldWide}>公開サマリー<textarea name="summary" required minLength={1} maxLength={2000} rows={3} placeholder="利用者影響と現在確認できている事実だけを記載します。" /></label>
       <div className={styles.formActions}><button type="submit">Draftを作成</button><span>作成直後は非公開です。</span></div>
@@ -156,10 +182,78 @@ function IncidentManageForms({ incidents }: { incidents: StatusCenterIncident[] 
   );
 }
 
-function MaintenanceTable({ maintenance }: { maintenance: StatusCenterMaintenance[] }) {
-  if (maintenance.length === 0) return <StatePanel title="公開Maintenanceはまだありません">公開NoticeとReliability SLO除外は別責務のまま関連付けられます。</StatePanel>;
+function MaintenanceCreateForm() {
   return (
-    <TableShell label="Status Maintenance一覧"><table className={styles.table}><thead><tr><th>Maintenance</th><th>期間</th><th>対象</th><th>公開</th><th>Reliability</th></tr></thead><tbody>{maintenance.map((item) => <tr key={item.publicId}><td><span className={styles.primaryCell}><strong>{item.title}</strong><small>{item.publicId}</small></span></td><td><span className={styles.primaryCell}><span>{formatDateTime(item.startsAt)}</span><small>〜 {formatDateTime(item.endsAt)}</small></span></td><td>{services(item.affectedServiceIds)}</td><td><StatusBadge tone={publicationTone(item.publicationState)}>{item.publicationState}</StatusBadge></td><td className={styles.meta}>{item.reliabilityWindowId ? "Linked" : "Not linked"}</td></tr>)}</tbody></table></TableShell>
+    <form className={styles.editorForm} action="/api/status-center/maintenance" method="post">
+      <input type="hidden" name="action" value="create" />
+      <input type="hidden" name="idempotencyKey" value={randomUUID()} />
+      <label className={styles.fieldWide}>タイトル<input name="title" required maxLength={160} placeholder="Minecraft Network 定期メンテナンス" /></label>
+      <label>開始日時（JST）<input type="datetime-local" name="startsAt" required defaultValue={jstDateTimeLocalAfter(60)} /></label>
+      <label>終了日時（JST）<input type="datetime-local" name="endsAt" required defaultValue={jstDateTimeLocalAfter(120)} /></label>
+      <label className={styles.fieldWide}>対象Service ID（カンマ区切り）<input name="serviceIds" required defaultValue="minecraft-network" placeholder="minecraft-network,herta-discord-bot" /></label>
+      <label className={styles.fieldWide}>公開本文<textarea name="body" required minLength={1} maxLength={4000} rows={4} placeholder="予定している作業内容、利用者影響、予定時間を公開可能な情報だけで記載します。" /></label>
+      <label className={styles.fieldWide}>Reliability Window UUID（任意）<input name="reliabilityWindowId" maxLength={36} placeholder="SLO除外Windowと関連付ける場合のみ指定" /></label>
+      <div className={styles.formActions}><button type="submit">Maintenance Draftを作成</button><span>Public NoticeとSLO除外Windowは別データです。</span></div>
+    </form>
+  );
+}
+
+function MaintenanceManageForms({ maintenance }: { maintenance: StatusCenterMaintenance[] }) {
+  const now = Date.now();
+  const manageable = maintenance.filter((item) =>
+    item.publicationState === "draft" ||
+    (item.publicationState === "published" && Date.parse(item.startsAt) > now),
+  );
+  if (manageable.length === 0) return null;
+  return (
+    <div className={styles.manageList}>
+      {manageable.map((item) => {
+        const lifecycle = maintenanceLifecycle(item, now);
+        return (
+          <article className={styles.manageCard} id={`maintenance-${item.publicId}`} key={item.publicId}>
+            <header>
+              <div><strong>{item.title}</strong><span>{item.publicId}</span></div>
+              <StatusBadge tone={maintenanceLifecycleTone(lifecycle)}>{lifecycle}</StatusBadge>
+            </header>
+            <p>{item.body}</p>
+            <p className={styles.meta}>{formatDateTime(item.startsAt)} 〜 {formatDateTime(item.endsAt)} / {item.affectedServiceIds.join(", ")}</p>
+            {item.publicationState === "draft" ? (
+              <form className={styles.inlineActionForm} action="/api/status-center/maintenance" method="post">
+                <input type="hidden" name="action" value="publish" />
+                <input type="hidden" name="publicId" value={item.publicId} />
+                <input type="hidden" name="requestId" value={randomUUID()} />
+                <label className={styles.confirm}><input type="checkbox" name="acknowledged" required />この予定が status.ivrm.jp に公開され、時刻からLifecycleが自動導出されることを確認しました</label>
+                <button type="submit">Maintenanceを予約公開</button>
+              </form>
+            ) : (
+              <form className={styles.inlineActionForm} action="/api/status-center/maintenance" method="post">
+                <input type="hidden" name="action" value="cancel" />
+                <input type="hidden" name="publicId" value={item.publicId} />
+                <input type="hidden" name="requestId" value={randomUUID()} />
+                <label className={styles.confirm}><input type="checkbox" name="acknowledged" required />開始前のMaintenance予定を取消し、Public Archiveへ取消済みとして残すことを確認しました</label>
+                <button type="submit">予定を取消</button>
+              </form>
+            )}
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function MaintenanceTable({ maintenance }: { maintenance: StatusCenterMaintenance[] }) {
+  if (maintenance.length === 0) return <StatePanel title="Maintenanceはまだありません">Public NoticeとReliability SLO除外は別責務のまま関連付けられます。</StatePanel>;
+  const now = Date.now();
+  return (
+    <TableShell label="Status Maintenance一覧">
+      <table className={styles.table}>
+        <thead><tr><th>Maintenance</th><th>Lifecycle</th><th>期間</th><th>対象</th><th>Publication</th><th>Reliability</th></tr></thead>
+        <tbody>{maintenance.map((item) => {
+          const lifecycle = maintenanceLifecycle(item, now);
+          return <tr key={item.publicId}><td><span className={styles.primaryCell}><strong>{item.title}</strong><small>{item.publicId}</small></span></td><td><StatusBadge tone={maintenanceLifecycleTone(lifecycle)}>{lifecycle}</StatusBadge></td><td><span className={styles.primaryCell}><span>{formatDateTime(item.startsAt)}</span><small>〜 {formatDateTime(item.endsAt)}</small></span></td><td>{services(item.affectedServiceIds)}</td><td><StatusBadge tone={publicationTone(item.publicationState)}>{item.publicationState}</StatusBadge></td><td className={styles.meta}>{item.reliabilityWindowId ? "Linked" : "Not linked"}</td></tr>;
+        })}</tbody>
+      </table>
+    </TableShell>
   );
 }
 
@@ -172,7 +266,8 @@ function AnnouncementTable({ announcements }: { announcements: StatusCenterAnnou
 
 export default async function StatusCenterPage({ searchParams }: PageProps) {
   const query = await searchParams;
-  const mutation = mutationMessage(first(query.incidentMutation));
+  const incidentMutation = incidentMutationMessage(first(query.incidentMutation));
+  const maintenanceMutation = maintenanceMutationMessage(first(query.maintenanceMutation));
   let data = null;
   let loadError = false;
   let canMutate = false;
@@ -200,7 +295,8 @@ export default async function StatusCenterPage({ searchParams }: PageProps) {
       {!canMutate ? <AutoRefresh intervalMs={30_000} /> : null}
       <section className={`content ${styles.content}`}>
         <PageHeader eyebrow="ADMINISTRATION / PUBLIC STATUS" title="Status Center" description="status.ivrm.jpへ公開するIncident・Maintenance・Announcementを、公開サイトから分離した管理面で扱います。" actions={<><ActionLink href="https://status.ivrm.jp">公開Status</ActionLink><ActionLink href="/notifications">通知Center</ActionLink></>} />
-        {mutation ? <StatePanel title={mutation.title} variant={mutation.variant}>公開Feedへ反映する処理はServer-side RBAC・Origin検証・監査ログを通過します。</StatePanel> : null}
+        {incidentMutation ? <StatePanel title={incidentMutation.title} variant={incidentMutation.variant}>公開Feedへ反映する処理はServer-side RBAC・Origin検証・監査ログを通過します。</StatePanel> : null}
+        {maintenanceMutation ? <StatePanel title={maintenanceMutation.title} variant={maintenanceMutation.variant}>MaintenanceのPublicationと公開Lifecycleを分離し、公開Lifecycleは時刻から導出します。</StatePanel> : null}
 
         {loadError || !data ? <StatePanel title="Status Centerを取得できませんでした" variant="error">Supabase Public Status CMS read modelのServer-side接続を確認してください。</StatePanel> : <>
           <MetricGrid label="Status Center summary"><MetricCard label="Active Incident" value={activeIncidents} tone={activeIncidents > 0 ? "danger" : "success"} detail="公開中・未解決" /><MetricCard label="Maintenance" value={upcomingMaintenance} tone={upcomingMaintenance > 0 ? "warning" : "neutral"} detail="予定または実施中" /><MetricCard label="Announcement" value={activeAnnouncements} tone="info" detail="現在公開対象" /><MetricCard label="Draft" value={drafts} tone={drafts > 0 ? "warning" : "neutral"} detail={`Feed ${formatDateTime(data.generatedAt)}`} /></MetricGrid>
@@ -211,9 +307,14 @@ export default async function StatusCenterPage({ searchParams }: PageProps) {
             <IncidentTable incidents={data.incidents} />
           </section>
 
-          <section className={styles.section}><SectionHeader title="Maintenance Notices" description="公開NoticeとReliability SLO exclusionを別責務のまま関連付けます。" /><MaintenanceTable maintenance={data.maintenance} /></section>
+          <section className={styles.section} id="maintenance-notices">
+            <SectionHeader title="Maintenance Notices" description="Public NoticeとReliability SLO exclusionを別責務のまま関連付け、Lifecycleは開始・終了時刻から導出します。" />
+            {canMutate ? <><div className={styles.editorPanel}><h3>Maintenance draftを作成</h3><p>Draftは非公開です。予約公開後はscheduled / in_progress / completedを時刻から自動判定します。</p><MaintenanceCreateForm /></div><MaintenanceManageForms maintenance={data.maintenance} /></> : <StatePanel title="Maintenance編集はadministrator / owner限定です" variant="info">現在のロールでは公開Maintenanceを変更できません。</StatePanel>}
+            <MaintenanceTable maintenance={data.maintenance} />
+          </section>
+
           <section className={styles.section}><SectionHeader title="Announcements" description="Plain text主体の予約公開・Archiveを扱う公開お知らせ領域です。" /><AnnouncementTable announcements={data.announcements} /></section>
-          <p className={styles.note}>Incidentの作成・公開・更新・復旧を先行実装しています。Maintenance / Announcement MutationとWebhook lifecycle deliveryは次の分離PRで追加します。</p>
+          <p className={styles.note}>Incident / Maintenance Mutationを実装済みです。Announcement MutationとDurable lifecycle deliveryは次の分離PRで追加します。</p>
         </>}
       </section>
     </>
