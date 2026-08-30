@@ -4,5 +4,5 @@
   "installCommand": "pnpm install --frozen-lockfile",
   "buildCommand": "pnpm --filter @ivrm/web build",
   "outputDirectory": "apps/web/.next",
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- apps/web package.json pnpm-lock.yaml pnpm-workspace.yaml vercel.json"
+  "ignoreCommand": "if git log -1 --pretty=%B | grep -Fq '[vercel-deploy]'; then exit 1; fi; git diff --quiet HEAD^ HEAD -- apps/web package.json pnpm-lock.yaml pnpm-workspace.yaml vercel.json"
 }
