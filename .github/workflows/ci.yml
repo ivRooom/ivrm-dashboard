@@ -46,7 +46,12 @@ jobs:
           distribution: temurin
           java-version: '25'
       - name: OCI更新スクリプトの構文を確認
-        run: bash -n deploy/oci/update-monitoring-stack.sh
+        run: |
+          bash -n deploy/oci/update-monitoring-stack.sh
+          bash -n deploy/oci/stage-log-reporter.sh
+          bash -n deploy/oci/test_stage_log_reporter.sh
+      - name: Log Reporter stageの非干渉契約をテスト
+        run: bash deploy/oci/test_stage_log_reporter.sh
       - name: Metrics Bridgeステージスクリプトの構文を確認
         run: |
           bash -n deploy/oci/stage-minecraft-metrics-bridge.sh
@@ -73,6 +78,10 @@ jobs:
         run: python3 -m py_compile deploy/oci/ivrm-backup-reporter.py
       - name: Backup Reporterをテスト
         run: python3 -m unittest deploy/oci/test_ivrm_backup_reporter.py
+      - name: Log Reporterの構文を確認
+        run: python3 -m py_compile deploy/oci/ivrm-log-reporter.py
+      - name: Log Reporterをテスト
+        run: python3 -m unittest deploy/oci/test_ivrm_log_reporter.py
       - name: Goを準備
         uses: actions/setup-go@v5
         with:
