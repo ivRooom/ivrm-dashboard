@@ -1,5 +1,15 @@
 import { AutoRefresh } from "../../components/auto-refresh";
 import {
+  ActionLink,
+  MetricCard,
+  MetricGrid,
+  PageContent,
+  PageHeader,
+  StatePanel,
+  StatusBadge,
+  type ConsoleTone,
+} from "../../components/console-ui";
+import {
   HISTORY_RANGE_CONFIG,
   parseHistoryRange,
   type HistoryRange,
@@ -50,12 +60,12 @@ const markerClasses: Record<MonitoringEventSeverity, string> = {
   info: styles.markerInfo,
 };
 
-const severityClasses: Record<MonitoringEventSeverity, string> = {
-  critical: styles.critical,
-  warning: styles.warning,
-  recovery: styles.recovery,
-  info: styles.info,
-};
+function severityTone(severity: MonitoringEventSeverity): ConsoleTone {
+  if (severity === "critical") return "danger";
+  if (severity === "warning") return "warning";
+  if (severity === "recovery") return "success";
+  return "info";
+}
 
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -191,48 +201,45 @@ export default async function EventsPage({ searchParams }: PageProps) {
   return (
     <>
       <AutoRefresh intervalMs={rangeConfig.refreshMs} />
-      <section className={`content ${styles.eventsContent}`}>
-        <header>
-          <div>
-            <p className={styles.eyebrow}>STRUCTURED EVENT TIMELINE</p>
-            <h1>監視イベント</h1>
-            <p>再起動、State / Health変化、OOM、復旧を生の構造化イベントとして時系列で追跡します。</p>
-          </div>
-          <div className={styles.headerActions}>
-            <a className={styles.secondaryLink} href={`/incidents?range=${range}`}>
-              Incident Center
-            </a>
-            <a className={styles.secondaryLink} href="/containers">
-              コンテナ一覧
-            </a>
-            <a className={styles.secondaryLink} href={`/history?range=${range}`}>
-              履歴グラフ
-            </a>
-          </div>
-        </header>
+      <PageContent className={styles.eventsContent}>
+        <PageHeader
+          actions={
+            <>
+              <ActionLink href={`/incidents?range=${range}`}>Incident Center</ActionLink>
+              <ActionLink href="/containers">コンテナ一覧</ActionLink>
+              <ActionLink href={`/history?range=${range}`}>履歴グラフ</ActionLink>
+            </>
+          }
+          description="再起動、State / Health変化、OOM、復旧を生の構造化イベントとして時系列で追跡します。"
+          eyebrow="STRUCTURED EVENT TIMELINE"
+          title="監視イベント"
+        />
 
-        <section className={styles.summaryGrid} aria-label="イベントサマリー">
-          <article>
-            <span>イベント</span>
-            <strong>{eventError ? "—" : events.length}</strong>
-            <small>Keyset Pagination / {rangeConfig.label}</small>
-          </article>
-          <article>
-            <span>重大</span>
-            <strong>{eventError ? "—" : criticalCount}</strong>
-            <small>OOM・Unhealthy・停止など</small>
-          </article>
-          <article>
-            <span>注意</span>
-            <strong>{eventError ? "—" : warningCount}</strong>
-            <small>Restart・Startingなど</small>
-          </article>
-          <article>
-            <span>復旧</span>
-            <strong>{eventError ? "—" : recoveryCount}</strong>
-            <small>Healthy / Runningへの復帰</small>
-          </article>
-        </section>
+        <MetricGrid label="イベントサマリー">
+          <MetricCard
+            detail={`Keyset Pagination / ${rangeConfig.label}`}
+            label="イベント"
+            value={eventError ? "—" : events.length}
+          />
+          <MetricCard
+            detail="OOM・Unhealthy・停止など"
+            label="重大"
+            tone={criticalCount > 0 ? "danger" : "neutral"}
+            value={eventError ? "—" : criticalCount}
+          />
+          <MetricCard
+            detail="Restart・Startingなど"
+            label="注意"
+            tone={warningCount > 0 ? "warning" : "neutral"}
+            value={eventError ? "—" : warningCount}
+          />
+          <MetricCard
+            detail="Healthy / Runningへの復帰"
+            label="復旧"
+            tone={recoveryCount > 0 ? "success" : "neutral"}
+            value={eventError ? "—" : recoveryCount}
+          />
+        </MetricGrid>
 
         <form className={styles.filters} method="get">
           <label>
@@ -279,15 +286,13 @@ export default async function EventsPage({ searchParams }: PageProps) {
         </form>
 
         {eventError ? (
-          <div className="empty error-panel" role="alert">
-            <strong>監視イベントを取得できませんでした</strong>
-            <p>イベントRPCとSupabase接続を確認してください。既存の現在値・履歴監視には影響しません。</p>
-          </div>
+          <StatePanel title="監視イベントを取得できませんでした" variant="error">
+            イベントRPCとSupabase接続を確認してください。既存の現在値・履歴監視には影響しません。
+          </StatePanel>
         ) : events.length === 0 ? (
-          <div className="empty">
-            <strong>選択条件に一致するイベントはありません</strong>
-            <p>状態変化が発生すると、自動的にこのタイムラインへ追加されます。</p>
-          </div>
+          <StatePanel title="選択条件に一致するイベントはありません">
+            状態変化が発生すると、自動的にこのタイムラインへ追加されます。
+          </StatePanel>
         ) : (
           <section className={styles.timeline} aria-label="監視イベントタイムライン">
             {events.map((event) => (
@@ -299,9 +304,9 @@ export default async function EventsPage({ searchParams }: PageProps) {
                 <div className={styles.eventMain}>
                   <div className={styles.eventHeading}>
                     <h3>{eventTypeLabels[event.eventType]}</h3>
-                    <span className={`${styles.badge} ${severityClasses[event.severity]}`}>
+                    <StatusBadge tone={severityTone(event.severity)}>
                       {severityLabels[event.severity]}
-                    </span>
+                    </StatusBadge>
                   </div>
                   <p className={styles.meta}>
                     {event.containerName} / {event.hostDisplayName} ({event.serverId})
@@ -333,7 +338,7 @@ export default async function EventsPage({ searchParams }: PageProps) {
             イベントにはState、Health、RestartCount、ExitCode、OOM、Maintenanceの差分だけを保存します。ログ本文、IP、Token、Secret、Docker操作コマンドは保存しません。Incident Centerはこの構造化イベントと現在Snapshotだけを使って障害を要約します。
           </p>
         </section>
-      </section>
+      </PageContent>
     </>
   );
 }
