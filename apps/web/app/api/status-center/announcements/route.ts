@@ -14,6 +14,7 @@ const JST_OFFSET_MS = 9 * 3_600_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PUBLIC_ID_PATTERN = /^ANN-[A-F0-9]{12}$/;
 const SERVICE_ID_PATTERN = /^[a-z0-9][a-z0-9-]{2,63}$/;
+const OFFSET_DATE_TIME_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(Z|[+-]\d{2}:\d{2})$/;
 
 type BodyReadResult =
   | { kind: "ok"; body: Record<string, unknown> }
@@ -119,13 +120,41 @@ function redirectResult(request: NextRequest, outcome: string, publicId?: string
   return NextResponse.redirect(new URL(`/status-center?${query.toString()}#announcements`, request.url), 303);
 }
 
+function parseOffsetDateTime(text: string): string | null {
+  const match = OFFSET_DATE_TIME_PATTERN.exec(text);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6] ?? "0");
+  const millisecond = Number((match[7] ?? "").padEnd(3, "0") || "0");
+  const localCalendar = new Date(Date.UTC(year, month - 1, day, hour, minute, second, millisecond));
+  if (
+    localCalendar.getUTCFullYear() !== year || localCalendar.getUTCMonth() !== month - 1 ||
+    localCalendar.getUTCDate() !== day || localCalendar.getUTCHours() !== hour ||
+    localCalendar.getUTCMinutes() !== minute || localCalendar.getUTCSeconds() !== second ||
+    localCalendar.getUTCMilliseconds() !== millisecond
+  ) return null;
+
+  const zone = match[8];
+  if (zone !== "Z") {
+    const offsetHour = Number(zone.slice(1, 3));
+    const offsetMinute = Number(zone.slice(4, 6));
+    if (offsetHour > 23 || offsetMinute > 59) return null;
+  }
+
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+}
+
 function parseDateTime(value: unknown): string | null {
   if (typeof value !== "string" || value.length > 40) return null;
   const text = value.trim();
-  if (/Z$|[+-]\d{2}:\d{2}$/.test(text)) {
-    const parsed = Date.parse(text);
-    return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
-  }
+  if (/Z$|[+-]\d{2}:\d{2}$/.test(text)) return parseOffsetDateTime(text);
+
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(text);
   if (!match) return null;
   const year = Number(match[1]);
