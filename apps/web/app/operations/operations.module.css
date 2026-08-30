@@ -1,0 +1,115 @@
+.content {
+  display: grid;
+  gap: var(--page-section-gap);
+}
+
+.pageHeader,
+.metricGrid {
+  margin-bottom: 0;
+}
+
+.metricGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.capabilityList {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.capabilityCard {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.6fr);
+  gap: var(--space-5);
+  align-items: start;
+  padding: var(--card-padding);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-default);
+}
+
+.capabilityIdentity {
+  min-width: 0;
+}
+
+.capabilityType {
+  margin: 0 0 var(--space-2);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--tracking-label);
+  overflow-wrap: anywhere;
+  text-transform: uppercase;
+}
+
+.capabilityIdentity h3 {
+  margin: 0 0 var(--space-3);
+  color: var(--text-primary);
+  font-size: var(--font-size-lg);
+}
+
+.capabilityDescription {
+  margin: 0 0 var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-body);
+}
+
+.detailList {
+  display: grid;
+  grid-template-columns: minmax(110px, 150px) minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+
+.detailList dt {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+}
+
+.detailList dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.safetyPanel {
+  padding: var(--card-padding);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-default);
+}
+
+.safetyPanel ul {
+  margin: var(--space-3) 0 0;
+  padding-left: 1.25rem;
+  color: var(--text-secondary);
+  line-height: 1.9;
+}
+
+@media (max-width: 900px) {
+  .metricGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .capabilityCard {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .metricGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .detailList {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+
+  .detailList dd + dt {
+    margin-top: var(--space-2);
+  }
+}
