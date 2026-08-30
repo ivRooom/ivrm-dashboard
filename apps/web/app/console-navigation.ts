@@ -47,6 +47,12 @@ export const consoleNavigationItems: readonly ConsoleNavigationItem[] = [
     description: "ゲームサーバーの稼働状態",
   },
   {
+    href: "/logs",
+    label: "ログ",
+    group: "minecraft",
+    description: "redact済みMinecraft・Agentログ",
+  },
+  {
     href: "/operations",
     label: "操作基盤",
     group: "minecraft",

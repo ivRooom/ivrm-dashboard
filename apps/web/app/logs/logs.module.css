@@ -1,0 +1,103 @@
+.content {
+  min-width: 0;
+}
+
+.pageHeader,
+.metricGrid {
+  margin-bottom: var(--space-6);
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) minmax(130px, 0.8fr) minmax(130px, 0.8fr) minmax(120px, 0.7fr);
+  gap: var(--space-3);
+  align-items: end;
+  margin-bottom: var(--space-4);
+  padding: var(--card-padding);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-default);
+}
+
+.filters label {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+.filters select,
+.filters input,
+.filterButton {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-height);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+}
+
+.filters select:focus-visible,
+.filters input:focus-visible,
+.filterButton:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: var(--focus-offset);
+}
+
+.searchField {
+  grid-column: 1 / span 3;
+}
+
+.filterButton {
+  grid-column: 4;
+  cursor: pointer;
+  font-weight: var(--font-weight-bold);
+  transition:
+    background var(--transition-fast) ease,
+    border-color var(--transition-fast) ease,
+    color var(--transition-fast) ease;
+}
+
+.filterButton:hover {
+  border-color: var(--border-accent);
+  background: var(--surface-accent-subtle);
+  color: var(--text-accent);
+}
+
+.securityNotice {
+  margin-bottom: var(--space-4);
+}
+
+.viewerState,
+.viewerWrap {
+  margin-top: var(--space-4);
+}
+
+@media (max-width: 980px) {
+  .filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .searchField,
+  .filterButton {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 620px) {
+  .filters {
+    grid-template-columns: minmax(0, 1fr);
+    padding: var(--space-4);
+  }
+
+  .searchField,
+  .filterButton {
+    grid-column: 1;
+  }
+}
