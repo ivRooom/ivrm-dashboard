@@ -1,4 +1,9 @@
 import { AutoRefresh } from "../../components/auto-refresh";
+import {
+  ActionLink,
+  PageHeader,
+  StatePanel,
+} from "../../components/console-ui";
 import { getInfrastructureInventory, parseInventoryView } from "../../lib/inventory";
 import { InventorySections } from "./inventory-sections";
 import { InventorySummary } from "./inventory-summary";
@@ -24,16 +29,26 @@ export default async function InventoryPage({ searchParams }: PageProps) {
     <>
       <AutoRefresh intervalMs={30_000} />
       <section className={`content ${styles.content}`}>
-        <header className={styles.header}>
-          <div><p className={styles.eyebrow}>INFRASTRUCTURE / ASSET INVENTORY</p><h1>Infrastructure Inventory</h1><p>Host・Container・公開サービス・Agent世代を横断し、現在観測できる資産と運用ギャップを一元管理します。</p></div>
-          <div className={styles.actions}><a href="/hosts">Host一覧</a><a href="/containers">Container一覧</a><a href="/minecraft">Minecraft</a></div>
-        </header>
+        <PageHeader
+          eyebrow="INFRASTRUCTURE / ASSET INVENTORY"
+          title="Infrastructure Inventory"
+          description="Host・Container・公開サービス・Agent世代を横断し、現在観測できる資産と運用ギャップを一元管理します。"
+          actions={
+            <>
+              <ActionLink href="/hosts">Host一覧</ActionLink>
+              <ActionLink href="/containers">Container一覧</ActionLink>
+              <ActionLink href="/minecraft">Minecraft</ActionLink>
+            </>
+          }
+        />
         <nav className={styles.filters} aria-label="インベントリ表示条件">
           <a aria-current={view === "all" ? "page" : undefined} href="/inventory?view=all">すべて</a>
           <a aria-current={view === "attention" ? "page" : undefined} href="/inventory?view=attention">Attention only</a>
         </nav>
         {loadError || !data ? (
-          <div className="empty error-panel" role="alert"><strong>Inventoryを取得できませんでした</strong><p>Monitoring SnapshotのServer-side接続を確認してください。</p></div>
+          <StatePanel title="Inventoryを取得できませんでした" variant="error">
+            Monitoring SnapshotのServer-side接続を確認してください。
+          </StatePanel>
         ) : <><InventorySummary data={data} /><InventorySections data={data} /></>}
       </section>
     </>

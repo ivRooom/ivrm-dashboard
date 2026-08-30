@@ -10,6 +10,7 @@ import { ConsoleCurrentContext } from "./console-current-context";
 import { ConsolePageLandmark } from "./console-page-landmark";
 import { MobileNavigationLinks } from "./mobile-navigation";
 import { NavigationLinks } from "./navigation-links";
+import "./design-tokens.css";
 import "./globals.css";
 import "./responsive.css";
 import "./console-shell.css";

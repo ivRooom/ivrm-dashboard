@@ -1,0 +1,104 @@
+:root {
+  /* Semantic color tokens. Existing primitive variables in globals.css remain
+   * as compatibility aliases while pages migrate incrementally. */
+  --surface-canvas: var(--bg);
+  --surface-default: var(--panel);
+  --surface-subtle: var(--panel-2);
+  --surface-elevated-token: #1c212b;
+  --surface-interactive-hover: rgb(255 255 255 / 4%);
+  --surface-interactive-pressed: rgb(255 255 255 / 7%);
+  --surface-accent-subtle: rgb(184 255 61 / 8%);
+
+  --border-default: var(--line);
+  --border-strong: #343a46;
+  --border-interactive: #4b5563;
+  --border-accent: rgb(184 255 61 / 30%);
+
+  --text-primary: var(--text);
+  --text-secondary: var(--muted);
+  --text-tertiary: #687080;
+  --text-accent: var(--accent);
+  --text-success: var(--ok);
+  --text-warning: var(--warn);
+  --text-danger: var(--bad);
+  --text-info: var(--standby);
+  --text-maintenance: var(--maintenance);
+
+  --state-success-bg: rgb(120 231 154 / 12%);
+  --state-success-border: rgb(120 231 154 / 28%);
+  --state-warning-bg: rgb(243 199 104 / 12%);
+  --state-warning-border: rgb(243 199 104 / 32%);
+  --state-danger-bg: rgb(255 119 119 / 12%);
+  --state-danger-border: rgb(255 119 119 / 38%);
+  --state-info-bg: rgb(124 196 255 / 12%);
+  --state-info-border: rgb(124 196 255 / 30%);
+  --state-maintenance-bg: rgb(199 167 255 / 12%);
+  --state-maintenance-border: rgb(199 167 255 / 30%);
+
+  /* Spacing scale. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+  --space-10: 64px;
+
+  /* Shape. */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 999px;
+
+  /* Typography. */
+  --font-size-xs: 10px;
+  --font-size-sm: 12px;
+  --font-size-md: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 20px;
+  --font-size-title: clamp(30px, 4vw, 42px);
+  --font-weight-medium: 600;
+  --font-weight-semibold: 700;
+  --font-weight-bold: 800;
+  --line-height-tight: 1.25;
+  --line-height-body: 1.6;
+  --tracking-label: 0.12em;
+
+  /* Layout rhythm. */
+  --page-content-max: 1440px;
+  --page-gutter: clamp(22px, 4vw, 60px);
+  --page-top-space: 34px;
+  --page-bottom-space: 64px;
+  --page-section-gap: 40px;
+  --card-padding: 20px;
+  --control-height: 38px;
+
+  /* Focus and interaction. */
+  --focus-color: var(--accent);
+  --focus-width: 2px;
+  --focus-offset: 3px;
+  --transition-fast: 140ms;
+  --transition-standard: 200ms;
+  --interactive-disabled-opacity: 0.52;
+}
+
+@media (max-width: 620px) {
+  :root {
+    --page-gutter: 18px;
+    --page-top-space: 26px;
+    --page-bottom-space: 48px;
+    --page-section-gap: 28px;
+    --card-padding: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition-fast: 0ms;
+    --transition-standard: 0ms;
+  }
+}
