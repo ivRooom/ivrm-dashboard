@@ -1,0 +1,304 @@
+.pageContent {
+  width: min(var(--page-content-max), 100%);
+  margin-inline: auto;
+  padding: var(--page-top-space) var(--page-gutter) var(--page-bottom-space);
+}
+
+.pageHeader,
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-5);
+}
+
+.pageHeader {
+  margin-bottom: var(--page-section-gap);
+}
+
+.headerCopy,
+.sectionCopy {
+  min-width: 0;
+}
+
+.eyebrow {
+  margin: 0 0 var(--space-2);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--tracking-label);
+  line-height: var(--line-height-tight);
+  text-transform: uppercase;
+}
+
+.pageHeader h1,
+.sectionHeader h2 {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.pageHeader h1 {
+  font-size: var(--font-size-title);
+  letter-spacing: -0.04em;
+}
+
+.sectionHeader h2 {
+  font-size: var(--font-size-xl);
+  letter-spacing: -0.02em;
+}
+
+.description {
+  max-width: 900px;
+  margin: var(--space-2) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-md);
+  line-height: var(--line-height-body);
+}
+
+.headerActions,
+.sectionAside {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.sectionHeader {
+  align-items: flex-end;
+  margin-bottom: var(--space-4);
+}
+
+.sectionAside {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--page-section-gap);
+}
+
+.metricCard {
+  min-width: 0;
+  min-height: 124px;
+  padding: var(--card-padding);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-default);
+}
+
+.metricCard[data-tone="success"] {
+  border-color: var(--state-success-border);
+}
+
+.metricCard[data-tone="warning"] {
+  border-color: var(--state-warning-border);
+}
+
+.metricCard[data-tone="danger"] {
+  border-color: var(--state-danger-border);
+}
+
+.metricCard[data-tone="info"] {
+  border-color: var(--state-info-border);
+}
+
+.metricLabel,
+.metricDetail {
+  display: block;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.metricLabel {
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+}
+
+.metricValue {
+  display: block;
+  margin: 18px 0 var(--space-2);
+  color: var(--text-primary);
+  font-size: 25px;
+  line-height: var(--line-height-tight);
+}
+
+.metricDetail {
+  line-height: 1.45;
+}
+
+.statusBadge {
+  width: max-content;
+  max-width: 100%;
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.25;
+}
+
+.statusBadge::before {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  content: "";
+}
+
+.statusBadge[data-tone="success"] {
+  border-color: var(--state-success-border);
+  background: var(--state-success-bg);
+  color: var(--text-success);
+}
+
+.statusBadge[data-tone="warning"] {
+  border-color: var(--state-warning-border);
+  background: var(--state-warning-bg);
+  color: var(--text-warning);
+}
+
+.statusBadge[data-tone="danger"] {
+  border-color: var(--state-danger-border);
+  background: var(--state-danger-bg);
+  color: var(--text-danger);
+}
+
+.statusBadge[data-tone="info"] {
+  border-color: var(--state-info-border);
+  background: var(--state-info-bg);
+  color: var(--text-info);
+}
+
+.statusBadge[data-tone="maintenance"] {
+  border-color: var(--state-maintenance-border);
+  background: var(--state-maintenance-bg);
+  color: var(--text-maintenance);
+}
+
+.actionLink {
+  min-height: var(--control-height);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.3;
+  text-decoration: none;
+  transition:
+    background var(--transition-fast) ease,
+    border-color var(--transition-fast) ease,
+    color var(--transition-fast) ease;
+}
+
+.actionLink[data-variant="primary"] {
+  border-color: var(--border-accent);
+  background: var(--surface-accent-subtle);
+  color: var(--text-accent);
+}
+
+.actionLink[data-variant="secondary"] {
+  background: var(--surface-default);
+  color: var(--text-secondary);
+}
+
+.actionLink:hover {
+  border-color: var(--border-interactive);
+  background: var(--surface-interactive-hover);
+  color: var(--text-primary);
+}
+
+.actionLink:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: var(--focus-offset);
+}
+
+.statePanel {
+  padding: var(--card-padding);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-default);
+}
+
+.statePanel strong,
+.statePanel p {
+  display: block;
+}
+
+.statePanel strong {
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+}
+
+.statePanel p {
+  margin: var(--space-2) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-body);
+}
+
+.statePanel[data-variant="error"] {
+  border-color: var(--state-danger-border);
+  background: var(--state-danger-bg);
+}
+
+.statePanel[data-variant="warning"] {
+  border-color: var(--state-warning-border);
+  background: var(--state-warning-bg);
+}
+
+.statePanel[data-variant="info"] {
+  border-color: var(--state-info-border);
+  background: var(--state-info-bg);
+}
+
+.tableShell {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-default);
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 960px) {
+  .metricGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .pageHeader,
+  .sectionHeader {
+    display: block;
+  }
+
+  .headerActions,
+  .sectionAside {
+    justify-content: flex-start;
+    margin-top: var(--space-4);
+    flex-wrap: wrap;
+  }
+
+  .metricGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .metricCard {
+    min-height: 0;
+  }
+}
