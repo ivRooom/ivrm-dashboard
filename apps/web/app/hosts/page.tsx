@@ -1,5 +1,14 @@
 import { AutoRefresh } from "../../components/auto-refresh";
 import {
+  ActionLink,
+  MetricCard,
+  MetricGrid,
+  PageHeader,
+  StatePanel,
+  StatusBadge,
+  type ConsoleTone,
+} from "../../components/console-ui";
+import {
   getHostMonitoringEvents,
   type HostMonitoringEvent,
 } from "../../lib/host-monitoring-events";
@@ -17,6 +26,12 @@ const statusLabels = {
   stale: "更新遅延",
   offline: "受信停止",
 } as const;
+
+const statusTones: Record<keyof typeof statusLabels, ConsoleTone> = {
+  online: "success",
+  stale: "warning",
+  offline: "danger",
+};
 
 const eventLabels: Record<HostMonitoringEvent["eventType"], string> = {
   host_reboot_detected: "Host再起動",
@@ -120,32 +135,52 @@ export default async function HostsPage() {
     <>
       <AutoRefresh />
       <section className={`content ${styles.hostContent}`}>
-        <header>
-          <div>
-            <p className={styles.eyebrow}>HOSTS</p>
-            <h1>ホスト監視</h1>
-            <p>Agent、OSリソース、配下コンテナ、Hostイベントをホスト単位で確認します。</p>
-          </div>
-          <div className={styles.headerActions}>
-            <a className={styles.secondaryLink} href="/history">全体履歴</a>
-            <a className={styles.secondaryLink} href="/events">コンテナイベント</a>
-          </div>
-        </header>
+        <PageHeader
+          eyebrow="HOSTS"
+          title="ホスト監視"
+          description="Agent、OSリソース、配下コンテナ、Hostイベントをホスト単位で確認します。"
+          actions={
+            <>
+              <ActionLink href="/history">全体履歴</ActionLink>
+              <ActionLink href="/events">コンテナイベント</ActionLink>
+            </>
+          }
+        />
 
-        <section className={styles.summaryGrid} aria-label="ホスト監視サマリー">
-          <article><span>監視ホスト</span><strong>{dataError ? "—" : hosts.length}</strong><small>有効Host登録数</small></article>
-          <article><span>正常</span><strong>{dataError ? "—" : online}</strong><small>Heartbeat 45秒以内</small></article>
-          <article><span>遅延 / 停止</span><strong>{dataError ? "—" : `${delayed} / ${offline}`}</strong><small>45秒超 / 180秒超</small></article>
-          <article><span>Host警告イベント</span><strong>{eventError ? "—" : warningEvents}</strong><small>直近30日</small></article>
-        </section>
+        <MetricGrid label="ホスト監視サマリー">
+          <MetricCard
+            label="監視ホスト"
+            value={dataError ? "—" : hosts.length}
+            detail="有効Host登録数"
+          />
+          <MetricCard
+            label="正常"
+            value={dataError ? "—" : online}
+            detail="Heartbeat 45秒以内"
+            tone="success"
+          />
+          <MetricCard
+            label="遅延 / 停止"
+            value={dataError ? "—" : `${delayed} / ${offline}`}
+            detail="45秒超 / 180秒超"
+            tone={delayed > 0 || offline > 0 ? "warning" : "neutral"}
+          />
+          <MetricCard
+            label="Host警告イベント"
+            value={eventError ? "—" : warningEvents}
+            detail="直近30日"
+            tone={warningEvents > 0 ? "warning" : "neutral"}
+          />
+        </MetricGrid>
 
         {dataError ? (
-          <div className="empty error-panel" role="alert">
-            <strong>ホスト監視データを取得できませんでした</strong>
-            <p>Supabase接続と監視データ取得経路を確認してください。</p>
-          </div>
+          <StatePanel title="ホスト監視データを取得できませんでした" variant="error">
+            Supabase接続と監視データ取得経路を確認してください。
+          </StatePanel>
         ) : hosts.length === 0 ? (
-          <div className={styles.emptyState}>監視対象Hostが登録されるとここへ表示されます。</div>
+          <StatePanel title="監視対象Hostがありません">
+            Hostが登録されてHeartbeatを受信すると、ここへ表示されます。
+          </StatePanel>
         ) : (
           <div className={styles.hostGrid}>
             {hosts.map((host) => {
@@ -159,7 +194,9 @@ export default async function HostsPage() {
                       <h2><a className={styles.detailLink} href={`/hosts/${encodeURIComponent(host.serverId)}`}>{host.displayName}</a></h2>
                       <p>{host.serverId} / {host.provider.toUpperCase()} / {host.environment}</p>
                     </div>
-                    <span className={`status ${host.status}`}>{statusLabels[host.status]}</span>
+                    <StatusBadge tone={statusTones[host.status]}>
+                      {statusLabels[host.status]}
+                    </StatusBadge>
                   </div>
 
                   <div className={styles.metaGrid}>
@@ -183,10 +220,9 @@ export default async function HostsPage() {
         )}
 
         {eventError ? (
-          <section className={styles.notice}>
-            <strong>Hostイベントのみ取得できませんでした</strong>
-            <p>現在値の表示には影響しません。<code>get_host_monitoring_events_v2</code>の状態を確認してください。</p>
-          </section>
+          <StatePanel className={styles.notice} title="Hostイベントのみ取得できませんでした" variant="warning">
+            現在値の表示には影響しません。get_host_monitoring_events_v2 の状態を確認してください。
+          </StatePanel>
         ) : null}
       </section>
     </>
