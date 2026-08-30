@@ -5,7 +5,11 @@ import {
   MetricGrid,
   PageContent,
   PageHeader,
+  SectionHeader,
   StatePanel,
+  StatusBadge,
+  TableShell,
+  type ConsoleTone,
 } from "../../components/console-ui";
 import { MetricLineChart } from "../../components/metric-line-chart";
 import {
@@ -96,8 +100,18 @@ function formatDateTime(value: string): string {
   }).format(new Date(value));
 }
 
-function stateClass(state: CapacityState): string {
-  return styles[state];
+function stateTone(state: CapacityState): ConsoleTone {
+  if (state === "healthy") return "success";
+  if (state === "growth") return "info";
+  if (state === "forecast_warning" || state === "warning") return "warning";
+  if (state === "forecast_critical" || state === "critical") return "danger";
+  return "neutral";
+}
+
+function backupStateTone(state: string): ConsoleTone {
+  if (state === "stable") return "success";
+  if (state === "growth" || state === "shrinking") return "info";
+  return "neutral";
 }
 
 export default async function CapacityPage({ searchParams }: PageProps) {
@@ -232,12 +246,14 @@ export default async function CapacityPage({ searchParams }: PageProps) {
                 />
               </MetricGrid>
 
-              <section className={styles.section} aria-labelledby="host-capacity-title">
-                <div className={styles.sectionHeading}>
-                  <div><span>HOST CAPACITY</span><h2 id="host-capacity-title">Host Resource Forecast</h2></div>
-                  <p>最新Heartbeatを現在値に使い、Historyの傾きと品質から将来到達目安を計算します。</p>
-                </div>
-                <div className={styles.tableShell}>
+              <section className={styles.section} aria-label="Host Resource Forecast">
+                <SectionHeader
+                  className={styles.sharedSectionHeader}
+                  description="最新Heartbeatを現在値に使い、Historyの傾きと品質から将来到達目安を計算します。"
+                  eyebrow="HOST CAPACITY"
+                  title="Host Resource Forecast"
+                />
+                <TableShell className={styles.tableShell} label="Host DiskとMemoryのキャパシティ予測">
                   <table>
                     <caption className={styles.srOnly}>Host DiskとMemoryのキャパシティ予測</caption>
                     <thead><tr><th>Host / Resource</th><th>State</th><th>Current</th><th>Headroom</th><th>Trend</th><th>Warning ETA</th><th>Critical ETA</th><th>Confidence</th></tr></thead>
@@ -248,7 +264,7 @@ export default async function CapacityPage({ searchParams }: PageProps) {
                             {resource.detailHref ? <a href={resource.detailHref}>{resource.hostDisplayName}</a> : <strong>{resource.hostDisplayName}</strong>}
                             <small>{resource.kind === "disk" ? "Disk" : "Memory"} · Total {formatBytes(resource.totalBytes)}</small>
                           </td>
-                          <td><span className={`${styles.state} ${stateClass(resource.forecast.state)}`}>{stateLabels[resource.forecast.state]}</span><small>{resource.forecast.reason}</small></td>
+                          <td><StatusBadge tone={stateTone(resource.forecast.state)}>{stateLabels[resource.forecast.state]}</StatusBadge><small>{resource.forecast.reason}</small></td>
                           <td><strong>{formatPercent(resource.forecast.currentPercent)}</strong></td>
                           <td>{formatBytes(resource.availableBytes)}</td>
                           <td>{formatSlope(resource.forecast.slopePercentPerDay)}</td>
@@ -259,7 +275,7 @@ export default async function CapacityPage({ searchParams }: PageProps) {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </TableShell>
                 {data.hostResources.length === 0 ? (
                   <StatePanel title="Host Capacityデータがありません">
                     Host HistoryまたはHeartbeat受信後に表示されます。
@@ -267,12 +283,14 @@ export default async function CapacityPage({ searchParams }: PageProps) {
                 ) : null}
               </section>
 
-              <section className={styles.section} aria-labelledby="container-capacity-title">
-                <div className={styles.sectionHeading}>
-                  <div><span>CONTAINER MEMORY</span><h2 id="container-capacity-title">Container Memory Forecast</h2></div>
-                  <p>Memory Limitを基準にした使用率を評価します。Limit不明時は履歴の最終値を利用します。</p>
-                </div>
-                <div className={styles.tableShell}>
+              <section className={styles.section} aria-label="Container Memory Forecast">
+                <SectionHeader
+                  className={styles.sharedSectionHeader}
+                  description="Memory Limitを基準にした使用率を評価します。Limit不明時は履歴の最終値を利用します。"
+                  eyebrow="CONTAINER MEMORY"
+                  title="Container Memory Forecast"
+                />
+                <TableShell className={styles.tableShell} label="DockerコンテナMemoryのキャパシティ予測">
                   <table>
                     <caption className={styles.srOnly}>DockerコンテナMemoryのキャパシティ予測</caption>
                     <thead><tr><th>Container</th><th>State</th><th>Current</th><th>Usage / Limit</th><th>Trend</th><th>Warning ETA</th><th>Critical ETA</th><th>Confidence</th></tr></thead>
@@ -283,7 +301,7 @@ export default async function CapacityPage({ searchParams }: PageProps) {
                             {resource.detailHref ? <a href={resource.detailHref}>{resource.containerName}</a> : <strong>{resource.containerName}</strong>}
                             <small>{resource.hostDisplayName}</small>
                           </td>
-                          <td><span className={`${styles.state} ${stateClass(resource.forecast.state)}`}>{stateLabels[resource.forecast.state]}</span><small>{resource.forecast.reason}</small></td>
+                          <td><StatusBadge tone={stateTone(resource.forecast.state)}>{stateLabels[resource.forecast.state]}</StatusBadge><small>{resource.forecast.reason}</small></td>
                           <td><strong>{formatPercent(resource.forecast.currentPercent)}</strong></td>
                           <td>{formatBytes(resource.memoryUsageBytes)} / {formatBytes(resource.memoryLimitBytes)}</td>
                           <td>{formatSlope(resource.forecast.slopePercentPerDay)}</td>
@@ -294,7 +312,7 @@ export default async function CapacityPage({ searchParams }: PageProps) {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </TableShell>
                 {data.containerResources.length === 0 ? (
                   <StatePanel title="Container Capacityデータがありません">
                     Container History受信後に表示されます。
@@ -302,11 +320,13 @@ export default async function CapacityPage({ searchParams }: PageProps) {
                 ) : null}
               </section>
 
-              <section className={styles.section} aria-labelledby="trend-title">
-                <div className={styles.sectionHeading}>
-                  <div><span>TREND CHARTS</span><h2 id="trend-title">Utilization Trends</h2></div>
-                  <p>予測値そのものではなく、予測判定に使った実測推移を同じ画面で確認できます。</p>
-                </div>
+              <section className={styles.section} aria-label="Utilization Trends">
+                <SectionHeader
+                  className={styles.sharedSectionHeader}
+                  description="予測値そのものではなく、予測判定に使った実測推移を同じ画面で確認できます。"
+                  eyebrow="TREND CHARTS"
+                  title="Utilization Trends"
+                />
                 <div className={styles.chartGrid}>
                   <MetricLineChart
                     title="Host Disk Usage"
@@ -358,12 +378,14 @@ export default async function CapacityPage({ searchParams }: PageProps) {
                 </div>
               </section>
 
-              <section className={styles.section} aria-labelledby="backup-growth-title">
-                <div className={styles.sectionHeading}>
-                  <div><span>BACKUP GROWTH</span><h2 id="backup-growth-title">Backup Size Trend</h2></div>
-                  <p>成功BackupのsizeBytesだけを利用します。S3やLocalのQuotaを取得していないため、容量枯渇日は推測しません。</p>
-                </div>
-                <div className={styles.tableShell}>
+              <section className={styles.section} aria-label="Backup Size Trend">
+                <SectionHeader
+                  className={styles.sharedSectionHeader}
+                  description="成功BackupのsizeBytesだけを利用します。S3やLocalのQuotaを取得していないため、容量枯渇日は推測しません。"
+                  eyebrow="BACKUP GROWTH"
+                  title="Backup Size Trend"
+                />
+                <TableShell className={styles.tableShell} label="Backupサイズ増減傾向">
                   <table>
                     <caption className={styles.srOnly}>Backupサイズ増減傾向</caption>
                     <thead><tr><th>Target</th><th>Trend</th><th>Latest Size</th><th>Growth / day</th><th>Relative</th><th>Confidence</th><th>Samples</th></tr></thead>
@@ -371,7 +393,7 @@ export default async function CapacityPage({ searchParams }: PageProps) {
                       {data.backupGrowth.map((item) => (
                         <tr key={item.id}>
                           <td><a href="/backups">{item.backupTarget}</a><small>{item.hostDisplayName}</small></td>
-                          <td><span className={`${styles.state} ${styles[`backup_${item.state}`]}`}>{item.state === "growth" ? "Growth" : item.state === "shrinking" ? "Shrinking" : item.state === "stable" ? "Stable" : "Insufficient data"}</span><small>{item.reason}</small></td>
+                          <td><StatusBadge tone={backupStateTone(item.state)}>{item.state === "growth" ? "Growth" : item.state === "shrinking" ? "Shrinking" : item.state === "stable" ? "Stable" : "Insufficient data"}</StatusBadge><small>{item.reason}</small></td>
                           <td>{formatBytes(item.latestSizeBytes)}</td>
                           <td>{formatByteGrowth(item.growthBytesPerDay)}</td>
                           <td>{item.growthPercentPerDay === null ? "—" : `${item.growthPercentPerDay > 0 ? "+" : ""}${item.growthPercentPerDay.toFixed(2)}%/日`}</td>
@@ -381,7 +403,7 @@ export default async function CapacityPage({ searchParams }: PageProps) {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </TableShell>
                 {data.backupGrowth.length === 0 ? (
                   <StatePanel title="Backupサイズ履歴がありません">
                     ReporterからsizeBytesを含む成功Runが蓄積されると傾向を表示します。
