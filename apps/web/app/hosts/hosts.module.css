@@ -196,6 +196,10 @@
   text-align: right;
 }
 
+.detailSectionHeader {
+  margin-top: 30px;
+}
+
 .periodSelector {
   margin-bottom: 16px;
 }
@@ -277,6 +281,10 @@
   color: var(--muted);
   font-size: 12px;
   line-height: 1.65;
+}
+
+.detailNotice {
+  margin-top: 18px;
 }
 
 @media (max-width: 1180px) {

@@ -1,6 +1,17 @@
 import { notFound } from "next/navigation";
 import { AutoRefresh } from "../../../components/auto-refresh";
 import {
+  ActionLink,
+  MetricCard,
+  MetricGrid,
+  PageContent,
+  PageHeader,
+  SectionHeader,
+  StatePanel,
+  StatusBadge,
+  type ConsoleTone,
+} from "../../../components/console-ui";
+import {
   MetricLineChart,
   type MetricChartMarker,
 } from "../../../components/metric-line-chart";
@@ -28,6 +39,11 @@ import styles from "../hosts.module.css";
 export const dynamic = "force-dynamic";
 
 const statusLabels = { online: "稼働中", stale: "更新遅延", offline: "受信停止" } as const;
+const statusTones: Record<keyof typeof statusLabels, ConsoleTone> = {
+  online: "success",
+  stale: "warning",
+  offline: "danger",
+};
 const containerStatusLabels = {
   online: "稼働中",
   offline: "受信停止",
@@ -242,29 +258,49 @@ export default async function HostDetailPage({ params, searchParams }: PageProps
   return (
     <>
       <AutoRefresh intervalMs={rangeConfig.refreshMs} />
-      <section className={`content ${styles.hostContent}`}>
-        <header>
-          <div>
-            <p className={styles.eyebrow}>HOST DETAIL</p>
-            <h1>{host?.displayName ?? serverId}</h1>
-            <p>Host自体の現在値・履歴・Heartbeatイベントと、配下Containerをまとめて確認します。</p>
-          </div>
-          <div className={styles.headerActions}>
-            <a className={styles.secondaryLink} href="/hosts">ホスト一覧</a>
-            <a className={styles.secondaryLink} href={`/history?range=${range}`}>全体履歴</a>
-          </div>
-        </header>
+      <PageContent className={styles.hostContent}>
+        <PageHeader
+          eyebrow="HOST DETAIL"
+          title={host?.displayName ?? serverId}
+          description="Host自体の現在値・履歴・Heartbeatイベントと、配下Containerをまとめて確認します。"
+          actions={
+            <>
+              <ActionLink href="/hosts">ホスト一覧</ActionLink>
+              <ActionLink href={`/history?range=${range}`}>全体履歴</ActionLink>
+            </>
+          }
+        />
 
         {currentError ? (
-          <div className="empty error-panel" role="alert" style={{ marginTop: 28 }}><strong>Host現在値を取得できませんでした</strong><p>監視データ取得経路を確認してください。</p></div>
+          <StatePanel title="Host現在値を取得できませんでした" variant="error">
+            監視データ取得経路を確認してください。
+          </StatePanel>
         ) : host ? (
           <>
-            <section className={styles.summaryGrid} aria-label="Host現在値サマリー">
-              <article><span>運用状態</span><strong>{statusLabels[host.status]}</strong><small>{host.provider.toUpperCase()} / {host.environment}</small></article>
-              <article><span>Agent</span><strong>{host.agentVersion ?? "未受信"}</strong><small>{formatRelativeTime(host.receivedAt, generatedAt)}</small></article>
-              <article><span>Uptime</span><strong>{formatDuration(host.uptimeSeconds === null ? null : Math.floor(host.uptimeSeconds))}</strong><small>OS uptime</small></article>
-              <article><span>配下Container</span><strong>{containers.length}</strong><small>{problemContainers.length > 0 ? `${problemContainers.length}件 要確認` : "要確認なし"}</small></article>
-            </section>
+            <MetricGrid label="Host現在値サマリー">
+              <MetricCard
+                label="運用状態"
+                value={<StatusBadge tone={statusTones[host.status]}>{statusLabels[host.status]}</StatusBadge>}
+                detail={`${host.provider.toUpperCase()} / ${host.environment}`}
+                tone={statusTones[host.status] === "danger" ? "danger" : statusTones[host.status] === "warning" ? "warning" : "success"}
+              />
+              <MetricCard
+                label="Agent"
+                value={host.agentVersion ?? "未受信"}
+                detail={formatRelativeTime(host.receivedAt, generatedAt)}
+              />
+              <MetricCard
+                label="Uptime"
+                value={formatDuration(host.uptimeSeconds === null ? null : Math.floor(host.uptimeSeconds))}
+                detail="OS uptime"
+              />
+              <MetricCard
+                label="配下Container"
+                value={containers.length}
+                detail={problemContainers.length > 0 ? `${problemContainers.length}件 要確認` : "要確認なし"}
+                tone={problemContainers.length > 0 ? "warning" : "neutral"}
+              />
+            </MetricGrid>
 
             <section className={styles.currentGrid} aria-label="Host現在値詳細">
               <div><span>SERVER ID</span><strong>{host.serverId}</strong><small>{host.provider.toUpperCase()} / {host.environment}</small></div>
@@ -277,10 +313,12 @@ export default async function HostDetailPage({ params, searchParams }: PageProps
           </>
         ) : null}
 
-        <div className={styles.sectionHeading}>
-          <div><span>HISTORY</span><h2>Hostリソース履歴</h2></div>
-          <p>Load Average・Memory・Diskを同一Hostに絞り、Hostイベントを縦マーカーで重ねます。</p>
-        </div>
+        <SectionHeader
+          className={styles.detailSectionHeader}
+          eyebrow="HISTORY"
+          title="Hostリソース履歴"
+          description="Load Average・Memory・Diskを同一Hostに絞り、Hostイベントを縦マーカーで重ねます。"
+        />
 
         <nav className={styles.periodSelector} aria-label="表示期間">
           {(Object.keys(HISTORY_RANGE_CONFIG) as HistoryRange[]).map((candidate) => (
@@ -288,19 +326,21 @@ export default async function HostDetailPage({ params, searchParams }: PageProps
           ))}
         </nav>
 
-        <section className={styles.summaryGrid} aria-label="選択期間のHost履歴サマリー">
-          <div><span>表示期間</span><strong>{rangeConfig.label}</strong><small>{rangeConfig.aggregationLabel}</small></div>
-          <div><span>Peak Load 1m</span><strong>{peakLoad === null ? "—" : peakLoad.toFixed(2)}</strong><small>選択期間最大値</small></div>
-          <div><span>Peak Memory</span><strong>{peakMemory === null ? "—" : `${peakMemory.toFixed(1)}%`}</strong><small>選択期間最大値</small></div>
-          <div><span>Peak Disk</span><strong>{peakDisk === null ? "—" : `${peakDisk.toFixed(1)}%`}</strong><small>選択期間最大値</small></div>
-          <div><span>Hostイベント</span><strong>{eventError ? "—" : events.length}</strong><small>同期間</small></div>
-          <div><span>集約元Sample</span><strong>{historyError ? "—" : samples.toLocaleString("ja-JP")}</strong><small>{dataSourceLabels[source]}</small></div>
-          <div><span>Bucket</span><strong>{rangeConfig.aggregationLabel}</strong><small>{bucket}秒</small></div>
-          <div><span>Data Source</span><strong>{dataSourceLabels[source]}</strong><small>既存履歴RPC</small></div>
-        </section>
+        <MetricGrid label="選択期間のHost履歴サマリー">
+          <MetricCard label="表示期間" value={rangeConfig.label} detail={rangeConfig.aggregationLabel} />
+          <MetricCard label="Peak Load 1m" value={peakLoad === null ? "—" : peakLoad.toFixed(2)} detail="選択期間最大値" />
+          <MetricCard label="Peak Memory" value={peakMemory === null ? "—" : `${peakMemory.toFixed(1)}%`} detail="選択期間最大値" />
+          <MetricCard label="Peak Disk" value={peakDisk === null ? "—" : `${peakDisk.toFixed(1)}%`} detail="選択期間最大値" />
+          <MetricCard label="Hostイベント" value={eventError ? "—" : events.length} detail="同期間" tone={!eventError && events.some((event) => event.severity === "warning") ? "warning" : "neutral"} />
+          <MetricCard label="集約元Sample" value={historyError ? "—" : samples.toLocaleString("ja-JP")} detail={dataSourceLabels[source]} />
+          <MetricCard label="Bucket" value={rangeConfig.aggregationLabel} detail={`${bucket}秒`} />
+          <MetricCard label="Data Source" value={dataSourceLabels[source]} detail="既存履歴RPC" />
+        </MetricGrid>
 
         {historyError ? (
-          <div className="empty error-panel" role="alert"><strong>Host履歴を取得できませんでした</strong><p>現在値とHostイベントの表示には影響しません。</p></div>
+          <StatePanel title="Host履歴を取得できませんでした" variant="error">
+            現在値とHostイベントの表示には影響しません。
+          </StatePanel>
         ) : (
           <div className={styles.chartGrid}>
             <MetricLineChart {...sharedChartProps} title="Load Average" description="1分・5分・15分の実行待ち負荷です。" series={hostLoadSeries(history)} unit="" />
@@ -309,15 +349,19 @@ export default async function HostDetailPage({ params, searchParams }: PageProps
           </div>
         )}
 
-        <div className={styles.sectionHeading}>
-          <div><span>HOST EVENTS</span><h2>Hostイベント</h2></div>
-          <p>OS Uptime低下、Agent Version変更、45秒を超えるHeartbeat gapを記録します。</p>
-        </div>
+        <SectionHeader
+          className={styles.detailSectionHeader}
+          eyebrow="HOST EVENTS"
+          title="Hostイベント"
+          description="OS Uptime低下、Agent Version変更、45秒を超えるHeartbeat gapを記録します。"
+        />
 
         {eventError ? (
-          <div className="empty error-panel" role="alert"><strong>Hostイベントを取得できませんでした</strong><p>リソース履歴の表示には影響しません。</p></div>
+          <StatePanel title="Hostイベントを取得できませんでした" variant="error">
+            リソース履歴の表示には影響しません。
+          </StatePanel>
         ) : events.length === 0 ? (
-          <div className={styles.emptyState}>選択期間にHostイベントはありません。</div>
+          <StatePanel title="選択期間にHostイベントはありません" />
         ) : (
           <div className={styles.eventList}>
             {events.slice(0, 20).map((event) => (
@@ -331,13 +375,17 @@ export default async function HostDetailPage({ params, searchParams }: PageProps
           </div>
         )}
 
-        <div className={styles.sectionHeading}>
-          <div><span>CONTAINERS</span><h2>配下コンテナ</h2></div>
-          <p>Host負荷とContainer負荷を往復して障害原因を切り分けます。</p>
-        </div>
+        <SectionHeader
+          className={styles.detailSectionHeader}
+          eyebrow="CONTAINERS"
+          title="配下コンテナ"
+          description="Host負荷とContainer負荷を往復して障害原因を切り分けます。"
+        />
 
         {containers.length === 0 ? (
-          <div className={styles.emptyState}>このHostからContainer Snapshotはまだ届いていません。</div>
+          <StatePanel title="Container Snapshotはまだ届いていません">
+            このHostからContainer Snapshotを受信すると、ここへ表示されます。
+          </StatePanel>
         ) : (
           <div className={styles.containerList}>
             {containers.map((container) => (
@@ -351,8 +399,10 @@ export default async function HostDetailPage({ params, searchParams }: PageProps
           </div>
         )}
 
-        <section className={styles.notice}><strong>読み取り専用</strong><p>Host詳細はHeartbeat・既存履歴RPC・構造化Hostイベントだけを利用します。Shell、Docker操作、RCON、Secret、IP、ログ本文は扱いません。</p></section>
-      </section>
+        <StatePanel className={styles.detailNotice} title="読み取り専用" variant="info">
+          Host詳細はHeartbeat・既存履歴RPC・構造化Hostイベントだけを利用します。Shell、Docker操作、RCON、Secret、IP、ログ本文は扱いません。
+        </StatePanel>
+      </PageContent>
     </>
   );
 }
