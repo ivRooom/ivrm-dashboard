@@ -4,7 +4,8 @@
 }
 
 .sharedPageHeader,
-.sharedMetricGrid {
+.sharedMetricGrid,
+.sharedSectionHeader {
   margin-bottom: 0;
 }
 
