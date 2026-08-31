@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll fixed mc-main lifecycle IPC requests
+
+[Timer]
+OnBootSec=5s
+OnUnitActiveSec=2s
+AccuracySec=500ms
+Unit=ivrm-mc-main-lifecycle.service
+
+[Install]
+WantedBy=timers.target

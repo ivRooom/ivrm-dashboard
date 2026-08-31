@@ -1,0 +1,30 @@
+[Unit]
+Description=ivRooom mc-main lifecycle operation worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ivrm-agent
+Group=ivrm-agent
+EnvironmentFile=/etc/ivrm-agent/agent.env
+EnvironmentFile=/etc/ivrm-agent/operation.env
+ExecStart=/usr/local/bin/ivrm-operation-worker
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ReadWritePaths=/run/ivrm-agent/operations/requests
+ReadOnlyPaths=/run/ivrm-agent/operations/results
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
