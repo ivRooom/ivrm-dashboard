@@ -198,7 +198,36 @@
   }
 
   .lines {
-    min-width: 700px;
+    min-width: 0;
+  }
+
+  .line {
+    grid-template-columns: 104px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "time source level"
+      "message message message";
+    gap: 2px 8px;
+    align-items: start;
+    padding-block: 7px;
+  }
+
+  .line time {
+    grid-area: time;
+  }
+
+  .source {
+    grid-area: source;
+  }
+
+  .level {
+    grid-area: level;
+    justify-self: end;
+  }
+
+  .line code {
+    grid-area: message;
+    display: block;
+    padding-top: 2px;
   }
 }
 
