@@ -5,6 +5,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from typing import Optional
 from unittest import mock
 
 MODULE_PATH = Path(__file__).with_name("ivrm-mc-main-lifecycle.py")
@@ -22,7 +23,7 @@ class LifecycleTest(unittest.TestCase):
         with mock.patch.dict("os.environ", {}, clear=True):
             self.assertFalse(module.execution_enabled())
 
-    def _request(self, directory: str, extra: dict | None = None) -> Path:
+    def _request(self, directory: str, extra: Optional[dict] = None) -> Path:
         job_id = "123e4567-e89b-42d3-a456-426614174000"
         path = Path(directory) / f"{job_id}.json"
         payload = {"jobId": job_id, "action": "start_backend"}
