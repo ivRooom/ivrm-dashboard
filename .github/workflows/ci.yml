@@ -47,6 +47,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
+      - name: PythonをOCI互換バージョンで準備
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
       - name: OCI更新スクリプトの構文を確認
         run: |
           bash -n deploy/oci/update-monitoring-stack.sh
