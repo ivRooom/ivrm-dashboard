@@ -1,0 +1,23 @@
+[Unit]
+Description=ivRooom fixed mc-main lifecycle executor
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+Group=ivrm-agent
+EnvironmentFile=/etc/ivrm-agent/operation.env
+ExecStart=/usr/local/libexec/ivrm-mc-main-lifecycle
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ReadWritePaths=/run/ivrm-agent/operations
+RestrictAddressFamilies=AF_UNIX
+UMask=0027

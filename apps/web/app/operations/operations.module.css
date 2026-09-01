@@ -12,9 +12,165 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.lifecycleStack,
 .capabilityList {
   display: grid;
   gap: var(--space-3);
+}
+
+.operationGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.operationCard,
+.progressPanel,
+.capabilityCard,
+.safetyPanel {
+  padding: var(--card-padding);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-default);
+}
+
+.operationCard {
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+}
+
+.operationCard h3,
+.progressHeader h3 {
+  margin: 0 0 var(--space-2);
+  color: var(--text-primary);
+  font-size: var(--font-size-lg);
+}
+
+.operationMeta,
+.emptyProgress {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-body);
+}
+
+.confirmationField {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.confirmationField input {
+  min-width: 0;
+  height: var(--control-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-interactive);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+}
+
+.operationButton {
+  min-height: var(--control-height);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-md);
+  background: var(--surface-accent-subtle);
+  color: var(--text-accent);
+  font: inherit;
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.operationButton:disabled,
+.confirmationField input:disabled {
+  cursor: not-allowed;
+  opacity: var(--interactive-disabled-opacity);
+}
+
+.operationButton:focus-visible,
+.confirmationField input:focus-visible,
+.progressHeader a:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: var(--focus-offset);
+}
+
+.operationMessage {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--state-info-border);
+  border-radius: var(--radius-md);
+  background: var(--state-info-bg);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.progressPanel {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.progressHeader {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.progressHeader a {
+  color: var(--text-accent);
+  font-size: var(--font-size-sm);
+  text-decoration: none;
+}
+
+.jobList {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.jobRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-4);
+  align-items: center;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border-default);
+}
+
+.jobRow > div {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  min-width: 0;
+}
+
+.jobRow > div:last-child {
+  justify-content: flex-end;
+}
+
+.jobRow strong {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.jobRow span {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+.jobStatus {
+  padding: 3px 8px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+}
+
+.jobStatusActive {
+  border-color: var(--state-warning-border);
+  background: var(--state-warning-bg);
+  color: var(--text-warning) !important;
 }
 
 .capabilityCard {
@@ -22,10 +178,6 @@
   grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.6fr);
   gap: var(--space-5);
   align-items: start;
-  padding: var(--card-padding);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-lg);
-  background: var(--surface-default);
 }
 
 .capabilityIdentity {
@@ -75,18 +227,17 @@
   overflow-wrap: anywhere;
 }
 
-.safetyPanel {
-  padding: var(--card-padding);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-lg);
-  background: var(--surface-default);
-}
-
 .safetyPanel ul {
   margin: var(--space-3) 0 0;
   padding-left: 1.25rem;
   color: var(--text-secondary);
   line-height: 1.9;
+}
+
+@media (max-width: 1000px) {
+  .operationGrid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 900px) {
@@ -111,5 +262,26 @@
 
   .detailList dd + dt {
     margin-top: var(--space-2);
+  }
+
+  .progressHeader,
+  .jobRow,
+  .jobRow > div {
+    align-items: flex-start;
+  }
+
+  .progressHeader,
+  .jobRow {
+    grid-template-columns: 1fr;
+  }
+
+  .progressHeader {
+    flex-direction: column;
+  }
+
+  .jobRow > div,
+  .jobRow > div:last-child {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 }

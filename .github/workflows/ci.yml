@@ -27,6 +27,8 @@ jobs:
           node-version: 22
       - name: 依存関係をインストール
         run: pnpm install --frozen-lockfile
+      - name: Operation Agent HMACをテスト
+        run: node --experimental-strip-types --test tests/operation-agent-auth-core.test.mjs
       - name: 型チェック
         run: pnpm typecheck
       - name: ビルド
@@ -50,8 +52,12 @@ jobs:
           bash -n deploy/oci/update-monitoring-stack.sh
           bash -n deploy/oci/stage-log-reporter.sh
           bash -n deploy/oci/test_stage_log_reporter.sh
+          bash -n deploy/oci/stage-mc-main-lifecycle.sh
+          bash -n deploy/oci/test_stage_mc_main_lifecycle.sh
       - name: Log Reporter stageの非干渉契約をテスト
         run: bash deploy/oci/test_stage_log_reporter.sh
+      - name: mc-main Lifecycle stageの非干渉契約をテスト
+        run: bash deploy/oci/test_stage_mc_main_lifecycle.sh
       - name: Metrics Bridgeステージスクリプトの構文を確認
         run: |
           bash -n deploy/oci/stage-minecraft-metrics-bridge.sh
@@ -82,6 +88,10 @@ jobs:
         run: python3 -m py_compile deploy/oci/ivrm-log-reporter.py
       - name: Log Reporterをテスト
         run: python3 -m unittest deploy/oci/test_ivrm_log_reporter.py
+      - name: mc-main Lifecycle Helperの構文を確認
+        run: python3 -m py_compile deploy/oci/ivrm-mc-main-lifecycle.py
+      - name: mc-main Lifecycle Helperをテスト
+        run: python3 -m unittest deploy/oci/test_ivrm_mc_main_lifecycle.py
       - name: Goを準備
         uses: actions/setup-go@v5
         with:
@@ -94,7 +104,11 @@ jobs:
         run: mkdir -p dist
       - name: ARM64ビルド
         working-directory: apps/agent
-        run: GOOS=linux GOARCH=arm64 go build -o ../../dist/ivrm-agent-linux-arm64 ./cmd/ivrm-agent
+        run: |
+          GOOS=linux GOARCH=arm64 go build -o ../../dist/ivrm-agent-linux-arm64 ./cmd/ivrm-agent
+          GOOS=linux GOARCH=arm64 go build -o ../../dist/ivrm-operation-worker-linux-arm64 ./cmd/ivrm-operation-worker
       - name: AMD64ビルド
         working-directory: apps/agent
-        run: GOOS=linux GOARCH=amd64 go build -o ../../dist/ivrm-agent-linux-amd64 ./cmd/ivrm-agent
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o ../../dist/ivrm-agent-linux-amd64 ./cmd/ivrm-agent
+          GOOS=linux GOARCH=amd64 go build -o ../../dist/ivrm-operation-worker-linux-amd64 ./cmd/ivrm-operation-worker
