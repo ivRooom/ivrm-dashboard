@@ -99,7 +99,7 @@ export default async function OperationsPage() {
         </StatePanel>
       ) : null}
       {requestsEnabled && discordMutationAvailable ? (
-        <StatePanel title="Operation request gateはONです" variant="success">
+        <StatePanel title="Operation request gateはONです" variant="info">
           BrowserからPhase B-1のJob作成が可能です。実行はDiscord RBACとOCI側の独立したexecution gateでも制御されます。
         </StatePanel>
       ) : null}
