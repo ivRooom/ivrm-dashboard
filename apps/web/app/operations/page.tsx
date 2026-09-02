@@ -98,6 +98,11 @@ export default async function OperationsPage() {
           IVRM_OPERATION_REQUESTS_ENABLED=trueへ明示変更するまでBrowserからJobを作成しません。OCI側にも独立したexecution gateがあります。
         </StatePanel>
       ) : null}
+      {requestsEnabled && discordMutationAvailable ? (
+        <StatePanel title="Operation request gateはONです" variant="info">
+          BrowserからPhase B-1のJob作成が可能です。実行はDiscord RBACとOCI側の独立したexecution gateでも制御されます。
+        </StatePanel>
+      ) : null}
       {requestsEnabled && !discordMutationAvailable ? (
         <StatePanel title="Lifecycle mutationにはDiscord Sessionが必要です" variant="info">
           Phase B-1のmutationはDiscord Session / Guild Role RBACへ固定しています。Cloudflare AccessのみのSessionでは実行要求を作成しません。
