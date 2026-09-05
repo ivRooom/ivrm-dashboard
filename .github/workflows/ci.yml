@@ -27,8 +27,8 @@ jobs:
           node-version: 22
       - name: 依存関係をインストール
         run: pnpm install --frozen-lockfile
-      - name: Operation Agent HMACをテスト
-        run: node --experimental-strip-types --test tests/operation-agent-auth-core.test.mjs
+      - name: Operation Agent HMACと内部エラー分類をテスト
+        run: node --experimental-strip-types --test tests/operation-agent-auth-core.test.mjs tests/operation-internal-error.test.mjs
       - name: 型チェック
         run: pnpm typecheck
       - name: ビルド
@@ -55,7 +55,7 @@ jobs:
         run: |
           bash -n deploy/oci/update-monitoring-stack.sh
           bash -n deploy/oci/stage-log-reporter.sh
-          bash -n deploy/oci/test_stage_log_reporter.sh
+          bash -n deploy/oci/test_stage_log-reporter.sh
           bash -n deploy/oci/stage-mc-main-lifecycle.sh
           bash -n deploy/oci/test_stage_mc_main_lifecycle.sh
       - name: Log Reporter stageの非干渉契約をテスト
