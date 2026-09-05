@@ -5,6 +5,7 @@ import {
   parseOperationAgentJson,
   readOperationAgentBody,
 } from "../../../../../lib/operation-agent-auth";
+import { classifyOperationInternalError } from "../../../../../lib/operation-internal-error";
 import {
   acceptOperationAgentRequest,
   MC_MAIN_OPERATION_ACTIONS,
@@ -96,7 +97,8 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (error instanceof OperationAgentAuthError) {
       return json({ accepted: false, error: error.code }, error.status);
     }
-    console.error("Operation Agent transition APIで予期しないエラーが発生しました");
+    const code = classifyOperationInternalError(error);
+    console.error(`Operation Agent transition API internal_error code=${code}`);
     return json({ accepted: false, error: "internal_error" }, 500);
   }
 }
