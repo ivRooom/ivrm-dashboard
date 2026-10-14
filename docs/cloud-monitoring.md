@@ -4,11 +4,13 @@ Issue #120。クラウドの状態参照を、対話用MCP認証から独立し�
 
 ## 適用承認と現状（2026-10-14）
 
-ユーザー承認は「追加料金0円と確認できる範囲だけ本番適用」。費用データが取得できないことを0円の根拠にはしない。Vercelの契約・残枠確認、専用Collector認証、Discord Webhook設定が済むまで、本番移行・収集Timer・追加Cronは未適用。
+ユーザー承認は「追加料金0円と確認できる範囲だけ本番適用」。費用データが取得できないことを0円の根拠にはしない。専用Collector認証と無料枠内での継続性確認が残るため、本番Cloud Monitor移行・収集Timer・追加Cronは未適用。
 
-Discordの指定先はサーバー`964326043420872704`、チャンネル`1042774690227306517`。IDだけでは配送できないため、同チャンネルのWebhookを秘密情報として設定し、配送先を確認する。Webhook URLはGit・ドキュメント・チャットへ記載しない。
+Discordの正しい指定先はサーバー`964326043420872704`、チャンネル`1520646806961258636`（🔔system-notify）。ユーザー承認後に専用Webhookを作成しSupabaseの`DISCORD_WEBHOOK_URL` Secretへ保存、既存通知チャネルを有効化。初回テスト配送はHTTP 200・Outbox sentを確認した。その後、ユーザーが正しいチャンネルへWebhookを移動済み。新しいチャンネルのWebhook一覧でも所属を確認。Webhook URLはGit・ドキュメント・チャットへ記載しない。
 
-Supabaseは確認時Free、DB約334MiB。Vercel請求APIは`costs_not_found`で、ブラウザの契約画面はログイン待ち。Discordもログイン待ち。ローカルの本番ビルド、JavaScript 13件、Python 12件、使い捨てPostgreSQLの状態遷移試験、ブラウザでの認証境界・PC/モバイル・自動更新試験は成功。本番の通知配送・継続稼働は未検証。
+SupabaseはFree。画面でEdge Function 0/500,000回、組織Egress 3.523/5GB、Database Size 0.366/0.5GBを確認。既存通知Dispatcherの毎分実行は約43,200回/月で、現在の無料枠内。VercelはHobby・支払い方法なし。上限超過は追加課金でなく制限となるが、直近30日でFunctions 993,792/1,000,000回、CDN 992,554/1,000,000回、Active CPU 6h28m/4hのため継続稼働に余裕がない。
+
+実装はPR #121。GitHub Web/Agent CIとVercel Preview成功。ローカル本番ビルド、JavaScript 13件、Python 12件、PostgreSQL状態遷移、ブラウザの認証境界・PC/モバイル・自動更新試験は成功。EC2にはPython 3.11.15があるが、`ivrm-ec2-role`にEC2 Describe/Lightsail Get権限が不足。ロールはCloudFormationの`ivrm-compute-access-foundation`管理。Vercel・Netlify・Cloudflareの専用Collector認証も未設定。全クラウド常時収集は稼働済みと扱わない。
 
 ## 構成
 
