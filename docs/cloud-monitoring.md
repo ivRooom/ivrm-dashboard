@@ -12,7 +12,9 @@ SupabaseはFree。画面でEdge Function 0/500,000回、組織Egress 3.523/5GB�
 
 実装はPR #121。GitHub Web/Agent CIとVercel Preview成功。Vercelの実APIでtargets.productionがCANCELED、ドメイン割り当て先がREADYとなる例を確認したため、Alias参照へ修正しPython 13件を再検証した。ローカル本番ビルド、JavaScript 13件、PostgreSQL状態遷移、ブラウザの認証境界・PC/モバイル・自動更新試験も成功。
 
-専用認証3個の作成・既存EC2への保存はユーザー承認済み（期限2027-01-12）。Vercelはivrm-dashboard限定、Netlifyは読み取り専用に限定できないPATであることも承認済み。両方を権限制限済みローカル保管先からSSHで既存EC2へ転送し、root:ivrm-agent / 0640の`/etc/ivrm-agent/cloud.env`として保存。CollectorユーザーからVercel・Netlify参照がoperational/okとなることを確認。コードと対象設定も配置したが、Timer・追加Cron・Agent登録は未実施。CloudflareのDNS/Tunnel読み取り専用トークンは作成済みで、ブラウザ拡張機能のポップアップによる操作停止を解消後、秘密値の保管を続ける。
+専用認証3個の作成・既存EC2への保存はユーザー承認済み（期限2027-01-12）。Vercelはivrm-dashboard限定、Netlifyは読み取り専用に限定できないPATであることも承認済み。Cloudflareはivrm.jpのDNS参照とmizzzアカウントのTunnel参照のみ。3個とも権限制限済みローカル保管先からSSHで既存EC2へ転送し、root:ivrm-agent / 0640の`/etc/ivrm-agent/cloud.env`として保存。CollectorユーザーからVercel・Netlify・Cloudflare DNS・Tunnelの4対象すべてがoperational/okとなることを再確認した。秘密値受け渡し用の一時ローカルHTTPサーバーは終了済み。コードと対象設定も配置したが、Timer・追加Cron・Agent登録は未実施。
+
+AWS Free Tier APIではアカウントがPAID・クレジット0 USD、Data Transferの対象オファー一覧は空だった。空の結果は無料枠残量の証明にならない。EC2の追加外向き通信の料金条件は請求画面での確認が必要で、AWSアクセスポータルのブラウザログイン待ち。料金が発生するCost Explorer APIは調査に使用しない。
 
 EC2にはPython 3.11.15があるが、`ivrm-ec2-role`にEC2 Describe/Lightsail Get権限が不足。ロールはCloudFormationの`ivrm-compute-access-foundation`管理。全クラウド常時収集は稼働済みと扱わない。
 
