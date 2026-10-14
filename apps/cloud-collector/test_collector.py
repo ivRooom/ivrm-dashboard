@@ -46,9 +46,22 @@ class CollectorTest(unittest.TestCase):
         with patch.object(collector, "api", return_value={}):
             self.assertEqual(collector.check({"provider": "netlify", "resource": "x"}, []), ("unknown", "provider_error"))
 
-    def test_vercel_checks_the_production_target(self):
-        with patch.object(collector, "api", return_value={"targets": {"production": {"readyState": "READY"}}, "latestDeployment": {"readyState": "CANCELED"}}):
-            self.assertEqual(collector.check({"provider": "vercel", "resource": "x", "teamId": "y"}, []), ("operational", "ok"))
+    def test_vercel_checks_the_serving_alias_not_canceled_production_build(self):
+        target = {"provider": "vercel", "resource": "x", "teamId": "y", "productionAlias": "console.example.com"}
+        responses = [{"projectId": "x", "deployment": {"id": "serving"}}, {"projectId": "x", "readyState": "READY"}]
+        with patch.object(collector, "api", side_effect=responses) as api:
+            self.assertEqual(collector.check(target, []), ("operational", "ok"))
+            self.assertEqual(api.call_args_list[0].args[1], "/v4/aliases/console.example.com")
+            self.assertEqual(api.call_args_list[0].args[3]["projectId"], "x")
+            self.assertEqual(api.call_args_list[1].args[1], "/v13/deployments/serving")
+
+    def test_vercel_never_accepts_another_projects_alias_or_deployment(self):
+        target = {"provider": "vercel", "resource": "x", "teamId": "y", "productionAlias": "console.example.com"}
+        for responses in ([{"projectId": "other", "deployment": {"id": "d"}}],
+                          [{"projectId": "x"}],
+                          [{"projectId": "x", "deployment": {"id": "d"}}, {"projectId": "other", "readyState": "READY"}]):
+            with patch.object(collector, "api", side_effect=responses):
+                self.assertEqual(collector.check(target, []), ("unknown", "provider_error"))
 
     def test_dns_requires_exact_record_and_proxy_mode(self):
         target = {"provider": "cloudflare", "kind": "dns", "resource": "zone", "name": "console.ivrm.jp", "recordType": "CNAME", "expectedContent": "example.vercel-dns.com", "expectedProxied": True}

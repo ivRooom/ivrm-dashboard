@@ -28,7 +28,8 @@
       "id": "vercel-console",
       "provider": "vercel",
       "resource": "REPLACE_WITH_VERCEL_RESOURCE_ID",
-      "teamId": "REPLACE_WITH_TEAM_ID"
+      "teamId": "REPLACE_WITH_TEAM_ID",
+      "productionAlias": "console.ivrm.jp"
     },
     {
       "id": "netlify-home",

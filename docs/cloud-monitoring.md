@@ -40,7 +40,7 @@ SupabaseはFree。画面でEdge Function 0/500,000回、組織Egress 3.523/5GB�
 
 - EC2: instance stateとsystem/instance status checks。
 - Lightsail / OCI: インスタンスのライフサイクル状態。
-- Vercel / Netlify: 最新ビルドではなく公開中の本番deployment。過去の失敗ビルドだけで本番障害にしない。
+- Vercel / Netlify: 最新ビルドではなく公開中の本番deployment。Vercelは明示したproductionAliasの割り当て先を参照し、Project IDを照合する。targets.productionがCANCELEDでも旧版が公開中の場合があるため、その値だけで停止判定しない。Netlifyはpublished_deployを参照する。
 - Cloudflare: ConsoleのDNSレコード内容・Proxy設定の一致、Runtime Tunnelの状態。
 - HTTP: Console / ivmz-home / HertaのHTTPS到達性。任意URLのリモート入力は受け付けず、設定済みホストだけを対象にし、private IP・資格情報付きURL・非HTTPS・redirectを拒否する。
 - 未設定・認証失敗・権限不足・応答不正は`error`/`unknown`。サービス停止と区別し、正常へ補完しない。
@@ -96,7 +96,7 @@ systemd unitは`deploy/cloud/`を使用。Collectorユーザーをdockerグル�
 | --- | --- |
 | 新規VM・既存VMのサイズ変更 | 0台 / 変更なし |
 | Collector実行・Vercel取り込み | 約8,640回/月 |
-| Provider API参照 | EC2約17,280、Lightsail/OCI/Vercel/Netlify各約8,640、Cloudflare約17,280回/月 |
+| Provider API参照 | EC2/Vercel/Cloudflare各約17,280、Lightsail/OCI/Netlify各約8,640回/月 |
 | HTTPS外形監視 | 約25,920回/月 |
 | DB観測履歴 | 約86,400行/月、7日保持で約20,160行＋index |
 | DBの収集停止評価Cron | 約43,200回/月＋保持期間削除30回 |

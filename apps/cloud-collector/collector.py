@@ -148,9 +148,18 @@ def check(target, allowed_hosts):
         return http_check(target, allowed_hosts)
     resource = identifier(target["resource"])
     if provider == "vercel":
-        project = api("vercel", "/v9/projects/" + resource, "IVRM_CLOUD_VERCEL_TOKEN", {"teamId": identifier(target["teamId"])})
-        production = project.get("targets", {}).get("production") or {}
-        return state(production.get("readyState"), ("READY",), ("BUILDING", "INITIALIZING", "QUEUED"))
+        # targets.production can refer to a canceled build while the domain still
+        # serves an older READY deployment. Follow the configured public alias.
+        alias = identifier(target["productionAlias"])
+        query = {"teamId": identifier(target["teamId"])}
+        assigned = api("vercel", "/v4/aliases/" + alias, "IVRM_CLOUD_VERCEL_TOKEN", {**query, "projectId": resource})
+        deployment_id = (assigned.get("deployment") or {}).get("id")
+        if assigned.get("projectId") != resource or not deployment_id:
+            return "unknown", "provider_error"
+        deployment = api("vercel", "/v13/deployments/" + identifier(deployment_id), "IVRM_CLOUD_VERCEL_TOKEN", query)
+        if deployment.get("projectId") != resource:
+            return "unknown", "provider_error"
+        return state(deployment.get("readyState"), ("READY",), ("BUILDING", "INITIALIZING", "QUEUED"))
     if provider == "netlify":
         site = api("netlify", "/sites/" + resource, "IVRM_CLOUD_NETLIFY_TOKEN")
         return state((site.get("published_deploy") or {}).get("state"), ("ready",), ("building", "uploading", "processing"))
