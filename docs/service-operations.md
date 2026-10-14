@@ -43,8 +43,8 @@ EC2の共通依存はTunnelとCaddy。HertaはPostgres・Redis・Caddy・nginx�
 ### 本番適用前の確認
 
 1. migrationをレビュー・テストする。existingのhosts/heartbeat/履歴やFeedを削除しない。
-2. Lightsailの`lightsail-herta`を登録し、ivrm-agent専用ユーザー・権限制限した認証ファイルを準備する。既存aws/ociのキーは既存の範囲で再利用し、ブラウザ・Git・ログへ出さない。
-3. `/opt/ivrm-runtime-collector`へPythonスクリプト2個をroot所有で配置。`/run/ivrm-agent`とivrm-agentグループを準備し、既存のディレクトリやサービス設定を上書きしない。root snapshotは64MiB/CPU10%、送信側も64MiB/CPU10%。Docker socketを送信ユーザーへ渡さない。
+2. Lightsailの`lightsail-herta`を登録し、ivrm-agent専用ユーザー・権限制限した`/etc/ivrm-agent/runtime.env`を準備する。Vercelの`IVRM_RUNTIME_HERTA_SECRET`はRuntime APIだけで使い、既存Agent用Secret mapを変更しない。Herta専用drop-in（ivrm-runtime-herta.conf）でEnvironmentFileを切り替える。既存aws/ociのキーは既存の範囲で再利用し、ブラウザ・Git・ログへ出さない。
+3. `/opt/ivrm-runtime-collector`へPythonスクリプト2個をroot所有で配置。ivrm-runtime.confのtmpfiles定義で`/run/ivrm-agent`をroot:ivrm-agent/0750として作成する（既存OCIも同じ所有・権限）。ivrm-agentグループを準備し、既存のサービス設定を上書きしない。root snapshotは64MiB/CPU10%、送信側も64MiB/CPU10%。Docker socketを送信ユーザーへ渡さない。
 4. `deploy/runtime/`のtemplate unitを配置するが、まずTimerは無効のままにする。既存MinecraftやHertaを再起動しない。
 5. 既存契約と集計使用量から追加料金0円を確認後、API flag→手動1回の受け入れ→5分Timerの順で有効化する。3ホスト×月8,640回＝月25,920回のAPIリクエスト増。DBは3行だが、API・DB更新・egress・既存サービスの合計枠とVACUUM余裕を確認する。固定料金のVMを増設する変更はない。
 6. OCIは無料枠の資格・既存利用量を再確認する。追加費用が不明なままTimerを有効化しない。
