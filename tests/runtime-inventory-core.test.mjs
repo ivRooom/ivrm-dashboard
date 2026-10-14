@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { RUNTIME_CONTAINERS, parseRuntimeInventory } from "../apps/web/lib/runtime-inventory-core.ts";
+import { RUNTIME_CONTAINERS, parseRuntimeInventory, runtimeOnlySecrets } from "../apps/web/lib/runtime-inventory-core.ts";
 const now = Date.parse("2026-10-15T00:00:00Z");
 const make = () => ({ kind: "runtime-inventory-v1", serverId: "aws-app-01", observedAt: new Date(now).toISOString(), containers: RUNTIME_CONTAINERS["aws-app-01"].map(name => ({ name, collection: "ok", state: "running", health: "none", restartCount: 0, oomKilled: false, exitCode: 0, image: "registry.example/service:commit", imageId: "sha256:"+"a".repeat(64) })) });
 const parse = x => parseRuntimeInventory(new TextEncoder().encode(JSON.stringify(x)), now);
@@ -18,4 +18,9 @@ test("rejects stale, future and timezone-ambiguous runtime inventory",()=>{
   for(const time of [new Date(now-300001).toISOString(),new Date(now+30001).toISOString(),"2026-10-15T00:00:00","invalid"]) {
     const x=make();x.observedAt=time;assert.throws(()=>parse(x));
   }
+});
+test("dedicated runtime credential cannot supply another host's identity", () => {
+  assert.deepEqual(runtimeOnlySecrets("lightsail-herta", "a".repeat(64)), { "lightsail-herta": "a".repeat(64) });
+  for (const host of ["aws-app-01", "oci-minecraft-01", "constructor"]) assert.throws(() => runtimeOnlySecrets(host, "a".repeat(64)));
+  for (const key of [undefined, "short", "a".repeat(65)]) assert.throws(() => runtimeOnlySecrets("lightsail-herta", key));
 });
