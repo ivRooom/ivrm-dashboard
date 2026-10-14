@@ -116,6 +116,8 @@ systemd unitは`deploy/cloud/`を使用。Collectorユーザーをdockerグル�
 | DBの収集停止評価Cron | 約43,200回/月＋保持期間削除30回 |
 | Discord配送 | 状態変化・重大化・復旧時のみ。正常継続時は送信なし |
 
+既存EC2の追加Host Heartbeatは30秒間隔（約86,400回/月）で、Cloud取り込みと合わせ約103,680回/月をVercelへ追加する。45秒の既存Heartbeat警告境界を超える間隔にはしない。新しいEC2 AgentはMemoryMax=64M・CPUQuota=5%、CollectorはMemoryMax=384M・CPUQuota=10%に制限する。既存VMのサイズ・クレジット設定は変更しない。
+
 Supabase組織は確認時free。Vercel/他Providerの契約・既存利用量・無料枠超過条件は適用時に再確認する。無料と断定せず、追加料金・予算上限が確定するまで本番Cron/Collectorを有効化しない。OCIリソースは増設せず原則無料枠を維持する。
 
 ## 無効化・復旧

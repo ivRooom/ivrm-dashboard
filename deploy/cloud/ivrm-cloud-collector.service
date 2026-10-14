@@ -18,3 +18,5 @@ ProtectHome=yes
 RestrictAddressFamilies=AF_INET AF_INET6
 UMask=0077
 MemoryMax=384M
+CPUQuota=10%
+Nice=10

@@ -1,0 +1,25 @@
+[Unit]
+Description=IVRM read-only EC2 host heartbeat
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=ivrm-agent
+Group=ivrm-agent
+EnvironmentFile=/etc/ivrm-agent/agent.env
+ExecStart=/usr/local/bin/ivrm-agent
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+UMask=0077
+MemoryMax=64M
+CPUQuota=5%
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
