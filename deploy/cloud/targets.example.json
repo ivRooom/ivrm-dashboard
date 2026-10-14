@@ -2,7 +2,6 @@
   "collectorServerId": "aws-app-01",
   "allowedHttpHosts": [
     "console.ivrm.jp",
-    "ivmz.ivrm.jp",
     "herta.ivrm.jp"
   ],
   "targets": [
@@ -32,11 +31,6 @@
       "productionAlias": "console.ivrm.jp"
     },
     {
-      "id": "netlify-home",
-      "provider": "netlify",
-      "resource": "REPLACE_WITH_NETLIFY_RESOURCE_ID"
-    },
-    {
       "id": "cloudflare-console-dns",
       "provider": "cloudflare",
       "kind": "dns",
@@ -57,11 +51,6 @@
       "id": "http-console",
       "provider": "http",
       "url": "https://console.ivrm.jp/api/health"
-    },
-    {
-      "id": "http-home",
-      "provider": "http",
-      "url": "https://ivmz.ivrm.jp/"
     },
     {
       "id": "http-herta",

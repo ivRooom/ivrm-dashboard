@@ -20,7 +20,7 @@ AWS Free Tier APIではアカウントがPAID・クレジット0 USD、Data Tran
 
 代替案はNetlify APIとhttp-homeだけを既存OCIのCollectorへ分離し、残り8対象をEC2で収集するもの。OCI Usage APIの2026-10-01〜14集計はOutbound Data Transfer Zone 2が32.714645416996、computed_amount=0。公式の月10TB無料転送枠内で、VM・CPU/RAM割当・ディスク・ネットワークリソースは増設しない。`targets.oci-netlify.example.json`と`ivrm-cloud-collector-oci.conf`を準備済み。OCI側はSDK不要の2対象だけなので標準Pythonで実行し、MemoryMax=64M、CPUQuota=10%、Nice=10、timeout=60秒に制限する。既存Minecraftの設定・プロセスは変更しない。Python 3.9.25で13件のユニットテスト成功。認証エラーテストのHTTPErrorには実応答同様のBytesIOを渡すよう修正した。
 
-この案ではNetlifyトークンの保存先が既存EC2に加えて既存OCIへ増えるため、その点のユーザー承認待ち。承認前にはOCIへトークンを転送せず、サービス・Timerも有効化しない。採用時は登録SQLの2対象のcollector_server_idをoci-minecraft-01へ変更し、EC2設定から同じ2対象を外す。5分間隔の2Collectorでは取り込み回数は約17,280回/月へ増え、観測履歴行数は同じ。Vercel Hobbyの利用制限リスクも適用前に再評価する。
+ユーザーはNetlifyトークンの既存OCIへの保存と2対象の収集を明示承認済み。OCIへroot:ivrm-agent / 0640で保存し、CollectorユーザーからNetlify API・http-homeの両方がoperational/okとなることを確認。登録SQLの2対象のcollector_server_idをoci-minecraft-01へ変更し、EC2設定から同じ2対象を外した。5分間隔の2Collectorでは取り込み回数は約17,280回/月へ増え、観測履歴行数は同じ。Vercel Hobbyの利用制限リスクも適用前に再評価する。
 
 EC2にはPython 3.11.15があるが、`ivrm-ec2-role`にEC2 Describe/Lightsail Get権限が不足。ロールはCloudFormationの`ivrm-compute-access-foundation`管理。全クラウド常時収集は稼働済みと扱わない。
 
@@ -32,9 +32,9 @@ EC2にはPython 3.11.15があるが、`ivrm-ec2-role`にEC2 Describe/Lightsail G
   └─ cloud-collector (非特権systemd oneshot / 5分間隔)
        ├─ AWS EC2 + Lightsail (既存Instance Roleの読み取り権限)
        ├─ OCI Compute (専用読み取りAPI key)
-       ├─ Vercel / Netlify (専用トークン)
+       ├─ Vercel (専用トークン)
        ├─ Cloudflare DNS / Tunnel (専用読み取りトークン)
-       └─ 明示許可したHTTPS外形監視
+       └─ Console / HertaのHTTPS外形監視
             ↓ HMAC + timestamp + nonce、状態コードのみ
        POST /api/agent/cloud
             ↓ service_roleはVercel内だけ
@@ -44,11 +44,13 @@ EC2にはPython 3.11.15があるが、`ivrm-ec2-role`にEC2 Describe/Lightsail G
                  ↓ 既存通知Dispatcher → Discord
 ```
 
+既存OCI (oci-minecraft-01) の別CollectorはNetlify APIとivmz-home HTTPだけを収集し、同じHMAC受信APIへ送る。対象設定はEC2用`targets.example.json`（8対象）とOCI用`targets.oci-netlify.example.json`（2対象）へ分割する。OCI用drop-inは`ivrm-cloud-collector-oci.conf`で、同じサービス名・Timer名を各ホストに配置する。既存Minecraft Agentを再起動せず、OCI上の既存Agent環境ファイルを読み取り利用する。
+
 新規VMは作らない。既存EC2へAgentを登録することでEC2のゲストメモリ・ディスク・Heartbeatも既存Host画面へ収集できる。Lightsailのゲストメトリクスも必要な場合は同じ既存Agentを別IDで配置する。Cloud CollectorはProvider側の状態と公開HTTPSを担当し、ゲスト内メトリクスを推定しない。CI用の一時EC2はこの固定対象へ登録せず、別のfleet監視要件で管理する。
 
 ## 収集と判定
 
-`deploy/cloud/targets.example.json` は10対象の初期案。ID・DNS期待値・URLは適用時にProviderから再確認する。
+`deploy/cloud/targets.example.json`と`targets.oci-netlify.example.json`で合計10対象。ID・DNS期待値・URLは適用時にProviderから再確認する。
 
 - EC2: instance stateとsystem/instance status checks。
 - Lightsail / OCI: インスタンスのライフサイクル状態。
@@ -107,7 +109,7 @@ systemd unitは`deploy/cloud/`を使用。Collectorユーザーをdockerグル�
 | 項目 | 追加利用量の目安 |
 | --- | --- |
 | 新規VM・既存VMのサイズ変更 | 0台 / 変更なし |
-| Collector実行・Vercel取り込み | 約8,640回/月 |
+| Collector実行・Vercel取り込み | 2Collector合計約17,280回/月 |
 | Provider API参照 | EC2/Vercel/Cloudflare各約17,280、Lightsail/OCI/Netlify各約8,640回/月 |
 | HTTPS外形監視 | 約25,920回/月 |
 | DB観測履歴 | 約86,400行/月、7日保持で約20,160行＋index |
