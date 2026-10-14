@@ -8,6 +8,11 @@ export type RuntimeContainer = { name: string; collection: "unavailable" } | {
   oomKilled: boolean; exitCode: number; image: string; imageId: string;
 };
 export type RuntimeInventory = { kind: "runtime-inventory-v1"; serverId: string; observedAt: string; containers: RuntimeContainer[] };
+/** Dedicated Lightsail credential is valid only for runtime inventory ingestion. */
+export function runtimeOnlySecrets(serverId: string, secret: string | undefined): Record<string, string> {
+  if (serverId !== "lightsail-herta" || !secret || !/^[a-f0-9]{64}$/.test(secret)) throw new Error("runtime_secret_not_configured");
+  return { "lightsail-herta": secret };
+}
 function object(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
 export function parseRuntimeInventory(raw: Uint8Array, now = Date.now()): RuntimeInventory {
   if (raw.length > 32768) throw new Error("invalid_payload");

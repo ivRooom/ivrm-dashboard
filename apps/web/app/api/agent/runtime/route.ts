@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authenticateHeartbeat, HeartbeatError } from "../../../../lib/heartbeat";
-import { parseRuntimeInventory } from "../../../../lib/runtime-inventory-core";
+import { parseRuntimeInventory, runtimeOnlySecrets } from "../../../../lib/runtime-inventory-core";
+import { authenticateOperationAgentWithSecrets, OperationAgentAuthError } from "../../../../lib/operation-agent-auth-core";
 import { ingestRuntimeInventory, runtimeInventoryEnabled } from "../../../../lib/runtime-inventory";
 
 export const runtime = "nodejs";
@@ -25,13 +26,21 @@ export async function POST(request: Request) {
     for (const chunk of chunks) { raw.set(chunk, offset); offset += chunk.length; }
     let payload;
     try { payload = parseRuntimeInventory(raw); } catch { return respond(400, "invalid_payload"); }
-    const auth = authenticateHeartbeat(request.headers, raw, payload);
+    let auth;
+    if (payload.serverId === "lightsail-herta") {
+      let secrets;
+      try { secrets = runtimeOnlySecrets(payload.serverId, process.env.IVRM_RUNTIME_HERTA_SECRET); }
+      catch { return respond(503, "service_not_configured"); }
+      auth = authenticateOperationAgentWithSecrets(request.headers, raw, payload.serverId, secrets);
+    } else {
+      auth = authenticateHeartbeat(request.headers, raw, payload);
+    }
     const result = await ingestRuntimeInventory(payload, auth.nonce);
     if (result === "accepted") return NextResponse.json({ accepted: true }, { status: 202, headers: { "Cache-Control": "no-store" } });
     const codes: Record<string, number> = { unknown_agent: 401, target_not_allowed: 403, replayed_request: 409, rate_limited: 429, invalid_payload: 400 };
     return respond(typeof result === "string" ? codes[result] ?? 503 : 503, typeof result === "string" && Object.hasOwn(codes, result) ? result : "store_unavailable");
   } catch (error) {
-    if (error instanceof HeartbeatError) return respond(error.status, error.code);
+    if (error instanceof HeartbeatError || error instanceof OperationAgentAuthError) return respond(error.status, error.code);
     return respond(503, "store_unavailable");
   }
 }

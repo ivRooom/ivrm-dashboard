@@ -63,6 +63,7 @@ jobs:
           psql postgresql://postgres@localhost:5432/runtime_inventory_test -v ON_ERROR_STOP=1
           -f tests/runtime-inventory-fixture.sql
           -f supabase/migrations/20261014165441_runtime_inventory.sql
+          -f supabase/migrations/20261014172524_runtime_inventory_host_scope.sql
           -f tests/runtime-inventory-db.sql
 
   agent:

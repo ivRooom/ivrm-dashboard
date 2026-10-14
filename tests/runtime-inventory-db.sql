@@ -1,6 +1,8 @@
 do $$ declare payload jsonb; result text; stamp timestamptz:=clock_timestamp(); begin
   select jsonb_agg(jsonb_build_object('name',name,'collection','ok','state','running','health','none','restartCount',0,'oomKilled',false,'exitCode',0,'image','registry.example/service:commit','imageId','sha256:'||repeat('a',64))) into payload
   from unnest(array['ivrm-admin','ivrm-api','ivrm-home','ivrm-member','ivrm-contact','ivrm-cloudflared','ivrm-runtime-caddy','ivrm-runtime-health']) name;
+  if public.ingest_runtime_inventory_v1('aws-app-01',stamp,repeat('a',32),payload)<>'unknown_agent' then raise exception 'runtime enrollment was implicit'; end if;
+  update public.hosts set runtime_inventory_enabled=true where server_id='aws-app-01';
   result:=public.ingest_runtime_inventory_v1('aws-app-01',stamp,repeat('a',32),payload);
   if result<>'accepted' then raise exception 'expected accepted, got %',result; end if;
   if public.ingest_runtime_inventory_v1('aws-app-01',stamp,repeat('b',32),payload)<>'replayed_request' then raise exception 'observation replay accepted'; end if;
@@ -14,4 +16,9 @@ do $$ declare payload jsonb; result text; stamp timestamptz:=clock_timestamp(); 
   update public.runtime_inventory set received_at=clock_timestamp()-interval '16 seconds';
   if public.ingest_runtime_inventory_v1('aws-app-01',stamp+interval '1 second',repeat('c',32),payload)<>'accepted' then raise exception 'update failed'; end if;
   if (select count(*) from public.runtime_inventory)<>1 then raise exception 'unbounded history'; end if;
+  update public.hosts set runtime_inventory_enabled=true where server_id='lightsail-herta';
+  select jsonb_agg(jsonb_build_object('name',name,'collection','unavailable')) into payload
+    from unnest(array['herta-api-1','herta-studio-1','herta-worker-1','herta-bot-1','herta-postgres-1','herta-redis-1','herta-caddy-1','herta-nginx-1']) name;
+  if public.ingest_runtime_inventory_v1('lightsail-herta',stamp,repeat('d',32),payload)<>'accepted' then raise exception 'runtime-only host rejected'; end if;
+  if (select enabled from public.hosts where server_id='lightsail-herta') then raise exception 'legacy heartbeat monitoring enabled'; end if;
 end $$;
