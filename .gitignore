@@ -14,3 +14,4 @@ apps/agent/ivrm-agent
 __pycache__/
 *.pyc
 *.tsbuildinfo
+supabase/.temp/

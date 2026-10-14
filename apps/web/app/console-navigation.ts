@@ -41,6 +41,12 @@ export const consoleNavigationItems: readonly ConsoleNavigationItem[] = [
     description: "システム全体の現在状態",
   },
   {
+    href: "/services",
+    label: "サービス監視",
+    group: "overview",
+    description: "ivrm.jpサービス別のホスト・コンテナ・公開監視",
+  },
+  {
     href: "/minecraft",
     label: "Minecraft",
     group: "minecraft",
@@ -132,7 +138,7 @@ export const consoleNavigationItems: readonly ConsoleNavigationItem[] = [
   },
   {
     href: "/status-center",
-    label: "Status公開",
+    label: "公開Status確認",
     group: "administration",
     description: "公開Incident・Maintenance・お知らせ",
   },
