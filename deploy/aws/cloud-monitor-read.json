@@ -1,0 +1,30 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Add only Tokyo cloud-monitor read access to the existing IVRM EC2 role",
+  "Parameters": {
+    "ExistingRoleName": {
+      "Type": "String",
+      "Default": "ivrm-ec2-role",
+      "AllowedValues": ["ivrm-ec2-role"]
+    }
+  },
+  "Resources": {
+    "CloudMonitorReadPolicy": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": "ivrm-cloud-monitor-state-read",
+        "Roles": [{"Ref": "ExistingRoleName"}],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [{
+            "Sid": "CloudMonitorStateReadTokyoOnly",
+            "Effect": "Allow",
+            "Action": ["ec2:DescribeInstances", "ec2:DescribeInstanceStatus", "lightsail:GetInstance"],
+            "Resource": "*",
+            "Condition": {"StringEquals": {"aws:RequestedRegion": "ap-northeast-1"}}
+          }]
+        }
+      }
+    }
+  }
+}
