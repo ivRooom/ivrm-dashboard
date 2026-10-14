@@ -217,7 +217,7 @@ def send(config, results):
     body = json.dumps(envelope, separators=(",", ":")).encode()
     timestamp, nonce = str(int(time.time())), secrets.token_hex(16)
     signature = hmac.new(token.encode(), timestamp.encode()+b"."+nonce.encode()+b"."+body, hashlib.sha256).hexdigest()
-    request = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json",
+    request = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json", "User-Agent": "ivrm-agent/cloud-monitor-v1",
         "X-IVRM-Agent-ID": config["collectorServerId"], "X-IVRM-Timestamp": timestamp,
         "X-IVRM-Nonce": nonce, "X-IVRM-Signature": signature})
     with urllib.request.build_opener(NoRedirect()).open(request, timeout=15) as response:
