@@ -1,9 +1,11 @@
 {
   "collectorServerId": "oci-minecraft-01",
   "allowedHttpHosts": [
-    "ivmz.ivrm.jp"
+    "ivmz.ivrm.jp",
+    "status.ivrm.jp"
   ],
   "targets": [
+    { "id": "http-status", "provider": "http", "url": "https://status.ivrm.jp/" },
     {
       "id": "netlify-home",
       "provider": "netlify",

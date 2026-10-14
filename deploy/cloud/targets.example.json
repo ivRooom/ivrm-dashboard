@@ -2,9 +2,17 @@
   "collectorServerId": "aws-app-01",
   "allowedHttpHosts": [
     "console.ivrm.jp",
-    "herta.ivrm.jp"
+    "herta.ivrm.jp",
+    "member.ivrm.jp",
+    "admin.ivrm.jp",
+    "ivrm.jp",
+    "api.ivrm.jp"
   ],
   "targets": [
+    { "id": "http-member", "provider": "http", "url": "https://member.ivrm.jp/" },
+    { "id": "http-admin", "provider": "http", "url": "https://admin.ivrm.jp/" },
+    { "id": "http-ivrm-home", "provider": "http", "url": "https://ivrm.jp/" },
+    { "id": "http-api", "provider": "http", "url": "https://api.ivrm.jp/health" },
     {
       "id": "aws-app",
       "provider": "aws",

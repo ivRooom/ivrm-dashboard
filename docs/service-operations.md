@@ -49,6 +49,8 @@ EC2の共通依存はTunnelとCaddy。HertaはPostgres・Redis・Caddy・nginx�
 5. 既存契約と集計使用量から追加料金0円を確認後、API flag→手動1回の受け入れ→5分Timerの順で有効化する。3ホスト×月8,640回＝月25,920回のAPIリクエスト増。DBは3行だが、API・DB更新・egress・既存サービスの合計枠とVACUUM余裕を確認する。固定料金のVMを増設する変更はない。
 6. OCIは無料枠の資格・既存利用量を再確認する。追加費用が不明なままTimerを有効化しない。
 
+公開HTTP監視はmember/admin/ivrm.jp/api healthを既存EC2バッチ、statusを既存OCIバッチへ追加する。投稿・ログインは行わず公開到達性だけを確認する。5対象追加で30日43,200 sample、7日保持の追加10,080行が目安。既存の送信バッチ数は増えない。まず無効で登録し、各ホストからdry-runで期待するHTTP200を確認してから有効にする。
+
 既存OCI Operation Workerの待機時claimが5秒の場合、専用`operation-poll.env`と`ivrm-operation-worker-idle.conf`のdrop-inで30秒へ調整する。既存Secretやexecution gateを編集しない。30日あたり最大518,400→86,400リクエストとなり、新しいRuntime収集25,920回を加えても差し引き約406,080回減る。実行中のIPC結果確認（250ms）と225秒timeout/300秒leaseは変えない。適用前にDBのactive job=0とIPCのrequest/state/resultが空であることを確認し、Workerだけを再起動する。Minecraft・既存Agentは再起動しない。操作開始待ちは通常最大30秒程度になる。戻す場合は追加drop-inとpoll.envだけを除去しWorkerを再起動する。
 
 ロールバックは3つの`ivrm-runtime-report@<server-id>.timer`を無効化して停止し、API flagを外す。既存Agent・Collector・Minecraft・Hertaは止めない。新テーブルは残しても3行が上限で、復旧のために削除を必要としない。

@@ -10,5 +10,10 @@ insert into public.cloud_monitor_targets(id,provider,display_name,collector_serv
   ('cloudflare-runtime-tunnel','cloudflare','Cloudflare / Runtime Tunnel','aws-app-01',false),
   ('http-console','http','Console HTTP','aws-app-01',false),
   ('http-home','http','ivmz-home HTTP','oci-minecraft-01',false),
+  ('http-member','http','Member HTTP','aws-app-01',false),
+  ('http-admin','http','Admin HTTP','aws-app-01',false),
+  ('http-ivrm-home','http','IVRM Home HTTP','aws-app-01',false),
+  ('http-api','http','IVRM API Health','aws-app-01',false),
+  ('http-status','http','Public Status HTTP','oci-minecraft-01',false),
   ('http-herta','http','Herta HTTP','aws-app-01',false)
 on conflict(id) do nothing;
