@@ -77,6 +77,12 @@ export const consoleNavigationItems: readonly ConsoleNavigationItem[] = [
     description: "構成とバージョン情報",
   },
   {
+    href: "/cloud",
+    label: "クラウド監視",
+    group: "infrastructure",
+    description: "複数クラウドと公開サービスの継続監視",
+  },
+  {
     href: "/capacity",
     label: "キャパシティ",
     group: "infrastructure",

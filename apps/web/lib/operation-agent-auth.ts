@@ -4,7 +4,7 @@ import {
   authenticateOperationAgentWithSecrets,
   MAX_OPERATION_AGENT_BODY_BYTES,
   OperationAgentAuthError,
-  parseAgentSecretMap,
+  parseAgentSecretMaps,
   parseOperationAgentJson,
 } from "./operation-agent-auth-core";
 
@@ -58,6 +58,6 @@ export function authenticateOperationAgent(
     headers,
     rawBody,
     expectedServerId,
-    parseAgentSecretMap(process.env.IVRM_AGENT_SECRETS_JSON),
+    parseAgentSecretMaps(process.env.IVRM_AGENT_SECRETS_JSON, process.env.IVRM_AGENT_SECRETS_ADDITIONAL_JSON),
   );
 }

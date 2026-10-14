@@ -32,7 +32,7 @@ const statusLabels: Record<NotificationStatus, string> = {
   pending: "待機", sending: "配送中", sent: "送信済み", retry: "再試行", failed: "失敗", suppressed: "抑制",
 };
 const sourceLabels: Record<NotificationSource, string> = {
-  host: "HOST", container: "CONTAINER", backup: "BACKUP", reliability: "SLO",
+  host: "HOST", container: "CONTAINER", backup: "BACKUP", reliability: "SLO", cloud: "CLOUD",
 };
 const transitionLabels = { opened: "発生", escalated: "重大化", recovered: "復旧", event: "イベント" } as const;
 const signalLabels: Record<string, string> = {

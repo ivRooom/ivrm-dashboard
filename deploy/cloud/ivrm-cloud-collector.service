@@ -1,0 +1,22 @@
+[Unit]
+Description=IVRM read-only cloud collection
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ivrm-agent
+Group=ivrm-agent
+EnvironmentFile=/etc/ivrm-agent/agent.env
+EnvironmentFile=/etc/ivrm-agent/cloud.env
+ExecStart=/opt/ivrm-cloud-collector/venv/bin/python /opt/ivrm-cloud-collector/collector.py --config /etc/ivrm-agent/cloud-targets.json
+TimeoutStartSec=240
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+UMask=0077
+MemoryMax=384M
+CPUQuota=10%
+Nice=10

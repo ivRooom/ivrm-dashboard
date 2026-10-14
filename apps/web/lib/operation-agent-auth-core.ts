@@ -33,6 +33,18 @@ export function parseAgentSecretMap(raw: string | undefined): Record<string, str
   }
 }
 
+export function parseAgentSecretMaps(base: string | undefined, additional?: string): Record<string, string> {
+  const result = parseAgentSecretMap(base);
+  if (!additional) return result;
+  const extra = parseAgentSecretMap(additional);
+  for (const [id, secret] of Object.entries(extra)) {
+    // Never let a new Secret silently replace a credential in the original map.
+    if (Object.hasOwn(result, id)) throw new OperationAgentAuthError(503, "service_not_configured");
+    Object.defineProperty(result, id, { value: secret, enumerable: true });
+  }
+  return result;
+}
+
 export function parseOperationAgentJson(rawBody: Uint8Array): Record<string, unknown> {
   try {
     const text = new TextDecoder("utf-8", { fatal: true }).decode(rawBody);
