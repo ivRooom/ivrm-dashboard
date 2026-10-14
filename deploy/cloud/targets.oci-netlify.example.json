@@ -1,0 +1,18 @@
+{
+  "collectorServerId": "oci-minecraft-01",
+  "allowedHttpHosts": [
+    "ivmz.ivrm.jp"
+  ],
+  "targets": [
+    {
+      "id": "netlify-home",
+      "provider": "netlify",
+      "resource": "REPLACE_WITH_NETLIFY_RESOURCE_ID"
+    },
+    {
+      "id": "http-home",
+      "provider": "http",
+      "url": "https://ivmz.ivrm.jp/"
+    }
+  ]
+}

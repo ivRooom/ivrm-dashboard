@@ -16,6 +16,12 @@ SupabaseはFree。画面でEdge Function 0/500,000回、組織Egress 3.523/5GB�
 
 AWS Free Tier APIではアカウントがPAID・クレジット0 USD、Data Transferの対象オファー一覧は空だった。空の結果は無料枠残量の証明にならない。EC2の追加外向き通信の料金条件は請求画面での確認が必要で、AWSアクセスポータルのブラウザログイン待ち。料金が発生するCost Explorer APIは調査に使用しない。
 
+その後ルートで2026年10月の請求明細を参照できた。Data Transferのインターネット向け無料枠内送信は東京1.795GB、米国2リージョンは0GB。一方、東京のregional data transferは無料1GBに加えて0.599GBがUSD 0.01の表示。既存EC2のdefault routeはInternet GatewayでNAT Gatewayは経由しないが、Netlify APIは米国OhioのELB、ivmz.ivrm.jpはSingaporeのAWS IPへ名前解決された。この2対象を東京EC2から定期取得して追加料金0円とは断定しない。
+
+代替案はNetlify APIとhttp-homeだけを既存OCIのCollectorへ分離し、残り8対象をEC2で収集するもの。OCI Usage APIの2026-10-01〜14集計はOutbound Data Transfer Zone 2が32.714645416996、computed_amount=0。公式の月10TB無料転送枠内で、VM・CPU/RAM割当・ディスク・ネットワークリソースは増設しない。`targets.oci-netlify.example.json`と`ivrm-cloud-collector-oci.conf`を準備済み。OCI側はSDK不要の2対象だけなので標準Pythonで実行し、MemoryMax=64M、CPUQuota=10%、Nice=10、timeout=60秒に制限する。既存Minecraftの設定・プロセスは変更しない。Python 3.9.25で13件のユニットテスト成功。認証エラーテストのHTTPErrorには実応答同様のBytesIOを渡すよう修正した。
+
+この案ではNetlifyトークンの保存先が既存EC2に加えて既存OCIへ増えるため、その点のユーザー承認待ち。承認前にはOCIへトークンを転送せず、サービス・Timerも有効化しない。採用時は登録SQLの2対象のcollector_server_idをoci-minecraft-01へ変更し、EC2設定から同じ2対象を外す。5分間隔の2Collectorでは取り込み回数は約17,280回/月へ増え、観測履歴行数は同じ。Vercel Hobbyの利用制限リスクも適用前に再評価する。
+
 EC2にはPython 3.11.15があるが、`ivrm-ec2-role`にEC2 Describe/Lightsail Get権限が不足。ロールはCloudFormationの`ivrm-compute-access-foundation`管理。全クラウド常時収集は稼働済みと扱わない。
 
 ## 構成

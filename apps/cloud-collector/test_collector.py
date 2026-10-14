@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import io
 import json
 import os
 import unittest
@@ -19,7 +20,7 @@ class CollectorTest(unittest.TestCase):
                 collector.api("netlify", "/sites/x", "TOKEN")
         self.assertEqual(raised.exception.code, "not_configured")
         for code, expected in [(401, "auth_error"), (403, "forbidden"), (404, "not_found"), (500, "provider_error")]:
-            error = urllib.error.HTTPError("https://example.com", code, "provider text", {}, None)
+            error = urllib.error.HTTPError("https://example.com", code, "provider text", {}, io.BytesIO())
             try: self.assertEqual(collector.classify(error), expected)
             finally: error.close()
 
