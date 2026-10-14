@@ -2,6 +2,16 @@
 
 Tracking: [Issue #127](https://github.com/ivRooom/ivrm-dashboard/issues/127)。操作基盤の既存範囲は #68、Minecraftの復元・停止受け入れは #117 を参照する。
 
+## 本番適用の記録（2026-10-15）
+
+PR #128 / #129を経てWebとRuntime Inventoryを本番へ適用した。サービス監視ページは9サービスを表示し、AWS 8・Lightsail 8・OCI 5の21対象を受信した。署名付きPOSTのHTTP202とDBの3行を確認。自動送信をJST 02:35台と02:40台の2回、3ホストのjournalで成功確認した。Timerは3ホストで有効、旧Heartbeat監視はAWS/OCIだけを維持し、LightsailはRuntime登録のみ。公開HTTP監視5対象を既存バッチに加え、Cloud Monitorは計15対象になった。
+
+本番画面で9サービスが正常となり、ECRイメージ詳細と390px表示（横overflowなし）を確認した。Status CenterはAdminの編集入口を表示し、公開Feedを維持する。各サービスの任意コマンド・起動停止はまだ未接続であり、既存mc-mainの固定操作と混同しない。
+
+契約はVercel Hobby（支払い方法なし）とSupabase Freeを再確認。DBは適用時約353MB。新規VM・プラン変更・IAM追加なし。Lightsailは3,072GBの転送枠に対して10月1〜14日のNetworkOutが約1.13GB。OCIは既存の無料枠VMを利用する。Operation Workerの待機claim間隔は30秒へ変更し、実プロセスの環境と稼働を確認した。追加Runtime送信を含めても、定常APIリクエストは30日あたり概算40.6万回減る構成である。
+
+変更前のCloud Collector設定は各ホストの`/etc/ivrm-agent/cloud-targets.before-service-checks.json`へ保存。新しい認証情報はLightsail専用runtime.envとVercel sensitive envに置き、既存Secret mapは変更していない。
+
 ## サービスと実行基盤
 
 `apps/web/lib/service-catalog.ts` がレビュー対象の対応表。DNSだけでコンテナ名を推測せず、実ホストのコンテナ一覧とCaddyルーティングを照合する。
@@ -38,7 +48,7 @@ EC2の共通依存はTunnelとCaddy。HertaはPostgres・Redis・Caddy・nginx�
 - `runtime_inventory`: RLS + Force RLS。public/anon/authenticatedはアクセス不可。service_roleも必要列のSELECTと専用RPCだけ。ホスト行ロック内で単調な観測時刻・nonce・15秒rate limitを確認し、ホストごとに最新1行をupsertする。許可ホスト3個のため履歴行数が増えない。
 - `/services`: 既存AgentのサンプルがないコンテナについてRuntime Inventoryを表示する。15分以上の観測・受信停止を正常としない。配備イメージの詳細を開ける。local image IDはECR/GHCRのmanifest digestとは別物として表示する。
 
-3ホストでsnapshotをSSH標準入力経由で一度ずつ実行し、21対象を参照できた。常駐ファイル・Timerの配備、DB migration、本番flagは未適用。CPU/RAM/ネットワークの新しい時系列収集や、Runtime Inventory由来の新規通知はまだ含まない。既存OCIのメトリクス・通知はそのまま利用する。
+3ホストでsnapshot参照と署名付き送信を確認し、常駐ファイル・Timer・DB migration・本番flagを適用した。CPU/RAM/ネットワークの新しい時系列収集や、Runtime Inventory由来の新規通知はまだ含まない。既存OCIのメトリクス・通知はそのまま利用する。
 
 ### 本番適用前の確認
 
@@ -81,10 +91,10 @@ EC2のWeb系5イメージはECR、Hertaとstatus-apiはGHCR。adminの実Docker 
 - 停止/再起動はバックアップと復旧方法を確認する。本番の停止を動作確認目的で自動実行しない。
 - 任意Shellを必要とする場合は、既存の固定操作キューと分離した権限・短期セッション・出力制限・秘密情報の扱いを設計する。現状は未実装。
 
-Runtime Inventoryのコードと配備定義を追加したが、本番取り込み・Timerは未接続。汎用のサーバー操作も未接続であり、Issue #127を完了扱いにしない。ivrm-statusにはops-gateの固定操作・SSM文書定義もあるが、実AWSでは専用SSM文書が見つからない。EC2とLightsailはSSM Online、OCIは既存のMinecraft worker経路を維持する。別の操作ゲートを重複作成する前に既存契約と統合する。
+Runtime Inventoryは本番取り込み・Timerを接続済み。汎用のサーバー操作は未接続であり、Issue #127を完了扱いにしない。ivrm-statusにはops-gateの固定操作・SSM文書定義もあるが、実AWSでは専用SSM文書が見つからない。EC2とLightsailはSSM Online、OCIは既存のMinecraft worker経路を維持する。別の操作ゲートを重複作成する前に既存契約と統合する。
 
 ## 検証とロールバック
 
-`node --experimental-strip-types --test tests/service-catalog.test.mjs tests/runtime-inventory-core.test.mjs`、Python unittest 6件、`pnpm typecheck`、`pnpm build`を実行。使い捨てPostgreSQL 17でmigrationとDBのスコープ・再送・rate limit・権限・最新1行制約を検証した。3実ホストでsnapshot参照に成功。ローカルでデータ取得不可時に9サービスが未確認となり、390px viewportでも横方向overflowなし（clientWidth/scrollWidthとも375px）。Status CenterのAdminリンクと旧フォーム非表示を確認。正常なRuntimeデータを含むUIと本番取り込みの受け入れ検証は別途必要。
+`node --experimental-strip-types --test tests/service-catalog.test.mjs tests/runtime-inventory-core.test.mjs`、Python unittest 6件、`pnpm typecheck`、`pnpm build`を実行。使い捨てPostgreSQL 17でmigrationとDBのスコープ・再送・rate limit・権限・最新1行制約を検証した。3実ホストでsnapshot参照に成功。ローカルでデータ取得不可時に9サービスが未確認となり、390px viewportでも横方向overflowなし（clientWidth/scrollWidthとも375px）。Status CenterのAdminリンクと旧フォーム非表示を確認。本番では正常なRuntimeデータを含む9サービスのUIと、3ホストの定期取り込みを確認済み。
 
-WebはPRをrevertしてロールバックできる。新しいmigration・常駐処理はまだ本番未適用。Runtime Inventoryのロールアウト/停止手順は上記を参照。
+WebはPRをrevertしてロールバックできる。Runtime Inventoryの停止と個別登録解除、Worker cadenceの復旧手順は上記を参照。既存DB・世界データ・公開コンテンツを削除しない。
