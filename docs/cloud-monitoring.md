@@ -6,7 +6,7 @@ Issue #120。クラウドの状態参照を、対話用MCP認証から独立し�
 
 ユーザー承認は「追加料金0円と確認できる範囲だけ本番適用」。費用データが取得できないことを0円の根拠にはしない。専用Collector認証と無料枠内での継続性確認が残るため、本番Cloud Monitor移行・収集Timer・追加Cronは未適用。
 
-Discordの正しい指定先はサーバー`964326043420872704`、チャンネル`1520646806961258636`（🔔system-notify）。ユーザー承認後に専用Webhookを作成しSupabaseの`DISCORD_WEBHOOK_URL` Secretへ保存、既存通知チャネルを有効化。初回テスト配送はHTTP 200・Outbox sentを確認した。その後、ユーザーが正しいチャンネルへWebhookを移動済み。新しいチャンネルのWebhook一覧でも所属を確認。Webhook URLはGit・ドキュメント・チャットへ記載しない。
+Discordの正しい指定先はサーバー`964326043420872704`、チャンネル`1520646806961258636`（🔔system-notify）。ユーザー承認後に専用Webhookを作成しSupabaseの`DISCORD_WEBHOOK_URL` Secretへ保存、既存通知チャネルを有効化。その後、ユーザーが正しいチャンネルへWebhookを移動済み。新しいチャンネルのWebhook一覧でも所属を確認し、再テスト（Outbox ID 124）はHTTP 200・sent。Dispatcherの後続の定期実行も成功。Webhook URLはGit・ドキュメント・チャットへ記載しない。
 
 SupabaseはFree。画面でEdge Function 0/500,000回、組織Egress 3.523/5GB、Database Size 0.366/0.5GBを確認。既存通知Dispatcherの毎分実行は約43,200回/月で、現在の無料枠内。VercelはHobby・支払い方法なし。上限超過は追加課金でなく制限となるが、直近30日でFunctions 993,792/1,000,000回、CDN 992,554/1,000,000回、Active CPU 6h28m/4hのため継続稼働に余裕がない。
 
@@ -65,6 +65,12 @@ Cloud状態も既存の通知配送に接続するため、再送・チャネル
 4. 認証は秘密管理またはSSH経由で対象ホストの権限制限済みファイルへ設定。チャット・Issue・PRへ貼らない。Cloudflare OAuthのdns.writeは定期収集に不要。
 5. `aws-app-01`として既存EC2にGo Agentを配置し、`hosts`登録とVercelのAgent secret mapへ既存値を保持して追加する。ランダムsecretを生成し、`agent.env`はivrm-agentだけが読めるようにする。
 6. Supabaseの既存通知チャネルがenabled/configuredでDispatcher正常であること、宛先が意図する運用チャネルであることを確認する。テスト送信と通知開始は承認された適用時に行う。
+
+AWSの参照ポリシー案は`deploy/cloud/aws-read-policy.example.json`。既存ロールの管理元CloudFormationと整合する別のインフラ変更としてレビュー・適用する。3アクションはService Authorization Referenceでリソースレベル指定をサポートしないため`Resource: *`とし、`aws:RequestedRegion=ap-northeast-1`で限定する。EC2の起動・停止、Lightsailの接続キー取得、IAM変更権限は付けない。対象IDはCollector設定で固定するが、IAM自体が同リージョンの他インスタンス参照を禁止するわけではない。
+
+権限生成用`uvx --system-certs iam-policy-autopilot@latest --version`はWindowsのアプリケーション制御で実行拒否された。制御を迂回せず、公式Service Authorization Reference（[EC2](https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html)、[Lightsail](https://docs.aws.amazon.com/service-authorization/latest/reference/list_lightsail.html)）へフォールバックした。
+
+AWS IAM SimulateCustomPolicyで、東京の参照3アクションがallowed、起動・停止・Lightsail接続キー取得・IAM変更はimplicitDeny、us-east-1は参照を含め全件implicitDenyを確認。既存ロールへの本番適用は未実施。
 
 ## 配置・有効化
 
