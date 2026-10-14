@@ -1,4 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { parseAgentSecretMaps } from "./operation-agent-auth-core";
 
 const MAX_CLOCK_SKEW_SECONDS = 300;
 const MAX_RUNS = 20;
@@ -243,14 +244,7 @@ function requireEnvironment(name: string): string {
 
 function readAgentSecrets(): Record<string, string> {
   try {
-    const parsed: unknown = JSON.parse(requireEnvironment("IVRM_AGENT_SECRETS_JSON"));
-    if (!isRecord(parsed)) throw new Error("invalid map");
-    const secrets: Record<string, string> = {};
-    for (const [serverId, secret] of Object.entries(parsed)) {
-      if (typeof secret !== "string" || secret.length < 32) throw new Error("invalid secret");
-      secrets[serverId] = secret;
-    }
-    return secrets;
+    return parseAgentSecretMaps(process.env.IVRM_AGENT_SECRETS_JSON, process.env.IVRM_AGENT_SECRETS_ADDITIONAL_JSON);
   } catch (error) {
     if (error instanceof BackupReportError) throw error;
     throw new BackupReportError(503, "service_not_configured");

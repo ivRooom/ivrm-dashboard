@@ -98,6 +98,7 @@ X-IVRM-Signature
 
 - Agent側: `IVRM_AGENT_TOKEN`
 - Web側: `IVRM_AGENT_SECRETS_JSON`
+- 既存Secretを保持した追加Agent用: `IVRM_AGENT_SECRETS_ADDITIONAL_JSON`（任意、ID重複は503で拒否）
 - Supabase Service Role Key: `SUPABASE_SERVICE_ROLE_KEY`
 
 すべてGitHubへ保存せず、OCIの権限制限済み環境ファイルとVercelの暗号化済みEnvironment Variablesへ保存する。

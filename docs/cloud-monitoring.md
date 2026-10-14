@@ -77,7 +77,7 @@ Cloud状態も既存の通知配送に接続するため、再送・チャネル
 2. Terraform側でEC2 Instance Roleの`ec2:DescribeInstances`、`ec2:DescribeInstanceStatus`、`lightsail:GetInstance`を確認する。不足権限をアプリやMCPから直接追加しない。
 3. OCIのComputeを対象範囲で参照できる専用API key、Cloudflare DNS/Tunnel読み取り、Vercel/Netlifyの対象Project/Site参照用トークン。対話用の管理者セッションや個人CLIの所有者トークンを常時処理へコピーしない。
 4. 認証は秘密管理またはSSH経由で対象ホストの権限制限済みファイルへ設定。チャット・Issue・PRへ貼らない。Cloudflare OAuthのdns.writeは定期収集に不要。
-5. `aws-app-01`として既存EC2にGo Agentを配置し、`hosts`登録とVercelのAgent secret mapへ既存値を保持して追加する。ランダムsecretを生成し、`agent.env`はivrm-agentだけが読めるようにする。
+5. `aws-app-01`として既存EC2にGo Agentを配置し、`hosts`登録とVercelの追加Agent用`IVRM_AGENT_SECRETS_ADDITIONAL_JSON`へ新しいランダムsecretを設定する。元の`IVRM_AGENT_SECRETS_JSON`はwrite-only Secretのため読取り・置換せず保持する。両mapのID重複・不正値は503で拒否する。Heartbeat/Cloud/Backup/Log/Operationの認証は同じmap結合を使う。`agent.env`はivrm-agentだけが読めるようにする。
 6. Supabaseの既存通知チャネルがenabled/configuredでDispatcher正常であること、宛先が意図する運用チャネルであることを確認する。テスト送信と通知開始は承認された適用時に行う。
 
 AWSの参照ポリシー案は`deploy/cloud/aws-read-policy.example.json`。既存ロールの管理元CloudFormationと整合する別のインフラ変更としてレビュー・適用する。3アクションはService Authorization Referenceでリソースレベル指定をサポートしないため`Resource: *`とし、`aws:RequestedRegion=ap-northeast-1`で限定する。EC2の起動・停止、Lightsailの接続キー取得、IAM変更権限は付けない。対象IDはCollector設定で固定するが、IAM自体が同リージョンの他インスタンス参照を禁止するわけではない。
