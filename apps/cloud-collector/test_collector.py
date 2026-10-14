@@ -107,6 +107,7 @@ class CollectorTest(unittest.TestCase):
         signed = headers["x-ivrm-timestamp"].encode()+b"."+headers["x-ivrm-nonce"].encode()+b"."+request.data
         self.assertEqual(headers["x-ivrm-signature"], hmac.new(b"a"*32, signed, hashlib.sha256).hexdigest())
         self.assertEqual(request.full_url, "https://console.ivrm.jp/api/agent/cloud")
+        self.assertEqual(headers["user-agent"], "ivrm-agent/cloud-monitor-v1")
 
 
 if __name__ == "__main__": unittest.main()

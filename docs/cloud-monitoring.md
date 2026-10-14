@@ -132,3 +132,11 @@ Supabase組織は確認時free。Vercel/他Providerの契約・既存利用量�
 
 `tests/cloud-monitor-core.test.mjs`、`apps/cloud-collector/test_collector.py`、`tests/cloud-monitor-db.sql`をCIで実行する。DBテストは使い捨てPostgreSQLだけに適用し、本番へfixtureを適用しない。
 本番適用が終わるまでは「常時監視・通知が稼働済み」と報告しない。
+
+### 2026-10-15 本番反映と送信修正
+
+PR #123のIAM補助スタックはCREATE_COMPLETE。最初のInfrastructureロールではPutRolePolicy/DeleteRolePolicy不足で失敗したが、既存ロール未変更・新規ポリシー未作成を確認して失敗した補助スタックだけを削除し、既存Administratorロールで同じ変更計画（IAM PolicyのAdd 1件だけ）を再適用した。
+
+PR #121はCI・手動レビュー後にmainへマージ（8b66817）。CodeRabbitは必須チェックではなく処理中のため、後続結果を追跡する。DB移行成功、通知Dispatcher v8、Vercel本番READYとconsole.ivrm.jpのAlias割当を確認。EC2 Agentと既存OCI AgentのHeartbeat受信も継続している。10対象の登録は8+2へ分割済みだが、定期収集は初回送信の確認後に開始する。
+
+初回Collector送信はPython標準User-AgentだとHTTP403の非JSON応答で拒否された。既存Agentと同じ識別方式のivrm-agent/cloud-monitor-v1を付けた同一HMACリクエストはHTTP202で受理されたため、送信処理へ明示User-Agentを追加する。認証・WAF設定・署名本文は変更しない。
