@@ -11,3 +11,6 @@ coverage/
 .vscode/
 .idea/
 apps/agent/ivrm-agent
+__pycache__/
+*.pyc
+*.tsbuildinfo

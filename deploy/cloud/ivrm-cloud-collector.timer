@@ -1,0 +1,11 @@
+[Unit]
+Description=IVRM cloud collection every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=20
+Unit=ivrm-cloud-collector.service
+
+[Install]
+WantedBy=timers.target

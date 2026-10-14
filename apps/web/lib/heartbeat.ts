@@ -510,7 +510,7 @@ export function parseHeartbeat(rawBody: Uint8Array): HeartbeatPayload {
 export function authenticateHeartbeat(
   headers: Headers,
   rawBody: Uint8Array,
-  payload: HeartbeatPayload,
+  payload: Pick<HeartbeatPayload, "serverId">,
 ): { nonce: string; bodySha256: string } {
   const serverId = headers.get("x-ivrm-agent-id") ?? "";
   const timestamp = headers.get("x-ivrm-timestamp") ?? "";

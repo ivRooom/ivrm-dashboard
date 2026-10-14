@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-type NotificationSource = "host" | "container" | "backup" | "reliability";
+type NotificationSource = "host" | "container" | "backup" | "reliability" | "cloud";
 type NotificationSeverity = "info" | "warning" | "critical" | "recovery";
 type EventSeverity = Exclude<NotificationSeverity, "recovery">;
 
@@ -93,6 +93,7 @@ function sourceLabel(source: NotificationSource): string {
     container: "CONTAINER",
     backup: "BACKUP",
     reliability: "SLO",
+    cloud: "CLOUD",
   }[source];
 }
 

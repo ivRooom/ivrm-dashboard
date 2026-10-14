@@ -12,6 +12,18 @@ jobs:
   web:
     name: Web
     runs-on: ubuntu-latest
+    services:
+      cloud-test-db:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,6 +43,16 @@ jobs:
         run: node --experimental-strip-types --test tests/operation-agent-auth-core.test.mjs tests/operation-internal-error.test.mjs
       - name: 型チェック
         run: pnpm typecheck
+      - name: Cloud Monitorの認証・鮮度境界をテスト
+        run: node --experimental-strip-types --test tests/cloud-monitor-core.test.mjs
+      - name: Cloud Collectorをテスト
+        run: python3 -m unittest discover -s apps/cloud-collector -p 'test_*.py'
+      - name: Cloud MonitorのDB・通知状態遷移をテスト
+        run: >-
+          psql postgresql://postgres@localhost:5432/postgres -v ON_ERROR_STOP=1
+          -f tests/cloud-monitor-fixture.sql
+          -f supabase/migrations/202610140001_cloud_monitoring.sql
+          -f tests/cloud-monitor-db.sql
       - name: ビルド
         run: pnpm build
 
