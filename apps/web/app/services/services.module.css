@@ -1,0 +1,9 @@
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 390px), 1fr)); gap: 20px; margin-top: 24px; }
+.card { border: 1px solid var(--border-subtle, #293240); border-radius: 14px; padding: 22px; min-width: 0; background: var(--surface-panel, #111924); }
+.header { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.header h2 { margin: 0 0 6px; font-size: 1.1rem; overflow-wrap: anywhere; }
+.muted { color: var(--text-secondary, #a7b5c8); font-size: .85rem; line-height: 1.6; }
+.list { padding: 0; list-style: none; }
+.list li { padding: 10px 0; border-bottom: 1px solid var(--border-subtle, #293240); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+.list a { overflow-wrap: anywhere; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }

@@ -44,7 +44,7 @@ jobs:
       - name: 型チェック
         run: pnpm typecheck
       - name: Cloud Monitorの認証・鮮度境界をテスト
-        run: node --experimental-strip-types --test tests/cloud-monitor-core.test.mjs
+        run: node --experimental-strip-types --test tests/cloud-monitor-core.test.mjs tests/service-catalog.test.mjs
       - name: Cloud Collectorをテスト
         run: python3 -m unittest discover -s apps/cloud-collector -p 'test_*.py'
       - name: Cloud MonitorのDB・通知状態遷移をテスト
