@@ -10,7 +10,11 @@ Discordの正しい指定先はサーバー`964326043420872704`、チャンネ�
 
 SupabaseはFree。画面でEdge Function 0/500,000回、組織Egress 3.523/5GB、Database Size 0.366/0.5GBを確認。既存通知Dispatcherの毎分実行は約43,200回/月で、現在の無料枠内。VercelはHobby・支払い方法なし。上限超過は追加課金でなく制限となるが、直近30日でFunctions 993,792/1,000,000回、CDN 992,554/1,000,000回、Active CPU 6h28m/4hのため継続稼働に余裕がない。
 
-実装はPR #121。GitHub Web/Agent CIとVercel Preview成功。ローカル本番ビルド、JavaScript 13件、Python 12件、PostgreSQL状態遷移、ブラウザの認証境界・PC/モバイル・自動更新試験は成功。EC2にはPython 3.11.15があるが、`ivrm-ec2-role`にEC2 Describe/Lightsail Get権限が不足。ロールはCloudFormationの`ivrm-compute-access-foundation`管理。Vercel・Netlify・Cloudflareの専用Collector認証も未設定。全クラウド常時収集は稼働済みと扱わない。
+実装はPR #121。GitHub Web/Agent CIとVercel Preview成功。Vercelの実APIでtargets.productionがCANCELED、ドメイン割り当て先がREADYとなる例を確認したため、Alias参照へ修正しPython 13件を再検証した。ローカル本番ビルド、JavaScript 13件、PostgreSQL状態遷移、ブラウザの認証境界・PC/モバイル・自動更新試験も成功。
+
+専用認証3個の作成・既存EC2への保存はユーザー承認済み（期限2027-01-12）。Vercelはivrm-dashboard限定、Netlifyは読み取り専用に限定できないPATであることも承認済み。両方を権限制限済みローカル保管先からSSHで既存EC2へ転送し、root:ivrm-agent / 0640の`/etc/ivrm-agent/cloud.env`として保存。CollectorユーザーからVercel・Netlify参照がoperational/okとなることを確認。コードと対象設定も配置したが、Timer・追加Cron・Agent登録は未実施。CloudflareのDNS/Tunnel読み取り専用トークンは作成済みで、ブラウザ拡張機能のポップアップによる操作停止を解消後、秘密値の保管を続ける。
+
+EC2にはPython 3.11.15があるが、`ivrm-ec2-role`にEC2 Describe/Lightsail Get権限が不足。ロールはCloudFormationの`ivrm-compute-access-foundation`管理。全クラウド常時収集は稼働済みと扱わない。
 
 ## 構成
 
