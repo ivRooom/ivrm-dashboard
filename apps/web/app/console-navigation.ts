@@ -138,7 +138,7 @@ export const consoleNavigationItems: readonly ConsoleNavigationItem[] = [
   },
   {
     href: "/status-center",
-    label: "Status公開",
+    label: "公開Status確認",
     group: "administration",
     description: "公開Incident・Maintenance・お知らせ",
   },

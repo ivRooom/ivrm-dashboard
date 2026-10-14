@@ -131,7 +131,7 @@ function announcementMutationMessage(outcome: string | null): { title: string; v
 
 function IncidentTable({ incidents }: { incidents: StatusCenterIncident[] }) {
   if (incidents.length === 0) {
-    return <StatePanel title="Incidentはまだありません">administrator / ownerは上のフォームからdraftを作成できます。</StatePanel>;
+    return <StatePanel title="Incidentはまだありません">Admin Status CMSからdraftを作成できます。</StatePanel>;
   }
   return (
     <TableShell label="Status Incident一覧">
@@ -339,7 +339,7 @@ function AnnouncementManageForms({ announcements }: { announcements: StatusCente
 }
 
 function AnnouncementTable({ announcements }: { announcements: StatusCenterAnnouncement[] }) {
-  if (announcements.length === 0) return <StatePanel title="Announcementはまだありません">administrator / ownerは上のフォームからdraftを作成できます。</StatePanel>;
+  if (announcements.length === 0) return <StatePanel title="Announcementはまだありません">Admin Status CMSからdraftを作成できます。</StatePanel>;
   const now = Date.now();
   return (
     <TableShell label="Status Announcement一覧">
@@ -362,9 +362,10 @@ export default async function StatusCenterPage({ searchParams }: PageProps) {
   let data = null;
   let loadError = false;
   let canMutate = false;
+  const legacyEditorEnabled = process.env.IVRM_STATUS_LEGACY_EDITOR_ENABLED === "true";
   try {
     const session = await getConsoleSession();
-    canMutate = hasConsoleRole(session, "administrator") && (session.role === "administrator" || session.role === "owner");
+    canMutate = legacyEditorEnabled && hasConsoleRole(session, "administrator") && (session.role === "administrator" || session.role === "owner");
   } catch (error) {
     console.error("Status Center Session取得に失敗しました", error);
   }
@@ -385,7 +386,8 @@ export default async function StatusCenterPage({ searchParams }: PageProps) {
     <>
       {!canMutate ? <AutoRefresh intervalMs={30_000} /> : null}
       <section className={`content ${styles.content}`}>
-        <PageHeader eyebrow="ADMINISTRATION / PUBLIC STATUS" title="Status Center" description="status.ivrm.jpへ公開するIncident・Maintenance・Announcementを、公開サイトから分離した管理面で扱います。" actions={<><ActionLink href="https://status.ivrm.jp">公開Status</ActionLink><ActionLink href="/notifications">通知Center</ActionLink></>} />
+        <PageHeader eyebrow="ADMINISTRATION / PUBLIC STATUS" title="Status Center" description="公開状態を運用監視と合わせて確認します。お知らせ・障害情報・メンテナンスの編集はAdminのStatus CMSから行えます。" actions={<><ActionLink href="https://admin.ivrm.jp/status">Adminで編集</ActionLink><ActionLink href="https://status.ivrm.jp">公開Status</ActionLink><ActionLink href="/notifications">通知Center</ActionLink></>} />
+        <StatePanel title="公開コンテンツの編集入口はAdminへ" variant="info">作成・公開・更新は<a href="https://admin.ivrm.jp/status">admin.ivrm.jp/status</a>を利用してください。Consoleは公開状態と監視・通知を確認する入口です。公開Feedと既存APIの互換性は維持しています。{legacyEditorEnabled ? "予備のConsole編集UIが有効です。" : null}</StatePanel>
         {incidentMutation ? <StatePanel title={incidentMutation.title} variant={incidentMutation.variant}>公開Feedへ反映する処理はServer-side RBAC・Origin検証・監査ログを通過します。</StatePanel> : null}
         {maintenanceMutation ? <StatePanel title={maintenanceMutation.title} variant={maintenanceMutation.variant}>MaintenanceのPublicationと公開Lifecycleを分離し、公開Lifecycleは時刻から導出します。</StatePanel> : null}
         {announcementMutation ? <StatePanel title={announcementMutation.title} variant={announcementMutation.variant}>AnnouncementはPlain textのみを扱い、scheduled / active / expiredを時刻から導出します。</StatePanel> : null}
@@ -395,22 +397,22 @@ export default async function StatusCenterPage({ searchParams }: PageProps) {
 
           <section className={styles.section} id="public-incidents">
             <SectionHeader title="Public Incidents" description="監視Signalを直接公開せず、公開用にsanitizedされたIncidentだけを管理します。" />
-            {canMutate ? <><div className={styles.editorPanel}><h3>Incident draftを作成</h3><p>作成段階では非公開です。内容を確認後に別操作で公開します。</p><IncidentCreateForm /></div><IncidentManageForms incidents={data.incidents} /></> : <StatePanel title="Incident編集はadministrator / owner限定です" variant="info">現在のロールでは公開コンテンツを変更できません。</StatePanel>}
+            {canMutate ? <><div className={styles.editorPanel}><h3>Incident draftを作成</h3><p>作成段階では非公開です。内容を確認後に別操作で公開します。</p><IncidentCreateForm /></div><IncidentManageForms incidents={data.incidents} /></> : <StatePanel title="Incidentの編集" variant="info"><a href="https://admin.ivrm.jp/status">Admin Status CMS</a>で管理権限を確認して編集します。</StatePanel>}
             <IncidentTable incidents={data.incidents} />
           </section>
 
           <section className={styles.section} id="maintenance-notices">
             <SectionHeader title="Maintenance Notices" description="Public NoticeとReliability SLO exclusionを別責務のまま関連付け、Lifecycleは開始・終了時刻から導出します。" />
-            {canMutate ? <><div className={styles.editorPanel}><h3>Maintenance draftを作成</h3><p>Draftは非公開です。予約公開後はscheduled / in_progress / completedを時刻から自動判定します。</p><MaintenanceCreateForm /></div><MaintenanceManageForms maintenance={data.maintenance} /></> : <StatePanel title="Maintenance編集はadministrator / owner限定です" variant="info">現在のロールでは公開Maintenanceを変更できません。</StatePanel>}
+            {canMutate ? <><div className={styles.editorPanel}><h3>Maintenance draftを作成</h3><p>Draftは非公開です。予約公開後はscheduled / in_progress / completedを時刻から自動判定します。</p><MaintenanceCreateForm /></div><MaintenanceManageForms maintenance={data.maintenance} /></> : <StatePanel title="Maintenanceの編集" variant="info"><a href="https://admin.ivrm.jp/status">Admin Status CMS</a>で管理権限を確認して編集します。</StatePanel>}
             <MaintenanceTable maintenance={data.maintenance} />
           </section>
 
           <section className={styles.section} id="announcements">
             <SectionHeader title="Announcements" description="Plain textの公開お知らせをCreate Draft → Publish/Schedule → Archiveし、Lifecycleは公開・終了時刻から導出します。" />
-            {canMutate ? <><div className={styles.editorPanel}><h3>Announcement draftを作成</h3><p>Draftと将来publishAtの予約はPublic Feedへ出ません。公開予定前のArchiveは予約取消として将来も非公開です。</p><AnnouncementCreateForm /></div><AnnouncementManageForms announcements={data.announcements} /></> : <StatePanel title="Announcement編集はadministrator / owner限定です" variant="info">現在のロールでは公開Announcementを変更できません。</StatePanel>}
+            {canMutate ? <><div className={styles.editorPanel}><h3>Announcement draftを作成</h3><p>Draftと将来publishAtの予約はPublic Feedへ出ません。公開予定前のArchiveは予約取消として将来も非公開です。</p><AnnouncementCreateForm /></div><AnnouncementManageForms announcements={data.announcements} /></> : <StatePanel title="Announcementの編集" variant="info"><a href="https://admin.ivrm.jp/status">Admin Status CMS</a>で管理権限を確認して編集します。</StatePanel>}
             <AnnouncementTable announcements={data.announcements} />
           </section>
-          <p className={styles.note}>Incident / Maintenance / Announcement Mutationを実装済みです。Durable lifecycle deliveryは分離した後続Phaseで追加します。</p>
+          <p className={styles.note}>Adminで編集した公開コンテンツを、Consoleの公開Feedからstatus.ivrm.jpへ配信します。運用通知と公開用のお知らせは別に管理します。</p>
         </>}
       </section>
     </>

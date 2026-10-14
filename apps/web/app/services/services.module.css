@@ -6,4 +6,5 @@
 .list { padding: 0; list-style: none; }
 .list li { padding: 10px 0; border-bottom: 1px solid var(--border-subtle, #293240); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
 .list a { overflow-wrap: anywhere; }
+.list details { width: 100%; overflow-wrap: anywhere; font-size: .8rem; }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }

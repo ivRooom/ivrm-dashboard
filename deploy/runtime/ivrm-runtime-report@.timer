@@ -1,0 +1,12 @@
+[Unit]
+Description=IVRM Docker runtime inventory every five minutes (%i)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=20
+AccuracySec=1s
+Unit=ivrm-runtime-report@%i.service
+
+[Install]
+WantedBy=timers.target

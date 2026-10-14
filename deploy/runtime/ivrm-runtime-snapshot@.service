@@ -1,0 +1,22 @@
+[Unit]
+Description=IVRM read-only Docker runtime projection (%i)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/bin/python3 /opt/ivrm-runtime-collector/snapshot.py --server-id %i --write
+TimeoutStartSec=180
+MemoryMax=64M
+CPUQuota=10%
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateNetwork=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/run/ivrm-agent
+RestrictAddressFamilies=AF_UNIX
+UMask=0027
