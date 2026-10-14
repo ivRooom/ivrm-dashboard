@@ -2,27 +2,29 @@
 
 Issue #120。クラウドの状態参照を、対話用MCP認証から独立したCollectorへ分離する。
 
-## 適用承認と現状（2026-10-14）
+## 適用承認と現状（2026-10-15）
 
-ユーザー承認は「追加料金0円と確認できる範囲だけ本番適用」。費用データが取得できないことを0円の根拠にはしない。専用Collector認証と無料枠内での継続性確認が残るため、本番Cloud Monitor移行・収集Timer・追加Cronは未適用。
+ユーザー承認は「追加料金0円と確認できる範囲だけ本番適用」。既存EC2の8対象と既存OCIの2対象、合計10対象の常時収集を有効化した。初回の自動収集は10対象すべてoperational/okでDBへ保存され、[本番クラウド監視画面](https://console.ivrm.jp/cloud)でも正常表示を確認。両ホストのTimerとDBの独立した収集停止評価Cronが有効。新規VM・有料プラン・有料機能は追加していない。
 
 Discordの正しい指定先はサーバー`964326043420872704`、チャンネル`1520646806961258636`（🔔system-notify）。ユーザー承認後に専用Webhookを作成しSupabaseの`DISCORD_WEBHOOK_URL` Secretへ保存、既存通知チャネルを有効化。その後、ユーザーが正しいチャンネルへWebhookを移動済み。新しいチャンネルのWebhook一覧でも所属を確認し、再テスト（Outbox ID 124）はHTTP 200・sent。Dispatcherの後続の定期実行も成功。Webhook URLはGit・ドキュメント・チャットへ記載しない。
 
+新しいCloud通知形式でも[疎通テスト](https://discord.com/channels/964326043420872704/1520646806961258636/1559963502066663425)（Outbox 125）がHTTP 200・sent。メッセージには実障害ではないことを明記し、本番停止による試験はしていない。Cloud用の毎分reconcile Cronはsucceeded、日次retention Cronは登録済みで、保持期間削除関数の手動実行も成功した。
+
 SupabaseはFree。画面でEdge Function 0/500,000回、組織Egress 3.523/5GB、Database Size 0.366/0.5GBを確認。既存通知Dispatcherの毎分実行は約43,200回/月で、現在の無料枠内。VercelはHobby・支払い方法なし。上限超過は追加課金でなく制限となるが、直近30日でFunctions 993,792/1,000,000回、CDN 992,554/1,000,000回、Active CPU 6h28m/4hのため継続稼働に余裕がない。
 
-実装はPR #121。GitHub Web/Agent CIとVercel Preview成功。Vercelの実APIでtargets.productionがCANCELED、ドメイン割り当て先がREADYとなる例を確認したため、Alias参照へ修正しPython 13件を再検証した。ローカル本番ビルド、JavaScript 13件、PostgreSQL状態遷移、ブラウザの認証境界・PC/モバイル・自動更新試験も成功。
+実装はPR #121、AWS参照権限はPR #123、送信User-Agent修正はPR #125をマージ済み。GitHub Web/Agent CI、ローカル本番ビルド、JavaScript 16件、Python 13件、PostgreSQL状態遷移、ブラウザの認証境界・PC/モバイル・自動更新試験が成功。Vercelは公開Aliasが指すREADY deploymentを参照する。
 
-専用認証3個の作成・既存EC2への保存はユーザー承認済み（期限2027-01-12）。Vercelはivrm-dashboard限定、Netlifyは読み取り専用に限定できないPATであることも承認済み。Cloudflareはivrm.jpのDNS参照とmizzzアカウントのTunnel参照のみ。3個とも権限制限済みローカル保管先からSSHで既存EC2へ転送し、root:ivrm-agent / 0640の`/etc/ivrm-agent/cloud.env`として保存。CollectorユーザーからVercel・Netlify・Cloudflare DNS・Tunnelの4対象すべてがoperational/okとなることを再確認した。秘密値受け渡し用の一時ローカルHTTPサーバーは終了済み。コードと対象設定も配置したが、Timer・追加Cron・Agent登録は未実施。
+専用認証3個の作成・保存はユーザー承認済み（期限2027-01-12）。Vercelはivrm-dashboard限定、Cloudflareはivrm.jpのDNS参照とmizzzアカウントのTunnel参照のみ。Netlifyは読み取り専用に限定できないPATであること、保存先を既存OCIへ広げることも承認済み。認証はSSH経由でroot:ivrm-agent / 0640のファイルへ保存し、公開コード・DB観測・ブラウザへ渡さない。秘密値受け渡し用の一時ローカルHTTPサーバーは終了済み。
 
-AWS Free Tier APIではアカウントがPAID・クレジット0 USD、Data Transferの対象オファー一覧は空だった。空の結果は無料枠残量の証明にならない。EC2の追加外向き通信の料金条件は請求画面での確認が必要で、AWSアクセスポータルのブラウザログイン待ち。料金が発生するCost Explorer APIは調査に使用しない。
+AWS Free Tier APIではアカウントがPAID・クレジット0 USDで、Data Transferのオファー一覧が空だったため、その結果だけで無料と判断せずルートの請求画面で確認した。料金が発生するCost Explorer APIはこの費用確認に使用していない。
 
 その後ルートで2026年10月の請求明細を参照できた。Data Transferのインターネット向け無料枠内送信は東京1.795GB、米国2リージョンは0GB。一方、東京のregional data transferは無料1GBに加えて0.599GBがUSD 0.01の表示。既存EC2のdefault routeはInternet GatewayでNAT Gatewayは経由しないが、Netlify APIは米国OhioのELB、ivmz.ivrm.jpはSingaporeのAWS IPへ名前解決された。この2対象を東京EC2から定期取得して追加料金0円とは断定しない。
 
-代替案はNetlify APIとhttp-homeだけを既存OCIのCollectorへ分離し、残り8対象をEC2で収集するもの。OCI Usage APIの2026-10-01〜14集計はOutbound Data Transfer Zone 2が32.714645416996、computed_amount=0。公式の月10TB無料転送枠内で、VM・CPU/RAM割当・ディスク・ネットワークリソースは増設しない。`targets.oci-netlify.example.json`と`ivrm-cloud-collector-oci.conf`を準備済み。OCI側はSDK不要の2対象だけなので標準Pythonで実行し、MemoryMax=64M、CPUQuota=10%、Nice=10、timeout=60秒に制限する。既存Minecraftの設定・プロセスは変更しない。Python 3.9.25で13件のユニットテスト成功。認証エラーテストのHTTPErrorには実応答同様のBytesIOを渡すよう修正した。
+採用構成はNetlify APIとhttp-homeだけを既存OCIのCollectorへ分離し、残り8対象をEC2で収集するもの。OCI Usage APIの2026-10-01〜14集計はOutbound Data Transfer Zone 2が32.714645416996、computed_amount=0。公式の月10TB無料転送枠内で、VM・CPU/RAM割当・ディスク・ネットワークリソースは増設しない。OCI側はSDK不要の2対象だけを標準Pythonで実行し、MemoryMax=64M、CPUQuota=10%、Nice=10、timeout=60秒に制限する。既存Minecraftの設定・プロセスは変更しない。Python 3.9.25でも13件のユニットテスト成功。
 
 ユーザーはNetlifyトークンの既存OCIへの保存と2対象の収集を明示承認済み。OCIへroot:ivrm-agent / 0640で保存し、CollectorユーザーからNetlify API・http-homeの両方がoperational/okとなることを確認。登録SQLの2対象のcollector_server_idをoci-minecraft-01へ変更し、EC2設定から同じ2対象を外した。5分間隔の2Collectorでは取り込み回数は約17,280回/月へ増え、観測履歴行数は同じ。Vercel Hobbyの利用制限リスクも適用前に再評価する。
 
-EC2にはPython 3.11.15があるが、`ivrm-ec2-role`にEC2 Describe/Lightsail Get権限が不足。ロールはCloudFormationの`ivrm-compute-access-foundation`管理。全クラウド常時収集は稼働済みと扱わない。
+EC2はPython 3.11.15と固定SDKのvenvを使用。AWS参照3アクションはCloudFormation補助スタックで追加し、実際のInstance Roleから参照成功を確認した。CPUクレジットはstandardで、Unlimited超過課金の設定ではない。EC2 Agentを30秒間隔で追加し、既存OCI Agentと両方のHeartbeat受信を確認。元のwrite-only認証Secretは置換せず、EC2用だけを追加Secretへ保存した。
 
 ## 構成
 
@@ -116,7 +118,7 @@ systemd unitは`deploy/cloud/`を使用。Collectorユーザーをdockerグル�
 | DBの収集停止評価Cron | 約43,200回/月＋保持期間削除30回 |
 | Discord配送 | 状態変化・重大化・復旧時のみ。正常継続時は送信なし |
 
-既存EC2の追加Host Heartbeatは30秒間隔（約86,400回/月）で、Cloud取り込みと合わせ約103,680回/月をVercelへ追加する。45秒の既存Heartbeat警告境界を超える間隔にはしない。新しいEC2 AgentはMemoryMax=64M・CPUQuota=5%、CollectorはMemoryMax=384M・CPUQuota=10%に制限する。既存VMのサイズ・クレジット設定は変更しない。
+既存EC2の追加Host Heartbeatは30秒間隔（約86,400回/月）。Cloud取り込み約17,280回とConsole外形監視約8,640回を合わせ、Vercelへの追加要求は約112,320回/月（画面閲覧・再送等を除く）。45秒の既存Heartbeat警告境界を超える間隔にはしない。新しいEC2 AgentはMemoryMax=64M・CPUQuota=5%、CollectorはMemoryMax=384M・CPUQuota=10%に制限する。既存VMのサイズ・クレジット設定は変更しない。
 
 Supabase組織は確認時free。Vercel/他Providerの契約・既存利用量・無料枠超過条件は適用時に再確認する。無料と断定せず、追加料金・予算上限が確定するまで本番Cron/Collectorを有効化しない。OCIリソースは増設せず原則無料枠を維持する。
 
@@ -137,6 +139,6 @@ Supabase組織は確認時free。Vercel/他Providerの契約・既存利用量�
 
 PR #123のIAM補助スタックはCREATE_COMPLETE。最初のInfrastructureロールではPutRolePolicy/DeleteRolePolicy不足で失敗したが、既存ロール未変更・新規ポリシー未作成を確認して失敗した補助スタックだけを削除し、既存Administratorロールで同じ変更計画（IAM PolicyのAdd 1件だけ）を再適用した。
 
-PR #121はCI・手動レビュー後にmainへマージ（8b66817）。CodeRabbitは必須チェックではなく処理中のため、後続結果を追跡する。DB移行成功、通知Dispatcher v8、Vercel本番READYとconsole.ivrm.jpのAlias割当を確認。EC2 Agentと既存OCI AgentのHeartbeat受信も継続している。10対象の登録は8+2へ分割済みだが、定期収集は初回送信の確認後に開始する。
+PR #121はCI・手動レビュー後にmainへマージ（8b66817）。CodeRabbitは必須チェックではなく処理中のため、後続結果を追跡する。DB移行成功、通知Dispatcher v8、Vercel本番READYとconsole.ivrm.jpのAlias割当を確認。EC2 Agentと既存OCI AgentのHeartbeat受信も継続している。10対象を8+2に分割し、PR #125の送信修正後に定期収集を開始した。
 
 初回Collector送信はPython標準User-AgentだとHTTP403の非JSON応答で拒否された。既存Agentと同じ識別方式のivrm-agent/cloud-monitor-v1を付けた同一HMACリクエストはHTTP202で受理されたため、送信処理へ明示User-Agentを追加する。認証・WAF設定・署名本文は変更しない。
