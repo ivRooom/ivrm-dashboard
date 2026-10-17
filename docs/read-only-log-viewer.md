@@ -262,4 +262,3 @@ Phase B以降では、このLog ViewerをOperation Terminalへ再利用します
 - 本機能の出力はローカル操作であり、専用のserver-side export監査記録は追加しない。全件exportの専用認可・監査、選択範囲、CSV、AWS archiveは#135/#137の残タスク。
 
 検証: serializerのJSONL改行/Unicode/field境界テスト、型チェック、build。local mock store（秘密・本番データなし）を使用し、Playwright/Edgeで1行/一括clipboard、TXT/JSONLの実downloadと内容、コピー拒否の案内、1440px/390px表示を確認。唯一のconsole errorは既存favicon.icoの404。本番認証/APIの受入は別途行う。
-
