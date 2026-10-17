@@ -54,6 +54,8 @@ client IPは任意のX-Forwarded-Forを信頼せず、実際のedge→origin経�
 
 MFA必須化はブラウザ画面だけでなく全APIのserver-side認証強度検証を含む。Discordログインだけで2FA済みと扱わない。passkey登録・復旧・紛失対応、session失効、role変更、短命step-up、監査を設計し、既存#54と将来SSO方針を整合させる。
 
+2026-10-17ユーザー決定: **パスキーまたは認証アプリの2FAを必須**とする。Discordの一次認証に、WebAuthn/passkeyまたはTOTPの検証を追加する。Discord自身のMFA設定から本Consoleの認証強度を推測しない。詳細な実装順と受入条件は[認証強化の設計](console-mfa-design.md)を参照。
+
 #127の操作対象をservice/resource/action registryへ拡張する。各host/containerには登録した固定actionのみ許可し、provider credentialやDocker socketをbrowserへ渡さない。actionごとにRBAC/step-up/CSRF、冪等性、排他lease、timeout、audit、backup/restore readiness、実行後health gate、kill switchを要求する。Web/DB/worker/proxy等の停止依存関係を個別に定義し、一括再起動や任意shellへ一般化しない。停止・再起動・restore実機試験はmaintenanceとrollback条件を別途確認する。
 
 ## 保管・費用・更新周期
