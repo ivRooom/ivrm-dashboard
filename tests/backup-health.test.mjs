@@ -53,6 +53,14 @@ test("restore test expiry is independent of the backup freshness policy", () => 
   assert.ok(result.healthReasons.some(value => value.includes("Policy期間")));
 });
 
+test("policy-scoped restore evidence can precede the newest backup", () => {
+  const input = target();
+  input.latestSuccess.restoreTestedAt = atAge(3600);
+  const result = evaluateTarget(input, now);
+  assert.equal(result.health, "healthy");
+  assert.equal(result.restoreReadiness, "ready");
+});
+
 test("future restore timestamps cannot prove readiness", () => {
   const input = target();
   input.latestSuccess.restoreTestedAt = atAge(-1);

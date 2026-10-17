@@ -171,7 +171,7 @@ SLAはDBのPolicy値で保持し、Webコードへ対象固有の値を散らさ
 
 判定理由は独立して収集する。Critical Age超過や最新Run失敗があっても、SHA-256未取得、Remote Sync遅延、Retention未取得、Restore Test未取得/期限超過を省略しない。Warning理由の追加によってCriticalを下げない。
 
-Restore Testは最新成功Runの`restoreTestedAt`そのものの経過をPolicyと比較する。最新バックアップが新しくても復元テストの古さは解消しない。未来の復元テスト日時は時計の確認が必要であり、Readyの証明に使用しない。RetentionやRestore Testの証跡欠損もWarningにし、成功値を補完しない。
+Restore Testは同一Policy（host / backup target / game mode / type）内の成功Run全体から取得した最新の復元証跡の経過をPolicyと比較する。`get_backup_center_v1`はこの値を既存の`latest_success_restore_tested_at`へ返すため、Webでは`latestSuccess.restoreTestedAt`に格納されるが、最新成功artifactを復元した証明とは限らない。SHA-256・Remote Sync・Retentionは最新成功artifact自体の値。最新バックアップが新しくても復元テストの古さは解消しない。未来の復元テスト日時は時計の確認が必要であり、Readyの証明に使用しない。RetentionやRestore Testの証跡欠損もWarningにし、成功値を補完しない。
 
 ### 警告の調査順（Issue #138）
 
@@ -181,6 +181,7 @@ Restore Testは最新成功Runの`restoreTestedAt`そのものの経過をPolicy
 2. 所有hostでtimer実行→artifact生成→checksum検証→remote同期→report送信→DB受信の順に時刻とrun IDをread-onlyで追跡する。秘密・内部path・bucket名を公開Issueへ貼らない。
 3. SHA-256 nullは未取得、falseは失敗。Reporterは入力JSONのrunsを署名して転送するもので、artifactを検証してtrueを生成する機能ではない。生成元の検証証跡を確認する。
 4. 復元は本番worldを上書きしない隔離先で別途検証し、費用・maintenance条件がある場合は事前承認する。
+5. 復元証跡の元Runは、同じPolicy条件で`backup_runs`の`outcome='success'`かつ`restore_tested_at is not null`を`restore_tested_at desc, id desc`で照合する。最新成功run IDへ証跡をコピーせず、実際に復元したRunを調査する。最新成功Runの証跡列だけを調べてPolicy全体の復元未実施とは判断しない。
 
 `tests/backup-health.test.mjs`で複合異常、証跡欠損、古い/未来のRestore Test、SLA境界、重大度維持をCI検証する。本番のtimerやreport到達状態はこの単体テストでは証明できない。
 
