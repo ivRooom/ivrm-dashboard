@@ -134,6 +134,20 @@
       "enablesCollection": false
     },
     {
+      "id": "aws-app-01.ivrm-contact",
+      "hostId": "aws-app-01",
+      "resourceId": "ivrm-contact",
+      "type": "container",
+      "provider": "aws_ec2",
+      "ownerRepository": "ivRooom/ivrm-web",
+      "serviceIds": [
+        "home"
+      ],
+      "logState": "planned",
+      "evidence": "runtime-container-allowlist",
+      "enablesCollection": false
+    },
+    {
       "id": "aws-app-01.ivrm-home",
       "hostId": "aws-app-01",
       "resourceId": "ivrm-home",
@@ -176,6 +190,23 @@
       ],
       "logState": "planned",
       "evidence": "service-catalog-topology",
+      "enablesCollection": false
+    },
+    {
+      "id": "aws-app-01.ivrm-runtime-health",
+      "hostId": "aws-app-01",
+      "resourceId": "ivrm-runtime-health",
+      "type": "container",
+      "provider": "aws_ec2",
+      "ownerRepository": "ivRooom/ivrm-web",
+      "serviceIds": [
+        "member",
+        "admin",
+        "home",
+        "api"
+      ],
+      "logState": "planned",
+      "evidence": "runtime-container-allowlist",
       "enablesCollection": false
     },
     {

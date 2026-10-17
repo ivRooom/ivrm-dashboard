@@ -5,7 +5,7 @@ Issue #135/#131、親 #142、契約 ivRooom/ivrm-contracts#17 / PR #18。
 
 ## Coverageの読み方
 
-2026-10-17のGitHub組織repository一覧（15件、うちarchive 2件）と現行service catalogを照合。34収集元候補を記録した。host/container依存は物理sourceごとにまとめ、複数serviceとの関係を保持して重複収集を避ける。ownerRepositoryは現在の運用・設定の追跡先であり、アプリデータや全resourceのownership移管を意味しない。
+2026-10-17のGitHub組織repository一覧（15件、うちarchive 2件）と現行service catalogおよびruntime container allowlistを照合。36収集元候補を記録した。host/container依存は物理sourceごとにまとめ、複数serviceとの関係を保持して重複収集を避ける。ownerRepositoryは現在の運用・設定の追跡先であり、アプリデータや全resourceのownership移管を意味しない。
 
 | 状態 | 意味 | 正常と判断できるか |
 | --- | --- | --- |
@@ -23,7 +23,7 @@ AI、help、member-site、status UI等は実際のhostingとproducer対応が未
 2. sourceごとのcanonical serviceId、共有依存、owner、認証、取得権限、plan、retention、周期、stale/欠落、PIIを確定。client IPを送れるsourceをtrusted ingress adapterへ限定する。
 3. 少数sourceでread-only collector→認証ingest→検索→archive再取得を検証。quota/負荷/費用を測定してから拡大する。
 
-CIはservice catalogのcontainer/依存/legacy allowlistが台帳から漏れる変更を拒否する。GitHub全repoや実hostを毎回照会するテストではないため、inventoryDateとGitHub/hosting/runtimeを定期的に再照合する。source数は監視完了率ではない。
+CIはruntime container allowlistとservice catalogのcontainer/依存/legacy allowlistが台帳から漏れる変更を拒否する。GitHub全repoや実hostを毎回照会するテストではないため、inventoryDateとGitHub/hosting/runtimeを定期的に再照合する。source数は監視完了率ではない。
 
 ## Backup廃止予定対象の別管理
 

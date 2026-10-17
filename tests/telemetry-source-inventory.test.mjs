@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { BRAND_SERVICES } from "../apps/web/lib/service-catalog.ts";
 import { CONSOLE_LOG_SOURCES } from "../apps/web/lib/console-log-types.ts";
+import { RUNTIME_CONTAINERS } from "../apps/web/lib/runtime-inventory-core.ts";
 
 const inventory = JSON.parse(await readFile(new URL("../catalog/telemetry-sources.json", import.meta.url), "utf8"));
 const sourceById = new Map(inventory.sources.map(source => [source.id, source]));
@@ -44,4 +45,15 @@ test("legacy configured sources are distinguished from unconnected provider adap
   }
   assert.equal(inventory.repositories.find(repo => repo.repository === "ivRooom/ivrm-ai")?.kind, "needs_discovery");
   assert.equal(inventory.repositories.find(repo => repo.repository === "ivRooom/ivrm-mail-discord-worker")?.kind, "archived");
+});
+
+test("runtime containers absent from the brand projection are still covered", () => {
+  for (const [hostId, containers] of Object.entries(RUNTIME_CONTAINERS)) {
+    for (const name of containers) {
+      const source = sourceById.get(`${hostId}.${name}`);
+      assert.ok(source, `Missing runtime source ${hostId}/${name}`);
+      assert.equal(source.hostId, hostId);
+      assert.equal(source.resourceId, name);
+    }
+  }
 });
