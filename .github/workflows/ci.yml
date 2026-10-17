@@ -43,6 +43,8 @@ jobs:
         run: node --experimental-strip-types --test tests/operation-agent-auth-core.test.mjs tests/operation-internal-error.test.mjs
       - name: 型チェック
         run: pnpm typecheck
+      - name: ログ出力の内容・改行・フィールド境界をテスト
+        run: node --experimental-strip-types --test tests/log-export.test.mjs
       - name: Cloud Monitorの認証・鮮度境界をテスト
         run: node --experimental-strip-types --test tests/cloud-monitor-core.test.mjs tests/service-catalog.test.mjs tests/runtime-inventory-core.test.mjs
       - name: Cloud Collectorをテスト
