@@ -338,7 +338,7 @@ function healthRank(health: BackupHealth): number {
   return { healthy: 0, unknown: 1, warning: 2, critical: 3 }[health];
 }
 
-function evaluateTarget(
+export function evaluateTarget(
   target: Omit<BackupTargetSnapshot, "health" | "healthReasons" | "backupAgeSeconds" | "remoteSyncPending" | "restoreReadiness">,
   nowMs: number,
 ): BackupTargetSnapshot {
@@ -349,6 +349,10 @@ function evaluateTarget(
     ? Math.max(0, Math.floor((nowMs - Date.parse(success.completedAt)) / 1_000))
     : null;
   let health: BackupHealth = success ? "healthy" : "unknown";
+  const warn = (reason: string) => {
+    if (health !== "critical") health = "warning";
+    reasons.push(reason);
+  };
 
   if (latest?.outcome === "failed") {
     health = "critical";
@@ -368,9 +372,8 @@ function evaluateTarget(
     if (success.sha256Verified === false) {
       health = "critical";
       reasons.push("SHA-256検証失敗を確認しました");
-    } else if (success.sha256Verified === null && health !== "critical") {
-      health = "warning";
-      reasons.push("SHA-256検証結果が未取得です");
+    } else if (success.sha256Verified === null) {
+      warn("SHA-256検証結果が未取得です");
     }
 
     if (success.retentionExpiresAt && Date.parse(success.retentionExpiresAt) <= nowMs) {
@@ -378,20 +381,19 @@ function evaluateTarget(
       reasons.push("最新成功バックアップのRetention期限を超過しています");
     }
 
-    if ((latest?.outcome === "running" || latest?.outcome === "unknown") && health === "healthy") {
-      health = "warning";
-      reasons.push("最新Runの結果がまだ確定していません");
+    if (success.retentionExpiresAt === null) warn("Retention期限が未取得です");
+
+    if (latest?.outcome === "running" || latest?.outcome === "unknown") {
+      warn("最新Runの結果がまだ確定していません");
     }
   }
 
   const remoteSyncPending = Boolean(success && target.remoteSyncRequired && !success.remoteSyncedAt);
   if (
     remoteSyncPending && success &&
-    nowMs - Date.parse(success.completedAt) > target.remoteSyncWarningSeconds * 1_000 &&
-    health !== "critical"
+    nowMs - Date.parse(success.completedAt) > target.remoteSyncWarningSeconds * 1_000
   ) {
-    health = "warning";
-    reasons.push("Remote SyncがSLA内に完了していません");
+    warn("Remote SyncがSLA内に完了していません");
   }
 
   let restoreReadiness: RestoreReadiness = "unknown";
@@ -399,20 +401,21 @@ function evaluateTarget(
     const retentionValid = success.retentionExpiresAt
       ? Date.parse(success.retentionExpiresAt) > nowMs
       : false;
-    const restoreFresh = success.restoreTestedAt
-      ? nowMs - Date.parse(success.restoreTestedAt) <= target.restoreTestWarningSeconds * 1_000
-      : false;
+    const restoreAgeMs = success.restoreTestedAt
+      ? nowMs - Date.parse(success.restoreTestedAt)
+      : null;
+    const restoreFresh = restoreAgeMs !== null && restoreAgeMs >= 0 &&
+      restoreAgeMs <= target.restoreTestWarningSeconds * 1_000;
     if (success.sha256Verified === true && retentionValid && restoreFresh) {
       restoreReadiness = "ready";
-    } else if (
-      success.restoreTestedAt === null &&
-      backupAgeSeconds !== null &&
-      backupAgeSeconds > target.restoreTestWarningSeconds &&
-      health !== "critical"
-    ) {
+    }
+    if (restoreAgeMs === null) {
+      warn("Restore Testの実施証跡が未取得です");
+    } else if (restoreAgeMs < 0) {
+      warn("Restore Testの日時が未来です。送信元の時計を確認してください");
+    } else if (!restoreFresh) {
       restoreReadiness = "warning";
-      health = "warning";
-      reasons.push("Restore Testが長期間実施されていません");
+      warn("Restore TestがPolicy期間を超過しています");
     }
   }
 
