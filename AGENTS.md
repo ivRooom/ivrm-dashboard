@@ -1,6 +1,6 @@
 # ivrm-dashboard Agent Rules
 
-- 作業開始時に最新main、Issue、PR、CI、README、`docs/service-operations.md` と実運用環境のread-only情報を確認する。
+- 作業開始時に最新main、Issue、PR、CI、README、`docs/service-operations.md` を確認する。作業結果がProduction状態、配置、機能Flagなどに依存する場合に限り、実運用環境のread-only情報を確認する。
 - [`.agents/skills/README.md`](.agents/skills/README.md) から対象手順を選び、[ivrm-platform共通ルール](https://github.com/ivRooom/ivrm-platform/tree/main/.agents/skills) を併用する。
 - 機能の実装状況（GitHub）とProduction配置/機能Flag（外部provider）は別に確認する。
 - 認証・RBAC、Agent署名・nonce、service allowlist、監査、期限付きlease、QueueとBackupを維持する。
