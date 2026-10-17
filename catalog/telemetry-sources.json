@@ -1,0 +1,627 @@
+{
+  "version": 1,
+  "inventoryDate": "2026-10-17",
+  "purpose": "planning-only-not-an-authorization-registry",
+  "notes": [
+    "legacy_configured means main source allowlist exists; not proof of receipts or healthy collection",
+    "planned and needs_discovery are not collecting and must never be rendered healthy",
+    "No credential, endpoint URL, private address or command is stored here",
+    "Existing ivmz topology is listed for coverage discovery; ownership/repository scope is not inferred"
+  ],
+  "repositories": [
+    {
+      "repository": "ivRooom/ivrm-web",
+      "kind": "runtime",
+      "note": "EC2 container topology; app/auth/audit source split pending"
+    },
+    {
+      "repository": "ivRooom/Herta",
+      "kind": "runtime",
+      "note": "Lightsail container topology; app/auth/audit source split pending"
+    },
+    {
+      "repository": "ivRooom/ivrm-dashboard",
+      "kind": "runtime",
+      "note": "OCI legacy collector and Vercel adapter planned"
+    },
+    {
+      "repository": "ivRooom/ivrm-ai",
+      "kind": "needs_discovery",
+      "note": "Active repository missing from platform catalog; deployment/owner mapping pending"
+    },
+    {
+      "repository": "ivRooom/ivrm-status",
+      "kind": "needs_discovery",
+      "note": "Public status UI and OCI status API ownership mapping pending"
+    },
+    {
+      "repository": "ivRooom/ivrm-member-site",
+      "kind": "needs_discovery",
+      "note": "Current hosting and runtime source mapping pending"
+    },
+    {
+      "repository": "ivRooom/ivrm-help",
+      "kind": "needs_discovery",
+      "note": "Current hosting and runtime source mapping pending"
+    },
+    {
+      "repository": "ivRooom/ivrm-mcmod",
+      "kind": "emitter",
+      "note": "Minecraft activity contract does not imply operational logs coverage"
+    },
+    {
+      "repository": "ivRooom/ivrm-dailytech-adventure",
+      "kind": "configuration",
+      "note": "Modpack runtime belongs to Minecraft host; CI/build logs not connected"
+    },
+    {
+      "repository": "ivRooom/ivrm-minecraft-activity",
+      "kind": "maintenance",
+      "note": "Legacy service; verify remaining deployment before treating as retired"
+    },
+    {
+      "repository": "ivRooom/ivrm-infrastructure",
+      "kind": "metadata",
+      "note": "IaC owner mapping pending; repository presence does not transfer resources"
+    },
+    {
+      "repository": "ivRooom/ivrm-contracts",
+      "kind": "metadata",
+      "note": "Contract repository; CI logs not connected"
+    },
+    {
+      "repository": "ivRooom/ivrm-platform",
+      "kind": "metadata",
+      "note": "Architecture catalog; no production runtime ownership"
+    },
+    {
+      "repository": "ivRooom/ivrm-mail-discord-worker",
+      "kind": "archived",
+      "note": "GitHub archived; successor and residual runtime need verification"
+    },
+    {
+      "repository": "ivRooom/lunaria",
+      "kind": "archived",
+      "note": "GitHub archived; do not silently enroll legacy runtime"
+    }
+  ],
+  "sources": [
+    {
+      "id": "aws-app-01.ivrm-admin",
+      "hostId": "aws-app-01",
+      "resourceId": "ivrm-admin",
+      "type": "container",
+      "provider": "aws_ec2",
+      "ownerRepository": "ivRooom/ivrm-web",
+      "serviceIds": [
+        "admin"
+      ],
+      "logState": "planned",
+      "evidence": "service-catalog-topology",
+      "enablesCollection": false
+    },
+    {
+      "id": "aws-app-01.ivrm-api",
+      "hostId": "aws-app-01",
+      "resourceId": "ivrm-api",
+      "type": "container",
+      "provider": "aws_ec2",
+      "ownerRepository": "ivRooom/ivrm-web",
+      "serviceIds": [
+        "member",
+        "admin",
+        "api"
+      ],
+      "logState": "planned",
+      "evidence": "service-catalog-topology",
+      "enablesCollection": false
+    },
+    {
+      "id": "aws-app-01.ivrm-cloudflared",
+      "hostId": "aws-app-01",
+      "resourceId": "ivrm-cloudflared",
+      "type": "container",
+      "provider": "aws_ec2",
+      "ownerRepository": "ivRooom/ivrm-web",
+      "serviceIds": [
+        "member",
+        "admin",
+        "home",
+        "api"
+      ],
+      "logState": "planned",
+      "evidence": "service-catalog-topology",
+      "enablesCollection": false
+    },
+    {
+      "id": "aws-app-01.ivrm-contact",
+      "hostId": "aws-app-01",
+      "resourceId": "ivrm-contact",
+      "type": "container",
+      "provider": "aws_ec2",
+      "ownerRepository": "ivRooom/ivrm-web",
+      "serviceIds": [
+        "home"
+      ],
+      "logState": "planned",
+      "evidence": "runtime-container-allowlist",
+      "enablesCollection": false
+    },
+    {
+      "id": "aws-app-01.ivrm-home",
+      "hostId": "aws-app-01",
+      "resourceId": "ivrm-home",
+      "type": "container",
+      "provider": "aws_ec2",
+      "ownerRepository": "ivRooom/ivrm-web",
+      "serviceIds": [
+        "home"
+      ],
+      "logState": "planned",
+      "evidence": "service-catalog-topology",
+      "enablesCollection": false
+    },
+    {
+      "id": "aws-app-01.ivrm-member",
+      "hostId": "aws-app-01",
+      "resourceId": "ivrm-member",
+      "type": "container",
+      "provider": "aws_ec2",
+      "ownerRepository": "ivRooom/ivrm-web",
+      "serviceIds": [
+        "member"
+      ],
+      "logState": "planned",
+      "evidence": "service-catalog-topology",
+      "enablesCollection": false
+    },
+    {
+      "id": "aws-app-01.ivrm-runtime-caddy",
+      "hostId": "aws-app-01",
+      "resourceId": "ivrm-runtime-caddy",
+      "type": "container",
+      "provider": "aws_ec2",
+      "ownerRepository": "ivRooom/ivrm-web",
+      "serviceIds": [
+        "member",
+        "admin",
+        "home",
+        "api"
+      ],
+      "logState": "planned",
+      "evidence": "service-catalog-topology",
+      "enablesCollection": false
+    },
+    {
+      "id": "aws-app-01.ivrm-runtime-health",
+      "hostId": "aws-app-01",
+      "resourceId": "ivrm-runtime-health",
+      "type": "container",
+      "provider": "aws_ec2",
+      "ownerRepository": "ivRooom/ivrm-web",
+      "serviceIds": [
+        "member",
+        "admin",
+        "home",
+        "api"
+      ],
+      "logState": "planned",
+      "evidence": "runtime-container-allowlist",
+      "enablesCollection": false
+    },
+    {
+      "id": "aws-app-01.os-auth",
+      "hostId": "aws-app-01",
+      "resourceId": "os-auth",
+      "type": "os_auth",
+      "provider": "aws_ec2",
+      "ownerRepository": "ivRooom/ivrm-web",
+      "serviceIds": [
+        "member",
+        "admin",
+        "home",
+        "api"
+      ],
+      "logState": "planned",
+      "evidence": "required-security-coverage",
+      "enablesCollection": false
+    },
+    {
+      "id": "aws-app-01.system-journal",
+      "hostId": "aws-app-01",
+      "resourceId": "system-journal",
+      "type": "systemd",
+      "provider": "aws_ec2",
+      "ownerRepository": "ivRooom/ivrm-web",
+      "serviceIds": [
+        "member",
+        "admin",
+        "home",
+        "api"
+      ],
+      "logState": "planned",
+      "evidence": "required-security-coverage",
+      "enablesCollection": false
+    },
+    {
+      "id": "aws-control-plane",
+      "hostId": null,
+      "resourceId": "aws-control-plane",
+      "type": "cloud_audit",
+      "provider": "aws_ec2",
+      "ownerRepository": "ivRooom/ivrm-dashboard",
+      "serviceIds": [
+        "member",
+        "admin",
+        "api",
+        "home",
+        "herta"
+      ],
+      "logState": "needs_discovery",
+      "evidence": "provider-plan-and-dataset-not-verified",
+      "enablesCollection": false
+    },
+    {
+      "id": "cloudflare-edge",
+      "hostId": null,
+      "resourceId": "cloudflare-edge",
+      "type": "edge",
+      "provider": "cloudflare",
+      "ownerRepository": "ivRooom/ivrm-dashboard",
+      "serviceIds": [
+        "minecraft",
+        "status",
+        "member",
+        "admin",
+        "herta",
+        "home",
+        "api",
+        "console",
+        "ivmz"
+      ],
+      "logState": "needs_discovery",
+      "evidence": "provider-plan-and-dataset-not-verified",
+      "enablesCollection": false
+    },
+    {
+      "id": "console-runtime",
+      "hostId": null,
+      "resourceId": "console-runtime",
+      "type": "application",
+      "provider": "vercel",
+      "ownerRepository": "ivRooom/ivrm-dashboard",
+      "serviceIds": [
+        "console"
+      ],
+      "logState": "needs_discovery",
+      "evidence": "provider-plan-and-dataset-not-verified",
+      "enablesCollection": false
+    },
+    {
+      "id": "lightsail-herta.herta-api-1",
+      "hostId": "lightsail-herta",
+      "resourceId": "herta-api-1",
+      "type": "container",
+      "provider": "aws_lightsail",
+      "ownerRepository": "ivRooom/Herta",
+      "serviceIds": [
+        "herta"
+      ],
+      "logState": "planned",
+      "evidence": "service-catalog-topology",
+      "enablesCollection": false
+    },
+    {
+      "id": "lightsail-herta.herta-bot-1",
+      "hostId": "lightsail-herta",
+      "resourceId": "herta-bot-1",
+      "type": "container",
+      "provider": "aws_lightsail",
+      "ownerRepository": "ivRooom/Herta",
+      "serviceIds": [
+        "herta"
+      ],
+      "logState": "planned",
+      "evidence": "service-catalog-topology",
+      "enablesCollection": false
+    },
+    {
+      "id": "lightsail-herta.herta-caddy-1",
+      "hostId": "lightsail-herta",
+      "resourceId": "herta-caddy-1",
+      "type": "container",
+      "provider": "aws_lightsail",
+      "ownerRepository": "ivRooom/Herta",
+      "serviceIds": [
+        "herta"
+      ],
+      "logState": "planned",
+      "evidence": "service-catalog-topology",
+      "enablesCollection": false
+    },
+    {
+      "id": "lightsail-herta.herta-nginx-1",
+      "hostId": "lightsail-herta",
+      "resourceId": "herta-nginx-1",
+      "type": "container",
+      "provider": "aws_lightsail",
+      "ownerRepository": "ivRooom/Herta",
+      "serviceIds": [
+        "herta"
+      ],
+      "logState": "planned",
+      "evidence": "service-catalog-topology",
+      "enablesCollection": false
+    },
+    {
+      "id": "lightsail-herta.herta-postgres-1",
+      "hostId": "lightsail-herta",
+      "resourceId": "herta-postgres-1",
+      "type": "container",
+      "provider": "aws_lightsail",
+      "ownerRepository": "ivRooom/Herta",
+      "serviceIds": [
+        "herta"
+      ],
+      "logState": "planned",
+      "evidence": "service-catalog-topology",
+      "enablesCollection": false
+    },
+    {
+      "id": "lightsail-herta.herta-redis-1",
+      "hostId": "lightsail-herta",
+      "resourceId": "herta-redis-1",
+      "type": "container",
+      "provider": "aws_lightsail",
+      "ownerRepository": "ivRooom/Herta",
+      "serviceIds": [
+        "herta"
+      ],
+      "logState": "planned",
+      "evidence": "service-catalog-topology",
+      "enablesCollection": false
+    },
+    {
+      "id": "lightsail-herta.herta-studio-1",
+      "hostId": "lightsail-herta",
+      "resourceId": "herta-studio-1",
+      "type": "container",
+      "provider": "aws_lightsail",
+      "ownerRepository": "ivRooom/Herta",
+      "serviceIds": [
+        "herta"
+      ],
+      "logState": "planned",
+      "evidence": "service-catalog-topology",
+      "enablesCollection": false
+    },
+    {
+      "id": "lightsail-herta.herta-worker-1",
+      "hostId": "lightsail-herta",
+      "resourceId": "herta-worker-1",
+      "type": "container",
+      "provider": "aws_lightsail",
+      "ownerRepository": "ivRooom/Herta",
+      "serviceIds": [
+        "herta"
+      ],
+      "logState": "planned",
+      "evidence": "service-catalog-topology",
+      "enablesCollection": false
+    },
+    {
+      "id": "lightsail-herta.os-auth",
+      "hostId": "lightsail-herta",
+      "resourceId": "os-auth",
+      "type": "os_auth",
+      "provider": "aws_lightsail",
+      "ownerRepository": "ivRooom/Herta",
+      "serviceIds": [
+        "herta"
+      ],
+      "logState": "planned",
+      "evidence": "required-security-coverage",
+      "enablesCollection": false
+    },
+    {
+      "id": "lightsail-herta.system-journal",
+      "hostId": "lightsail-herta",
+      "resourceId": "system-journal",
+      "type": "systemd",
+      "provider": "aws_lightsail",
+      "ownerRepository": "ivRooom/Herta",
+      "serviceIds": [
+        "herta"
+      ],
+      "logState": "planned",
+      "evidence": "required-security-coverage",
+      "enablesCollection": false
+    },
+    {
+      "id": "netlify-runtime",
+      "hostId": null,
+      "resourceId": "netlify-runtime",
+      "type": "application",
+      "provider": "netlify",
+      "ownerRepository": "ivRooom/ivrm-dashboard",
+      "serviceIds": [
+        "ivmz"
+      ],
+      "logState": "needs_discovery",
+      "evidence": "provider-plan-and-dataset-not-verified",
+      "enablesCollection": false
+    },
+    {
+      "id": "oci-control-plane",
+      "hostId": null,
+      "resourceId": "oci-control-plane",
+      "type": "cloud_audit",
+      "provider": "oci",
+      "ownerRepository": "ivRooom/ivrm-dashboard",
+      "serviceIds": [
+        "minecraft",
+        "status"
+      ],
+      "logState": "needs_discovery",
+      "evidence": "provider-plan-and-dataset-not-verified",
+      "enablesCollection": false
+    },
+    {
+      "id": "oci-minecraft-01.caddy",
+      "hostId": "oci-minecraft-01",
+      "resourceId": "caddy",
+      "type": "container",
+      "provider": "oci",
+      "ownerRepository": "ivRooom/ivrm-dashboard",
+      "serviceIds": [
+        "status"
+      ],
+      "logState": "planned",
+      "evidence": "service-catalog-topology",
+      "enablesCollection": false
+    },
+    {
+      "id": "oci-minecraft-01.ivrm-agent",
+      "hostId": "oci-minecraft-01",
+      "resourceId": "ivrm-agent",
+      "type": "systemd",
+      "provider": "oci",
+      "ownerRepository": "ivRooom/ivrm-dashboard",
+      "serviceIds": [
+        "minecraft"
+      ],
+      "logState": "legacy_configured",
+      "evidence": "legacy-source-allowlist",
+      "enablesCollection": false
+    },
+    {
+      "id": "oci-minecraft-01.ivrm-status-api",
+      "hostId": "oci-minecraft-01",
+      "resourceId": "ivrm-status-api",
+      "type": "container",
+      "provider": "oci",
+      "ownerRepository": "ivRooom/ivrm-dashboard",
+      "serviceIds": [
+        "status"
+      ],
+      "logState": "planned",
+      "evidence": "service-catalog-topology",
+      "enablesCollection": false
+    },
+    {
+      "id": "oci-minecraft-01.ivrm-velocity",
+      "hostId": "oci-minecraft-01",
+      "resourceId": "ivrm-velocity",
+      "type": "container",
+      "provider": "oci",
+      "ownerRepository": "ivRooom/ivrm-dashboard",
+      "serviceIds": [
+        "minecraft"
+      ],
+      "logState": "legacy_configured",
+      "evidence": "legacy-source-allowlist",
+      "enablesCollection": false
+    },
+    {
+      "id": "oci-minecraft-01.mc-block",
+      "hostId": "oci-minecraft-01",
+      "resourceId": "mc-block",
+      "type": "container",
+      "provider": "oci",
+      "ownerRepository": "ivRooom/ivrm-dashboard",
+      "serviceIds": [
+        "minecraft"
+      ],
+      "logState": "legacy_configured",
+      "evidence": "legacy-source-allowlist",
+      "enablesCollection": false
+    },
+    {
+      "id": "oci-minecraft-01.mc-main",
+      "hostId": "oci-minecraft-01",
+      "resourceId": "mc-main",
+      "type": "container",
+      "provider": "oci",
+      "ownerRepository": "ivRooom/ivrm-dashboard",
+      "serviceIds": [
+        "minecraft"
+      ],
+      "logState": "legacy_configured",
+      "evidence": "legacy-source-allowlist",
+      "enablesCollection": false
+    },
+    {
+      "id": "oci-minecraft-01.mc-resource",
+      "hostId": "oci-minecraft-01",
+      "resourceId": "mc-resource",
+      "type": "container",
+      "provider": "oci",
+      "ownerRepository": "ivRooom/ivrm-dashboard",
+      "serviceIds": [
+        "minecraft"
+      ],
+      "logState": "legacy_configured",
+      "evidence": "legacy-source-allowlist",
+      "enablesCollection": false
+    },
+    {
+      "id": "oci-minecraft-01.mc-resource-router",
+      "hostId": "oci-minecraft-01",
+      "resourceId": "mc-resource-router",
+      "type": "container",
+      "provider": "oci",
+      "ownerRepository": "ivRooom/ivrm-dashboard",
+      "serviceIds": [
+        "minecraft"
+      ],
+      "logState": "legacy_configured",
+      "evidence": "legacy-source-allowlist",
+      "enablesCollection": false
+    },
+    {
+      "id": "oci-minecraft-01.os-auth",
+      "hostId": "oci-minecraft-01",
+      "resourceId": "os-auth",
+      "type": "os_auth",
+      "provider": "oci",
+      "ownerRepository": "ivRooom/ivrm-dashboard",
+      "serviceIds": [
+        "minecraft",
+        "status"
+      ],
+      "logState": "planned",
+      "evidence": "required-security-coverage",
+      "enablesCollection": false
+    },
+    {
+      "id": "oci-minecraft-01.system-journal",
+      "hostId": "oci-minecraft-01",
+      "resourceId": "system-journal",
+      "type": "systemd",
+      "provider": "oci",
+      "ownerRepository": "ivRooom/ivrm-dashboard",
+      "serviceIds": [
+        "minecraft",
+        "status"
+      ],
+      "logState": "planned",
+      "evidence": "required-security-coverage",
+      "enablesCollection": false
+    },
+    {
+      "id": "supabase-audit",
+      "hostId": null,
+      "resourceId": "supabase-audit",
+      "type": "cloud_audit",
+      "provider": "supabase",
+      "ownerRepository": "ivRooom/ivrm-dashboard",
+      "serviceIds": [
+        "console",
+        "api"
+      ],
+      "logState": "needs_discovery",
+      "evidence": "provider-plan-and-dataset-not-verified",
+      "enablesCollection": false
+    }
+  ]
+}
