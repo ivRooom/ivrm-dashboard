@@ -7,7 +7,8 @@ import { redactConsoleLogMessage } from "../web/lib/log-report";
 
 export type FileSource = { path: string; source: TelemetrySource };
 export type SealedRotation = { path: string; bytes: number; sha256: string };
-type Cursor = { device: string; inode: string; offset: number; anchor: string };
+type Cursor = { device: string; inode: string; offset: number; anchor: string;
+  handoff?: { device: string; inode: string; seal: string } };
 const hash = (data: string | Uint8Array) => createHash("sha256").update(data).digest("hex");
 
 /** Only explicitly registered, projected JSONL files. Never infer actor/IP/attacks. */
@@ -33,12 +34,14 @@ function capture(spool: TelemetrySpool, config: FileSource, now: number, seal?: 
   parseTelemetryBatch(Buffer.from(JSON.stringify({schemaVersion:1,producerId:spool.producerId,batchId:randomUUID(),events:[sample]})),now);
   const ordered = Object.fromEntries(Object.entries(source).sort(([a],[b])=>a.localeCompare(b)));
   const binding = hash(JSON.stringify({path,source:ordered}));
-  const expected = spool.fileCursor(source.sourceId,binding);
-  const previous = expected ? JSON.parse(expected) as Cursor : null;
+  let expected = spool.fileCursor(source.sourceId,binding);
+  let previous = expected ? JSON.parse(expected) as Cursor : null;
   if(seal){
     if(Object.keys(seal).sort().join(",")!=="bytes,path,sha256" || !isAbsolute(seal.path) || !Number.isSafeInteger(seal.bytes) ||
       seal.bytes<0 || seal.bytes>1024*1024 || !/^[a-f0-9]{64}$/.test(seal.sha256))throw new SpoolError("invalid_rotation_seal");
     if(!previous)throw new SpoolError("rotation_without_checkpoint");
+    if(previous.handoff && (previous.handoff.device!==metadata.dev.toString() || previous.handoff.inode!==metadata.ino.toString() ||
+      previous.handoff.seal!==hash(JSON.stringify(seal))))throw new SpoolError("active_generation_changed");
     if(previous.device===metadata.dev.toString() && previous.inode===metadata.ino.toString())return {state:"rotation_already_completed",events:0};
     metadata=lstatSync(seal.path,{bigint:true});
     if(!metadata.isFile() || metadata.isSymbolicLink() || metadata.nlink!==1n)throw new SpoolError("unsafe_log_file");
@@ -52,7 +55,15 @@ function capture(spool: TelemetrySpool, config: FileSource, now: number, seal?: 
     const device=stat.dev.toString(),inode=stat.ino.toString(),offset=previous?.offset ?? 0;
     if (!Number.isSafeInteger(offset) || offset<0 || (previous && (previous.device!==device || previous.inode!==inode))) throw new SpoolError("rotation_requires_drain");
     if (BigInt(offset)>stat.size || (previous && anchor(fd,offset)!==previous.anchor)) throw new SpoolError("log_truncated_or_rewritten");
-    if(seal)verifySeal(fd,seal);
+    if(seal){
+      verifySeal(fd,seal);
+      if(!previous!.handoff){
+        const pinned: Cursor={...previous!,handoff:{device:activeMetadata.dev.toString(),inode:activeMetadata.ino.toString(),seal:hash(JSON.stringify(seal))}};
+        const serialized=JSON.stringify(pinned);
+        spool.commitFileCapture(source.sourceId,binding,expected,serialized);
+        previous=pinned;expected=serialized;
+      }
+    }
     const buffer=Buffer.alloc(65536);const count=readSync(fd,buffer,0,buffer.length,offset);
     const events: TelemetryEvent[]=[];let consumed=0;
     while(events.length<5){
@@ -73,7 +84,7 @@ function capture(spool: TelemetrySpool, config: FileSource, now: number, seal?: 
     if(verified!==consumed || !verify.equals(buffer.subarray(0,consumed)))throw new SpoolError("log_file_changed");
     const after=fstatSync(fd,{bigint:true});const current=lstatSync(path,{bigint:true});
     if(current.isSymbolicLink() || current.ino!==stat.ino || current.dev!==stat.dev || after.size<BigInt(offset+consumed))throw new SpoolError("rotation_requires_drain");
-    const next: Cursor={device,inode,offset:offset+consumed,anchor:anchor(fd,offset+consumed)};
+    const next: Cursor={device,inode,offset:offset+consumed,anchor:anchor(fd,offset+consumed),...(previous?.handoff?{handoff:previous.handoff}:{})};
     if(!events.length){
       if(seal){
         if(count!==0)throw new SpoolError("sealed_partial_line");

@@ -12,6 +12,19 @@ import { TelemetrySpool } from "../apps/telemetry-sender/spool.ts";
 import { captureFileOnce, captureSealedRotationOnce } from "../apps/telemetry-sender/file-capture.ts";
 
 const producer="fixture-producer";
+test("second rotation between drain passes cannot skip the pinned intermediate generation after restart",()=>{
+  const f=fixture();let reopened;
+  try{
+    writeFileSync(f.log,Array.from({length:12},(_,i)=>line(`old ${i}`)).join(""));captureFileOnce(f.spool,f.config);
+    renameSync(f.log,f.log+".1");writeFileSync(f.log,line("intermediate evidence"));const seal=sealFor(f.log+".1");
+    captureSealedRotationOnce(f.spool,f.config,seal);
+    f.spool.close();reopened=new TelemetrySpool(f.queue,producer);
+    renameSync(f.log,f.log+".2");writeFileSync(f.log,line("newest"));
+    assert.throws(()=>captureSealedRotationOnce(reopened,f.config,seal),/active_generation_changed/);
+    assert.throws(()=>captureFileOnce(reopened,f.config),/rotation_requires_drain/);
+    assert.equal(reopened.status()[0].batches,2);
+  }finally{if(reopened)reopened.close();else f.spool.close();rmSync(f.directory,{recursive:true});}
+});
 const sealFor=path=>{const raw=readFileSync(path);return {path,bytes:raw.length,sha256:createHash("sha256").update(raw).digest("hex")};};
 test("sealed rename rotation drains all old batches before atomically switching to active",async()=>{
   const f=fixture();try{
