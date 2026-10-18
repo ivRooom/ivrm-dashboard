@@ -46,13 +46,16 @@ export function captureFileOnce(spool: TelemetrySpool, config: FileSource, now =
         message:redactConsoleLogMessage(line.message)||"[REDACTED]"});
       consumed=end+1;
     }
-    if(!events.length)return {state:"idle",events:0};
     // Recheck the captured prefix before committing. File writers must be append-only.
     const verify=Buffer.alloc(consumed);const verified=readSync(fd,verify,0,consumed,offset);
     if(verified!==consumed || !verify.equals(buffer.subarray(0,consumed)))throw new SpoolError("log_file_changed");
     const after=fstatSync(fd,{bigint:true});const current=lstatSync(path,{bigint:true});
     if(current.isSymbolicLink() || current.ino!==stat.ino || current.dev!==stat.dev || after.size<BigInt(offset+consumed))throw new SpoolError("rotation_requires_drain");
     const next: Cursor={device,inode,offset:offset+consumed,anchor:anchor(fd,offset+consumed)};
+    if(!events.length){
+      if(expected===null)spool.commitFileCapture(source.sourceId,binding,null,JSON.stringify(next));
+      return {state:"idle",events:0};
+    }
     const raw=Buffer.from(JSON.stringify({schemaVersion:1,producerId:spool.producerId,batchId:randomUUID(),events}));
     spool.commitFileCapture(source.sourceId,binding,expected,JSON.stringify(next),raw);
     return {state:"queued",events:events.length};

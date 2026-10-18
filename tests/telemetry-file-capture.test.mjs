@@ -11,6 +11,16 @@ import { TelemetrySpool } from "../apps/telemetry-sender/spool.ts";
 import { captureFileOnce } from "../apps/telemetry-sender/file-capture.ts";
 
 const producer="fixture-producer";
+test("initial partial or empty file pins identity before idle and detects later rotation",()=>{
+  for(const initial of ["",line("unfinished").trimEnd()]){
+    const f=fixture();try{
+      writeFileSync(f.log,initial);assert.equal(captureFileOnce(f.spool,f.config).state,"idle");
+      renameSync(f.log,f.log+".1");writeFileSync(f.log,line("replacement"));
+      assert.throws(()=>captureFileOnce(f.spool,f.config),/rotation_requires_drain/);
+      assert.equal(f.spool.status().length,0);
+    }finally{f.close();}
+  }
+});
 function fixture(options={}){
   const directory=mkdtempSync(join(tmpdir(),"ivrm-file-capture-"));
   const log=join(directory,"projected.jsonl"),queue=join(directory,"queue");writeFileSync(log,"");

@@ -85,12 +85,12 @@ export class TelemetrySpool {
     if (row && row.configuration !== configuration) throw new SpoolError("source_configuration_changed");
     return row ? String(row.cursor) : null;
   }
-  commitFileCapture(source: string, configuration: string, expected: string | null, next: string, raw: Uint8Array) {
+  commitFileCapture(source: string, configuration: string, expected: string | null, next: string, raw?: Uint8Array) {
     if (next.length > 1024) throw new SpoolError("invalid_cursor");
     return this.transaction(() => {
       if (this.fileCursor(source,configuration) !== expected) throw new SpoolError("cursor_changed");
       if (expected === null && Number(this.db.prepare("SELECT count(*) AS n FROM file_cursors").get()!.n) >= 64) throw new SpoolError("source_limit");
-      const result = this.enqueueWithinTransaction(raw);
+      const result = raw ? this.enqueueWithinTransaction(raw) : "checkpointed";
       this.db.prepare("INSERT INTO file_cursors VALUES(?,?,?) ON CONFLICT(source) DO UPDATE SET cursor=excluded.cursor").run(source,configuration,next);
       return result;
     });
