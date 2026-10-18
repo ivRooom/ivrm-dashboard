@@ -5,7 +5,7 @@ import { TelemetrySpool, SpoolError } from "./spool";
 import { parseTelemetryBatch, type TelemetryEvent, type TelemetrySource } from "../web/lib/telemetry-core";
 import { redactConsoleLogMessage } from "../web/lib/log-report";
 
-export type FileSource = { path: string; source: TelemetrySource };
+export type FileSource = { path: string; source: TelemetrySource; format?: "projected-jsonl" | "docker-json-export" };
 export type SealedRotation = { path: string; bytes: number; sha256: string };
 type Cursor = { device: string; inode: string; offset: number; anchor: string;
   handoff?: { device: string; inode: string; seal: string } };
@@ -22,7 +22,10 @@ export function captureSealedRotationOnce(spool: TelemetrySpool, config: FileSou
 }
 
 function capture(spool: TelemetrySpool, config: FileSource, now: number, seal?: SealedRotation) {
-  if (Object.keys(config).sort().join(",")!=="path,source" || !isAbsolute(config.path) || !config.source || !["application","container","systemd"].includes(config.source.type)) throw new SpoolError("invalid_file_source");
+  const keys=Object.keys(config).sort().join(","),format=config.format??"projected-jsonl";
+  if (!["path,source","format,path,source"].includes(keys) || !["projected-jsonl","docker-json-export"].includes(format) ||
+    !isAbsolute(config.path) || !config.source || !["application","container","systemd"].includes(config.source.type)) throw new SpoolError("invalid_file_source");
+  if(format==="docker-json-export" && (config.source.type!=="container" || !config.source.resourceId))throw new SpoolError("invalid_container_source");
   let metadata = lstatSync(config.path,{bigint:true});
   if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.nlink !== 1n) throw new SpoolError("unsafe_log_file");
   let path = realpathSync(config.path);
@@ -33,7 +36,7 @@ function capture(spool: TelemetrySpool, config: FileSource, now: number, seal?: 
     kind: "log", level: "info", outcome: "observed", message: "validation" };
   parseTelemetryBatch(Buffer.from(JSON.stringify({schemaVersion:1,producerId:spool.producerId,batchId:randomUUID(),events:[sample]})),now);
   const ordered = Object.fromEntries(Object.entries(source).sort(([a],[b])=>a.localeCompare(b)));
-  const binding = hash(JSON.stringify({path,source:ordered}));
+  const binding = hash(JSON.stringify({path,source:ordered,...(format==="docker-json-export"?{format}:{})}));
   let expected = spool.fileCursor(source.sourceId,binding);
   let previous = expected ? JSON.parse(expected) as Cursor : null;
   if(seal){
@@ -73,10 +76,9 @@ function capture(spool: TelemetrySpool, config: FileSource, now: number, seal?: 
       let line: Record<string,unknown>;
       try{line=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(buffer.subarray(consumed,end)));}
       catch{throw new SpoolError("invalid_projected_log");}
-      if(!line || Array.isArray(line) || typeof line!=="object" || Object.keys(line).sort().join(",")!=="level,message,observedAt" ||
-        typeof line.message!=="string" || typeof line.observedAt!=="string" || typeof line.level!=="string") throw new SpoolError("invalid_projected_log");
-      events.push({...sample,eventId:randomUUID(),observedAt:line.observedAt,level:line.level,
-        message:redactConsoleLogMessage(line.message)||"[REDACTED]"});
+      const decoded=decodeLine(line,format);
+      events.push({...sample,eventId:randomUUID(),observedAt:decoded.observedAt,level:decoded.level,
+        message:redactConsoleLogMessage(decoded.message)||"[REDACTED]"});
       consumed=end+1;
     }
     // Recheck the captured prefix before committing. File writers must be append-only.
@@ -103,6 +105,19 @@ function capture(spool: TelemetrySpool, config: FileSource, now: number, seal?: 
     spool.commitFileCapture(source.sourceId,binding,expected,JSON.stringify(next),raw);
     return {state:"queued",events:events.length};
   } finally {closeSync(fd);}
+}
+
+function decodeLine(line:Record<string,unknown>,format:string){
+  if(!line || Array.isArray(line) || typeof line!=="object")throw new SpoolError("invalid_projected_log");
+  if(format==="docker-json-export"){
+    if(Object.keys(line).sort().join(",")!=="log,stream,time" || typeof line.log!=="string" || typeof line.time!=="string" ||
+      !["stdout","stderr"].includes(String(line.stream)))throw new SpoolError("invalid_docker_log");
+    // stderr identifies a stream, not severity or proof of an attack.
+    return {observedAt:line.time,level:"info",message:`[${line.stream}] ${line.log}`};
+  }
+  if(Object.keys(line).sort().join(",")!=="level,message,observedAt" || typeof line.message!=="string" ||
+    typeof line.observedAt!=="string" || typeof line.level!=="string")throw new SpoolError("invalid_projected_log");
+  return {observedAt:line.observedAt,level:line.level,message:line.message};
 }
 
 function verifySeal(fd:number,seal:SealedRotation){

@@ -12,6 +12,35 @@ import { TelemetrySpool } from "../apps/telemetry-sender/spool.ts";
 import { captureFileOnce, captureSealedRotationOnce } from "../apps/telemetry-sender/file-capture.ts";
 
 const producer="fixture-producer";
+test("Docker JSON export keeps nanosecond event time and stream without inventing severity or actor",async()=>{
+  const f=fixture();try{
+    f.config.format="docker-json-export";f.config.source.type="container";f.config.source.resourceId="fixture-container";
+    const time=new Date().toISOString().replace("Z","000001Z");
+    writeFileSync(f.log,JSON.stringify({log:"Bearer fixture-secret peer=192.0.2.4\n",stream:"stderr",time})+"\n");
+    captureFileOnce(f.spool,f.config);assert.equal(captureFileOnce(f.spool,f.config).state,"idle");
+    const events=await messages(f.spool);assert.equal(events[0].observedAt,time);assert.equal(events[0].level,"info");
+    assert.equal(events[0].outcome,"observed");assert.match(events[0].message,/^\[stderr\].*REDACTED/);
+    assert.ok(!events[0].actor && !events[0].clientIp);
+    assert.equal(readFileSync(join(f.queue,"telemetry.sqlite")).includes(Buffer.from("fixture-secret")),false);
+  }finally{f.close();}
+});
+test("Docker exports reject unknown fields, forged streams and missing registered container identity",()=>{
+  for(const extra of [{attrs:{env:"secret"}},{stream:"other"},{time:"2000-01-01T00:00:00Z"}]){
+    const f=fixture();try{
+      f.config.format="docker-json-export";f.config.source.type="container";f.config.source.resourceId="fixture-container";
+      writeFileSync(f.log,JSON.stringify({log:"hello",stream:"stdout",time:new Date().toISOString(),...extra})+"\n");
+      assert.throws(()=>captureFileOnce(f.spool,f.config));assert.equal(f.spool.status().length,0);
+    }finally{f.close();}
+  }
+  const f=fixture();try{f.config.format="docker-json-export";assert.throws(()=>captureFileOnce(f.spool,f.config),/invalid_container_source/);}finally{f.close();}
+});
+test("source format cannot be changed behind an existing checkpoint",()=>{
+  const f=fixture();try{
+    f.config.source.type="container";f.config.source.resourceId="fixture-container";
+    writeFileSync(f.log,line());captureFileOnce(f.spool,f.config);
+    f.config.format="docker-json-export";assert.throws(()=>captureFileOnce(f.spool,f.config),/source_configuration_changed/);
+  }finally{f.close();}
+});
 test("second rotation between drain passes cannot skip the pinned intermediate generation after restart",()=>{
   const f=fixture();let reopened;
   try{
