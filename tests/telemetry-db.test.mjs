@@ -19,7 +19,7 @@ if (container) {
 const quote = value => `'${String(value).replaceAll("'", "''")}'`;
 async function sql(query) {
   const command = container ? "docker" : "psql";
-  const args = container ? ["exec", container, "psql", "-U", "postgres", "-Atq", "-v", "ON_ERROR_STOP=1", "-c", query] :
+  const args = container ? ["exec", container, "psql", "-U", "postgres", "-d", "telemetry_test", "-Atq", "-v", "ON_ERROR_STOP=1", "-c", query] :
     [databaseUrl, "-Atq", "-v", "ON_ERROR_STOP=1", "-c", query];
   return (await exec(command, args, { maxBuffer: 1024 * 1024 })).stdout.trim();
 }
