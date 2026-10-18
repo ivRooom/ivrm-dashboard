@@ -122,7 +122,7 @@ export class TelemetrySpool {
         // Never log or persist response bodies; they may include secrets/HTML.
         await response.body?.cancel();
         if ([400,401,403,409,413,415].includes(response.status)) { state = "blocked"; reason = "request_rejected"; }
-        else if (response.status === 429 || response.status === 503) {
+        else if (response.status === 408 || response.status === 429 || response.status === 503) {
           reason = "receiver_unavailable";
           const retry = response.headers.get("Retry-After");
           const seconds = retry && /^\d+$/.test(retry) ? Number(retry) : retry ? (Date.parse(retry)-this.now())/1000 : 0;

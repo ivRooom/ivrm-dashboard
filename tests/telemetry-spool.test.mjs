@@ -12,6 +12,13 @@ import { handleTelemetryRequest } from "../apps/web/lib/telemetry-ingest.ts";
 
 const secret = "a".repeat(64);
 const producer = "fixture-producer";
+test("HTTP 408 keeps the batch retryable and delivers after recovery",async()=>{
+  let now=Date.now();const f=fixture({now:()=>now});f.db.enqueue(batch(now));
+  try{
+    assert.equal(await f.db.deliver(secret,async()=>new Response(null,{status:408})),"pending");
+    now+=90_000;assert.equal(await f.db.deliver(secret,request=>ack(request)),"delivered");
+  }finally{f.cleanup();}
+});
 const baseNow = Date.now();
 function batch(now=baseNow) {
   return Buffer.from(JSON.stringify({ schemaVersion: 1, producerId: producer, batchId: randomUUID(), events: [{
