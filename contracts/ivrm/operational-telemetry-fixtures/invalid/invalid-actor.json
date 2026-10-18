@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "batchId": "00000000-0000-4000-8000-000000000001",
+  "producerId": "fixture-producer",
+  "events": [
+    {
+      "eventId": "00000000-0000-4000-8000-000000000002",
+      "observedAt": "2026-10-17T09:00:00Z",
+      "source": {
+        "serviceId": "fixture-service",
+        "sourceId": "fixture-container",
+        "type": "container",
+        "provider": "oci",
+        "hostId": "fixture-host"
+      },
+      "kind": "log",
+      "level": "info",
+      "outcome": "observed",
+      "message": "Redacted fixture log",
+      "actor": {
+        "type": "intruder",
+        "provider": "fixture-idp"
+      }
+    }
+  ]
+}
