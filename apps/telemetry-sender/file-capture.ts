@@ -111,7 +111,7 @@ function decodeLine(line:Record<string,unknown>,format:string){
   if(!line || Array.isArray(line) || typeof line!=="object")throw new SpoolError("invalid_projected_log");
   if(format==="docker-json-export"){
     if(Object.keys(line).sort().join(",")!=="log,stream,time" || typeof line.log!=="string" || typeof line.time!=="string" ||
-      !["stdout","stderr"].includes(String(line.stream)))throw new SpoolError("invalid_docker_log");
+      typeof line.stream!=="string" || !["stdout","stderr"].includes(line.stream))throw new SpoolError("invalid_docker_log");
     // stderr identifies a stream, not severity or proof of an attack.
     return {observedAt:line.time,level:"info",message:`[${line.stream}] ${line.log}`};
   }

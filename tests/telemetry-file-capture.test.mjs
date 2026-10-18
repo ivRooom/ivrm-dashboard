@@ -25,7 +25,7 @@ test("Docker JSON export keeps nanosecond event time and stream without inventin
   }finally{f.close();}
 });
 test("Docker exports reject unknown fields, forged streams and missing registered container identity",()=>{
-  for(const extra of [{attrs:{env:"secret"}},{stream:"other"},{time:"2000-01-01T00:00:00Z"}]){
+  for(const extra of [{attrs:{env:"secret"}},{stream:"other"},{stream:["stdout"]},{stream:{value:"stdout"}},{stream:null},{time:"2000-01-01T00:00:00Z"}]){
     const f=fixture();try{
       f.config.format="docker-json-export";f.config.source.type="container";f.config.source.resourceId="fixture-container";
       writeFileSync(f.log,JSON.stringify({log:"hello",stream:"stdout",time:new Date().toISOString(),...extra})+"\n");
