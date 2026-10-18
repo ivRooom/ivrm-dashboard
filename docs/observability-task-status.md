@@ -18,3 +18,5 @@
 今回の順序はPR148のHTTP408指摘修正→capture/checkpoint→環境別収集/アーカイブ。PR148 `6bf128f` のWeb/Agent/semgrepは成功。該当指摘は解決済み。CodeRabbitはstacked baseを対象外としているためレビュー完了と扱わない。他の自動reviewが出した指摘は別途確認する。
 
 PR147/148とcontracts18は未merge。candidate pinのまま本番送信を開始できない。Production deploy/DB/IAM/DNS/Secret/timer/flag/課金変更なし。準備PRをmergeして本番deployを起動する場合も対象別承認を分離する。
+
+追記: PR149の初回idleでfile識別子を保存しない指摘を `91070b9` で修正。空/partial行からのrotationを検知する。次段で管理されたwriter終了済みfileのseal付きdrainを準備し、checksum・末尾・容量・cursor保存の条件を満たした場合だけ新fileへ移す。無制限の自動rotation処理や本番収集は未導入。
