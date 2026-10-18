@@ -4,11 +4,11 @@
 
 ## 範囲
 
-`apps/telemetry-sender` は正規化済みbatchを永続キューへ入れて送る共通部品。Docker、systemd、OS認証、proxy、Vercel、Cloudflareのログを読み出すアダプター、読み取り位置checkpoint、timer、配布artifactは未実装。これだけで全システムの収集は始まらない。
+`apps/telemetry-sender` は正規化済みbatchを永続キューへ入れて送る共通部品。追加の `capture-once` は固定パスの投影済みJSONLを読み、checkpointとbatchを同じtransactionで保存する。Docker、systemd、OS認証、proxy、Vercel、Cloudflareのネイティブ形式アダプター、timer、配布artifactは未実装。これだけで全システムの収集は始まらない。
 
 受信側と同じrevision固定Schemaでenqueue時に検証する。SQLiteで原文byte列とbatch IDを固定してcommit後にqueuedを返す。送信時は毎回nonce/時刻/HMACを作り直す。200/202のSchema・batch ID・件数・replayedを検証したときだけ本文を解放し、重複比較用hashを保持する。応答不明や接続切断では同じ本文を再送する。これはat-least-once送信と受信側の冪等性の組み合わせであり、ネットワーク上のexactly-onceを保証するものではない。
 
-同じDBを利用するプロセスはSQLite transactionと30秒leaseで送信権を取得する。leaseを取り直した後の古いworkerは結果を書き込めない。既定20試行、7日超過、恒久拒否でblockedへ移し、本文を保管する。429/503はRetry-Afterと指数backoff＋jitterを適用する。404は未有効化として再試行する。blockedの自動再開・削除は行わない。
+同じDBを利用するプロセスはSQLite transactionと30秒leaseで送信権を取得する。leaseを取り直した後の古いworkerは結果を書き込めない。既定20試行、7日超過、恒久拒否でblockedへ移し、本文を保管する。408/429/503はRetry-Afterと指数backoff＋jitterを適用する。404は未有効化として再試行する。blockedの自動再開・削除は行わない。
 
 ## 使用条件
 
