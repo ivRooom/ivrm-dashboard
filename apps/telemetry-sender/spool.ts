@@ -44,6 +44,7 @@ export class TelemetrySpool {
         events INTEGER NOT NULL, oldest REAL NOT NULL, state TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
         due REAL NOT NULL DEFAULT 0, lease_until REAL NOT NULL DEFAULT 0, token TEXT, reason TEXT);
       CREATE INDEX IF NOT EXISTS jobs_due ON jobs(state,due,lease_until);`);
+    this.db.exec(`CREATE TABLE IF NOT EXISTS file_cursors(source TEXT PRIMARY KEY, configuration TEXT NOT NULL, cursor TEXT NOT NULL);`);
     try {
       this.transaction(() => {
         const existing = this.db.prepare("SELECT producer,configuration FROM metadata").get();
@@ -61,10 +62,12 @@ export class TelemetrySpool {
     catch (error) { this.db.exec("ROLLBACK"); throw error; }
   }
   enqueue(raw: Uint8Array): "queued" | "duplicate" {
+    return this.transaction(() => this.enqueueWithinTransaction(raw));
+  }
+  private enqueueWithinTransaction(raw: Uint8Array): "queued" | "duplicate" {
     const batch = parseTelemetryBatch(raw, this.now());
     if (batch.producerId !== this.producerId) throw new SpoolError("producer_mismatch");
     const id = batch.batchId.toLowerCase(), digest = createHash("sha256").update(raw).digest("hex");
-    return this.transaction(() => {
       const existing = this.db.prepare("SELECT digest FROM jobs WHERE id=?").get(id);
       if (existing) {
         if (existing.digest !== digest) throw new SpoolError("content_conflict");
@@ -75,6 +78,21 @@ export class TelemetrySpool {
       this.db.prepare("INSERT INTO jobs(id,digest,raw,events,oldest,state) VALUES(?,?,?,?,?,'pending')")
         .run(id, digest, raw, batch.events.length, Math.min(...batch.events.map(e => Date.parse(e.observedAt))));
       return "queued";
+  }
+  fileCursor(source: string, configuration: string): string | null {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(source) || !/^[a-f0-9]{64}$/.test(configuration)) throw new SpoolError("invalid_configuration");
+    const row = this.db.prepare("SELECT configuration,cursor FROM file_cursors WHERE source=?").get(source);
+    if (row && row.configuration !== configuration) throw new SpoolError("source_configuration_changed");
+    return row ? String(row.cursor) : null;
+  }
+  commitFileCapture(source: string, configuration: string, expected: string | null, next: string, raw?: Uint8Array) {
+    if (next.length > 1024) throw new SpoolError("invalid_cursor");
+    return this.transaction(() => {
+      if (this.fileCursor(source,configuration) !== expected) throw new SpoolError("cursor_changed");
+      if (expected === null && Number(this.db.prepare("SELECT count(*) AS n FROM file_cursors").get()!.n) >= 64) throw new SpoolError("source_limit");
+      const result = raw ? this.enqueueWithinTransaction(raw) : "checkpointed";
+      this.db.prepare("INSERT INTO file_cursors VALUES(?,?,?) ON CONFLICT(source) DO UPDATE SET cursor=excluded.cursor").run(source,configuration,next);
+      return result;
     });
   }
   status() {
