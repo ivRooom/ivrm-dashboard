@@ -20,3 +20,5 @@
 PR147/148とcontracts18は未merge。candidate pinのまま本番送信を開始できない。Production deploy/DB/IAM/DNS/Secret/timer/flag/課金変更なし。準備PRをmergeして本番deployを起動する場合も対象別承認を分離する。
 
 追記: PR149の初回idleでfile識別子を保存しない指摘を `91070b9` で修正。空/partial行からのrotationを検知する。次段で管理されたwriter終了済みfileのseal付きdrainを準備し、checksum・末尾・容量・cursor保存の条件を満たした場合だけ新fileへ移す。無制限の自動rotation処理や本番収集は未導入。
+
+追記: PR150の複数回drain中に中間世代を飛ばし得る指摘を `dc5c87c` で修正。切替先device/inodeとsealをcursorへ永続固定し、別のrotationが入れば停止する。次段はDocker JSON export parserで、取得daemonやDocker内部storage直読は導入しない。S3定期保存/MFA等の残件は変わらない。
