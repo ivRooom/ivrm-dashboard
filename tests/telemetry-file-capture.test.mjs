@@ -3,14 +3,61 @@ import { mkdtempSync, rmSync, writeFileSync, appendFileSync, renameSync, readFil
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 import { TelemetrySpool } from "../apps/telemetry-sender/spool.ts";
-import { captureFileOnce } from "../apps/telemetry-sender/file-capture.ts";
+import { captureFileOnce, captureSealedRotationOnce } from "../apps/telemetry-sender/file-capture.ts";
 
 const producer="fixture-producer";
+const sealFor=path=>{const raw=readFileSync(path);return {path,bytes:raw.length,sha256:createHash("sha256").update(raw).digest("hex")};};
+test("sealed rename rotation drains all old batches before atomically switching to active",async()=>{
+  const f=fixture();try{
+    const observedAt=new Date().toISOString();
+    writeFileSync(f.log,Array.from({length:12},(_,i)=>line(`old ${i}`,{observedAt})).join(""));
+    captureFileOnce(f.spool,f.config);renameSync(f.log,f.log+".1");writeFileSync(f.log,line("new"));const seal=sealFor(f.log+".1");
+    assert.equal(captureSealedRotationOnce(f.spool,f.config,seal).events,5);
+    assert.equal(captureSealedRotationOnce(f.spool,f.config,seal).events,2);
+    assert.equal(captureSealedRotationOnce(f.spool,f.config,seal).state,"rotated");
+    assert.equal(captureSealedRotationOnce(f.spool,f.config,seal).state,"rotation_already_completed");
+    assert.equal(captureFileOnce(f.spool,f.config).events,1);
+    assert.deepEqual((await messages(f.spool)).map(e=>e.message),[...Array.from({length:12},(_,i)=>`old ${i}`),"new"]);
+  }finally{f.close();}
+});
+test("changed seal, wrong file identity and unterminated sealed tail cannot trigger handoff",()=>{
+  for(const mode of ["hash","size","inode","growth","partial"]){
+    const f=fixture();try{
+      writeFileSync(f.log,mode==="partial"?line("unfinished").trimEnd():line());captureFileOnce(f.spool,f.config);
+      renameSync(f.log,f.log+".1");writeFileSync(f.log,line("new"));let seal=sealFor(f.log+".1");
+      if(mode==="hash")seal.sha256="0".repeat(64);
+      if(mode==="size")seal.bytes++;
+      if(mode==="inode"){const wrong=f.log+".wrong";writeFileSync(wrong,line());seal=sealFor(wrong);}
+      if(mode==="growth")appendFileSync(seal.path,line("late write"));
+      assert.throws(()=>captureSealedRotationOnce(f.spool,f.config,seal),/sealed_file_changed|rotation_requires_drain|sealed_partial_line/);
+      assert.throws(()=>captureFileOnce(f.spool,f.config),/rotation_requires_drain/);
+    }finally{f.close();}
+  }
+});
+test("full queue cannot move the cursor past unread sealed evidence",()=>{
+  const f=fixture({maxRows:1});try{
+    writeFileSync(f.log,line("first"));captureFileOnce(f.spool,f.config);appendFileSync(f.log,line("unread"));
+    renameSync(f.log,f.log+".1");writeFileSync(f.log,line("new"));const seal=sealFor(f.log+".1");
+    assert.throws(()=>captureSealedRotationOnce(f.spool,f.config,seal),/spool_full/);
+    assert.throws(()=>captureFileOnce(f.spool,f.config),/rotation_requires_drain/);
+  }finally{f.close();}
+});
+test("handoff checkpoint failure preserves old identity and can be retried",()=>{
+  const f=fixture();try{
+    writeFileSync(f.log,line());captureFileOnce(f.spool,f.config);renameSync(f.log,f.log+".1");writeFileSync(f.log,line("new"));const seal=sealFor(f.log+".1");
+    const db=new DatabaseSync(join(f.queue,"telemetry.sqlite"));db.exec("CREATE TRIGGER fixture_handoff BEFORE UPDATE ON file_cursors BEGIN SELECT RAISE(ABORT,'fixture'); END;");
+    try{
+      assert.throws(()=>captureSealedRotationOnce(f.spool,f.config,seal));assert.throws(()=>captureFileOnce(f.spool,f.config),/rotation_requires_drain/);
+      db.exec("DROP TRIGGER fixture_handoff");assert.equal(captureSealedRotationOnce(f.spool,f.config,seal).state,"rotated");
+    }finally{db.close();}
+  }finally{f.close();}
+});
 test("initial partial or empty file pins identity before idle and detects later rotation",()=>{
   for(const initial of ["",line("unfinished").trimEnd()]){
     const f=fixture();try{

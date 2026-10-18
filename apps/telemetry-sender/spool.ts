@@ -104,7 +104,7 @@ export class TelemetrySpool {
       // Expired evidence stays on disk for explicit operator handling.
       this.db.prepare("UPDATE jobs SET state='blocked',reason='event_expired',token=NULL WHERE state='pending' AND lease_until<=? AND oldest<?").run(now, now-MAX_AGE);
       this.db.prepare("UPDATE jobs SET state='blocked',reason='attempt_limit',token=NULL WHERE state='pending' AND lease_until<=? AND attempts>=?").run(now,this.maxAttempts);
-      const row = this.db.prepare("SELECT id,raw,attempts FROM jobs WHERE state='pending' AND due<=? AND lease_until<=? ORDER BY oldest,id LIMIT 1").get(now, now);
+      const row = this.db.prepare("SELECT id,raw,attempts FROM jobs WHERE state='pending' AND due<=? AND lease_until<=? ORDER BY oldest,rowid LIMIT 1").get(now, now);
       if (!row) return;
       const token = randomBytes(16).toString("hex");
       this.db.prepare("UPDATE jobs SET token=?,lease_until=?,attempts=attempts+1 WHERE id=?").run(token, now+30_000, row.id!);

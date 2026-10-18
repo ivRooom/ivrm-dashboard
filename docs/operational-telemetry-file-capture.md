@@ -2,6 +2,8 @@
 
 Tracking: #135 / #136 / #142。受信PR #147、送信PR #148に依存する。
 
+追記: 管理されたwriterの終了を宣言した旧fileだけを読み継ぐ `drain-once` を追加。手順と制約は [sealed rotation](./operational-telemetry-sealed-rotation.md) を参照。通常captureでの自動探索・自動rotation drainは行わない。
+
 ## 対象と使い方
 
 アプリ/コンテナ/systemd用の**投影済みJSONL**を、管理者が設定した1つの絶対パスから読み取る。Docker socket、任意コマンド、SSH、journalctl、provider APIには接続しない。Docker json-fileのネイティブ形式やOS認証ログを直接読むアダプターではない。
