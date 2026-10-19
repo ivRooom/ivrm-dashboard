@@ -48,7 +48,7 @@ jobs:
       - name: Telemetry送信spoolの型と耐障害性をテスト
         run: |
           pnpm --filter @ivrm/web exec tsc --project ../telemetry-sender/tsconfig.json
-          pnpm --filter @ivrm/web exec tsx --test ../../tests/telemetry-spool.test.mjs ../../tests/telemetry-file-capture.test.mjs
+          pnpm --filter @ivrm/web exec tsx --test ../../tests/telemetry-spool.test.mjs ../../tests/telemetry-file-capture.test.mjs ../../tests/telemetry-health.test.mjs
       - name: Telemetry原子性・並行処理・権限を実DBでテスト
         env:
           TELEMETRY_TEST_DATABASE_URL: postgresql://postgres@localhost:5432/telemetry_test
