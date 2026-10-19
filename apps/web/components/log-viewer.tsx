@@ -8,6 +8,7 @@ import {
   type ConsoleLogSourceName,
 } from "../lib/console-log-types";
 import type { ConsoleLogEntry } from "../lib/logs";
+import { serializeLogEntries, type LogExportFormat } from "../lib/log-export";
 import styles from "./log-viewer.module.css";
 
 const POLL_INTERVAL_MS = 5_000;
@@ -78,6 +79,7 @@ export function LogViewer({
   const [autoScroll, setAutoScroll] = useState(true);
   const [atBottom, setAtBottom] = useState(true);
   const [pollError, setPollError] = useState(false);
+  const [exportStatus, setExportStatus] = useState("");
   const [lastPollAt, setLastPollAt] = useState<string | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const lastIdRef = useRef(initialEntries.at(-1)?.id ?? 0);
@@ -191,6 +193,40 @@ export function LogViewer({
       ? "自動スクロール停止"
       : "自動スクロール再開";
 
+  const copyEntries = async (selected: readonly ConsoleLogEntry[]) => {
+    try {
+      await navigator.clipboard.writeText(serializeLogEntries(selected, "txt"));
+      setExportStatus(`${selected.length}行をコピーしました。`);
+    } catch {
+      setExportStatus("コピーできませんでした。ブラウザの権限を確認するか、TXT出力をご利用ください。");
+    }
+  };
+
+  const downloadEntries = (format: LogExportFormat) => {
+    let objectUrl: string | null = null;
+    let anchor: HTMLAnchorElement | null = null;
+    try {
+      const blob = new Blob([serializeLogEntries(entries, format)], {
+        type: format === "jsonl" ? "application/x-ndjson;charset=utf-8" : "text/plain;charset=utf-8",
+      });
+      objectUrl = URL.createObjectURL(blob);
+      anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = `ivrm-visible-logs-${new Date().toISOString().replace(/[:.]/g, "-")}.${format}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      setExportStatus(`表示中の${entries.length}行を${format.toUpperCase()}で出力しました。全検索結果ではありません。`);
+    } catch {
+      setExportStatus("ファイルを出力できませんでした。ブラウザの設定を確認してください。");
+    } finally {
+      anchor?.remove();
+      if (objectUrl) {
+        const completedUrl = objectUrl;
+        window.setTimeout(() => URL.revokeObjectURL(completedUrl), 1_000);
+      }
+    }
+  };
+
   return (
     <section className={styles.viewer} aria-label="Console Log Viewer">
       <div className={styles.toolbar}>
@@ -235,6 +271,16 @@ export function LogViewer({
         </div>
       </div>
 
+      <div className={styles.exportToolbar}>
+        <div className={styles.actions}>
+          <button disabled={entries.length === 0} onClick={() => void copyEntries(entries)} type="button">表示中をコピー</button>
+          <button disabled={entries.length === 0} onClick={() => downloadEntries("txt")} type="button">TXT出力</button>
+          <button disabled={entries.length === 0} onClick={() => downloadEntries("jsonl")} type="button">JSONL出力</button>
+        </div>
+        <span>対象: 表示中 {entries.length}行（最大{MAX_RENDERED_ENTRIES}行）。全検索結果ではありません。</span>
+        <span role="status">{exportStatus}</span>
+      </div>
+
       <div
         aria-label="ログ出力"
         aria-live="off"
@@ -257,6 +303,12 @@ export function LogViewer({
                 <span className={styles.source}>{entry.sourceName}</span>
                 <span className={`${styles.level} ${styles[`level${entry.level}`]}`}>{entry.level}</span>
                 <code>{entry.message}</code>
+                <button
+                  aria-label={`ログ ${entry.id} をコピー`}
+                  className={styles.copyLine}
+                  onClick={() => void copyEntries([entry])}
+                  type="button"
+                >コピー</button>
               </li>
             ))}
           </ol>

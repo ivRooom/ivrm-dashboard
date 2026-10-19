@@ -252,3 +252,13 @@ Phase B以降では、このLog ViewerをOperation Terminalへ再利用します
 - 許可済みMinecraft commandの結果
 
 汎用OS shellとは分離し、Operation API / RBAC / CSRF / Idempotency / Lock / Auditを満たす操作だけを表示します。
+# 表示中ログのコピー・出力（Issue #135 / 親 #142）
+
+ログ行の「コピー」で1行、ツールバーの「表示中をコピー」で現在読み込まれている行をまとめてコピーできる。TXTとJSONLをブラウザ内で生成して保存する。新しい取得APIやcredentialは追加せず、既存の画面認可とredact済みデータを使用する。
+
+- 対象は表示中の最大800行。検索期間内の全件取得・長期保管の出力ではない。画面の件数と上限を確認する。
+- TXTは発生時刻（UTC）、host/source、level、本文。JSONLはid、発生/受信時刻、server/source、level、本文の固定フィールドだけを出力する。未知のmetadata等は含めない。
+- 空のときは一括コピー/出力を無効化する。コピー権限の拒否は画面に案内し、TXTを代替にする。ダウンロード用object URLは処理後に解放する。
+- 本機能の出力はローカル操作であり、専用のserver-side export監査記録は追加しない。全件exportの専用認可・監査、選択範囲、CSV、AWS archiveは#135/#137の残タスク。
+
+検証: serializerのJSONL改行/Unicode/field境界テスト、型チェック、build。local mock store（秘密・本番データなし）を使用し、Playwright/Edgeで1行/一括clipboard、TXT/JSONLの実downloadと内容、コピー拒否の案内、1440px/390px表示を確認。唯一のconsole errorは既存favicon.icoの404。本番認証/APIの受入は別途行う。

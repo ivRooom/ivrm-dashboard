@@ -40,10 +40,12 @@
 .actions {
   flex: 0 0 auto;
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
 }
 
-.actions button {
+.actions button,
+.copyLine {
   min-height: 32px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-pill);
@@ -54,6 +56,26 @@
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-bold);
   cursor: pointer;
+}
+
+.actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.exportToolbar {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-default);
+  border-bottom: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.copyLine:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: var(--focus-offset);
 }
 
 .actions button:hover,
@@ -93,7 +115,7 @@
 
 .line {
   display: grid;
-  grid-template-columns: 116px 148px 70px minmax(340px, 1fr);
+  grid-template-columns: 116px 148px 70px minmax(340px, 1fr) 68px;
   gap: 10px;
   align-items: baseline;
   min-height: 28px;
@@ -205,7 +227,8 @@
     grid-template-columns: 104px minmax(0, 1fr) auto;
     grid-template-areas:
       "time source level"
-      "message message message";
+      "message message message"
+      "copy copy copy";
     gap: 2px 8px;
     align-items: start;
     padding-block: 7px;
@@ -228,6 +251,11 @@
     grid-area: message;
     display: block;
     padding-top: 2px;
+  }
+
+  .copyLine {
+    grid-area: copy;
+    justify-self: end;
   }
 }
 
