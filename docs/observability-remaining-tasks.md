@@ -26,4 +26,3 @@
 platform #52〜54とdashboard #153のDB集約計画もopen。別タスクとして所有者/容量/移行条件の確定待ちで、このPRはDB接続先や保存先を変更しない。S3や時系列追加との容量依存を比較に含める。
 
 Runtime Producer/ConsumerやAPI/Event契約は今回変更しない。healthはローカル運用CLIだけで外部公開しない。Telemetry contract candidateは本番送信不可のまま。base PR151、既存契約→受信→sender/capture/rotation/export→本PRの順。rollbackは新CLI利用停止/コードrevert、queue証跡を保全する。
-
