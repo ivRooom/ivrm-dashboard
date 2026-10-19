@@ -7,7 +7,7 @@
 | P0 | passkeyまたは認証アプリ2FA必須 #133/#54 | 方針のみ。Discord OAuth成功だけでMFA済みにしない | 登録/紛失/独立復旧とserver側認証強度・重要操作再認証を実装、直接API等の否定試験 |
 | P0 | Secret管理 platform #44〜46/#26/#27/#38、#152 | 値なし台帳/入口/保護metadata/CI候補/pilot計画 | job→Environment→OIDC→role→配送先を照合。方式・費用比較、dummy rotation/失効/復旧実証。UIは値read/write/IAM/deploy権限なし |
 | P1 | 全systemログ #135/#131 | PR145コピー/出力、146台帳、147受信、148永続キュー、149固定file、150rotation、151Docker export | 契約release・merged pin、Linux配布/runtime固定、Docker安全exporter、OS/proxy/managed platform adapter、1送信元の受入 |
-| P1 | queue/未着の検出 #131/#135 | 今回read-only health CLIを実装 | source heartbeat/捕捉停止、ディスク空き容量、通知/Console表示。空queueを収集正常としない |
+| P1 | queue/未着の検出 #131/#135 | PR154 read-only health、続いて固定expected sourceの読取確認時刻/failed/missing/stale診断を準備 | upstream exporter heartbeat、partial行進捗、ディスク空き容量、通知/Console表示。空queueを収集正常としない |
 | P1 | 侵入経路・攻撃相関 #136 | 受信schema/署名/個別ログの基盤 | OS認証/WAF/HTTP/操作監査の接続、信頼proxy経由IP根拠、時系列相関。IPやUUIDだけで人物・所属を断定しない |
 | P1 | audit操作者表示 #134 | ivrm-web PR501で準備、未deploy | admin.ivrm.jp/systemで表示/権限/不明actorの受入。実名を公開Issueへ転記しない |
 | P1 | AWS保管 #137、platform #29/#35 | 設計段階 | S3等の量/保持/暗号化/削除権限/改ざん検知/再取得/費用/rollbackを準備し承認後IaC適用 |

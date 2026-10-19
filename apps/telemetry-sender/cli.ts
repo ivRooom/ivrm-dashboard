@@ -5,10 +5,20 @@ import { captureFileOnce, captureSealedRotationOnce, type FileSource } from "./f
 
 function main() {
   const [command,directory,producer,input,...extra] = process.argv.slice(2);
-  if (!["enqueue","capture-once","drain-once","status","health","send-once"].includes(command) || !directory || !producer || extra.length ||
-      (["enqueue","capture-once","drain-once"].includes(command) ? !input : input !== undefined)) throw new Error("invalid_arguments");
-  if (command === "health") {
-    const health = readSpoolHealth(directory, producer);
+  if (!["enqueue","capture-once","drain-once","status","health","health-sources","send-once"].includes(command) || !directory || !producer || extra.length ||
+      (["enqueue","capture-once","drain-once","health-sources"].includes(command) ? !input : input !== undefined)) throw new Error("invalid_arguments");
+  if (command === "health" || command === "health-sources") {
+    let expected: string[] | undefined;
+    if (command === "health-sources") {
+      const fd = openSync(input!,"r"), buffer = Buffer.alloc(8193); let length = 0;
+      try { while (length < buffer.length) { const n = readSync(fd,buffer,length,buffer.length-length,null); if (!n) break; length += n; } }
+      finally { closeSync(fd); }
+      if (length > 8192) throw new Error("invalid_configuration");
+      const config = JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(buffer.subarray(0,length)));
+      if (!config || Object.keys(config).join(",") !== "expectedSourceIds" || !Array.isArray(config.expectedSourceIds)) throw new Error("invalid_configuration");
+      expected = config.expectedSourceIds;
+    }
+    const health = readSpoolHealth(directory, producer, Date.now(), expected);
     console.log(JSON.stringify(health));
     if (health.status === "attention") process.exitCode = 2;
     return;

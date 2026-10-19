@@ -35,6 +35,20 @@ blockedが1件以上、未送信イベントが5分以上古い、batch台帳ま
 
 `queue_clear`は収集元/送信経路全体の正常判定ではない。収集停止で何もenqueueされない場合もあり、`captureFreshness: unknown`を保持する。filesystem空き容量やSQLite/journal使用量も未計測。通知・timer・Consoleへの接続、閾値の環境別採否は未実装。Windows ACLは本番対応していない。診断だけで本番配備/契約candidateの送信禁止を解除しない。
 
+### 収集処理の確認時刻
+
+`capture-once`/`drain-once`はcheckpoint登録済みsourceの確認結果をローカル`capture_checks`へ最大64source保存する。idleでも読取検証が成功すればchecked、読取失敗はfailed。初回checkpoint前の失敗は新規登録せずmissingとして検出する。古い時刻の処理結果は新しい記録を上書きしない。drainの`rotation_already_completed`は現在fileの読取検証を行わないため鮮度更新に使わない。
+
+```text
+pnpm --filter @ivrm/web exec tsx ../telemetry-sender/cli.ts health-sources ABSOLUTE_PRIVATE_DIRECTORY PRODUCER_ID ABSOLUTE_EXPECTED_JSON
+```
+
+期待リストは8KiB以下の `{"expectedSourceIds":["example-source"]}`。1〜64の重複しない固定IDを指定する。診断は期待リストを自動検出せず、未稼働対象を勝手に除外しない。sourceの名前・path・エラー本文はJSONへ出さず、recent/stale/failed/missingの集計だけ返す。未確認/failed/確認から120秒以上はattention・exit 2。通常のhealthコマンドは期待リストがないためcaptureFreshness unknownのまま。
+
+これは**collectorによるfile確認の鮮度**であり、上流アプリ/ログexporterの稼働・末尾partial行の進捗・全イベントの配送完了を保証しない。`upstreamHealth: unknown`を維持する。120秒は準備段階の固定値で、本番timer間隔/休止対象との調整は未実施。各timerの導入・通知/Console接続は別工程。
+
+sender初期化は既存queueを保持したままlocal SQLiteへ追加tableを作る。health自身は旧DBへtableを作らず、記録がなければmissingを返す。診断記録はcheckpoint/batch transactionの後に書くため、記録失敗でcaptureがerrorになってもcheckpointが既に進んでいる場合がある。再実行はcheckpointから継続し、診断失敗をqueue未保存や安全な消去と解釈しない。rollbackは旧senderへ戻してqueueと追加tableを保持する。共有DB migration/本番適用は今回行っていない。
+
 ## 保全・容量・セキュリティ
 
 - 送信前の本文をローカル保存する。送信元アダプターは**enqueue前に秘密情報を除外・マスキング**する必要がある。受信側のマスキングだけでローカル原文が消えることはない。鍵は本文に含めない。
