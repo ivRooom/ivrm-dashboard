@@ -33,7 +33,7 @@ pnpm --filter @ivrm/web exec tsx ../telemetry-sender/cli.ts status ABSOLUTE_PRIV
 
 blockedが1件以上、未送信イベントが5分以上古い、batch台帳または本文容量が80%以上なら`attention`・exit 2。それ以外は`queue_clear`・exit 0。送信完了行も重複台帳の上限を使うため件数監視に含む。経過時間はeventのobservedAtからで、enqueue時刻や厳密な送信遅延ではない。
 
-`queue_clear`は収集元/送信経路全体の正常判定ではない。収集停止で何もenqueueされない場合もあり、`captureFreshness: unknown`を保持する。filesystem空き容量やSQLite/journal使用量も未計測。通知・timer・Consoleへの接続、閾値の環境別採否は未実装。Windows ACLは本番対応していない。診断だけで本番配備/契約candidateの送信禁止を解除しない。
+`queue_clear`は収集元/送信経路全体の正常判定ではない。収集停止で何もenqueueされない場合もあり、期待sourceリストなしでは`captureFreshness: unknown`を保持する。filesystem空き容量は後述のstatfsで測定するが、SQLite/journal個別使用量は未計測。通知・timer・Consoleへの接続、閾値の環境別採否は未実装。Windows ACLは本番対応していない。診断だけで本番配備/契約candidateの送信禁止を解除しない。
 
 ### 収集処理の確認時刻
 
