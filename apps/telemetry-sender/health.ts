@@ -3,8 +3,11 @@ import { lstatSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 
 /** Existing spool only: no creation, migration, claim, retry, deletion or network. */
-export function readSpoolHealth(directory: string, producer: string, now = Date.now()) {
+export function readSpoolHealth(directory: string, producer: string, now = Date.now(), expectedSources?: readonly string[]) {
   if (!isAbsolute(directory) || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(producer) || !Number.isSafeInteger(now) || now < 0) throw new Error("invalid_configuration");
+  if (expectedSources !== undefined && (!Array.isArray(expectedSources) || expectedSources.length < 1 || expectedSources.length > 64 ||
+      expectedSources.some(source => typeof source !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(source)) ||
+      new Set(expectedSources).size !== expectedSources.length)) throw new Error("invalid_configuration");
   const dir = lstatSync(directory), file = join(directory, "telemetry.sqlite");
   const stat = lstatSync(file);
   if (!dir.isDirectory() || dir.isSymbolicLink() || !stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 ||
@@ -32,10 +35,30 @@ export function readSpoolHealth(directory: string, producer: string, now = Date.
     if (oldestUnsentEventAgeMs !== null && oldestUnsentEventAgeMs >= 300_000) reasons.push("old_unsent_events");
     if (total >= config[0] * 0.8) reasons.push("batch_capacity");
     if (bytes >= config[1] * 0.8) reasons.push("payload_capacity");
+    let captureFreshness = "unknown";
+    let captureChecks: { expected: number; recent: number; stale: number; failed: number; missing: number } | null = null;
+    if (expectedSources) {
+      captureChecks = { expected: expectedSources.length, recent: 0, stale: 0, failed: 0, missing: 0 };
+      const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='capture_checks'").get();
+      const lookup = exists ? db.prepare("SELECT checked_at,result FROM capture_checks WHERE source=?") : null;
+      for (const source of expectedSources) {
+        const check = lookup?.get(source);
+        if (!check) { captureChecks.missing++; continue; }
+        const at = Number(check.checked_at);
+        if (!Number.isSafeInteger(at) || at < 0 || at > now + 60_000 || !["checked","failed"].includes(String(check.result))) throw new Error("invalid_capture_status");
+        if (check.result === "failed") captureChecks.failed++;
+        else if (now - at >= 120_000) captureChecks.stale++;
+        else captureChecks.recent++;
+      }
+      if (captureChecks.missing) reasons.push("capture_missing");
+      if (captureChecks.failed) reasons.push("capture_failed");
+      if (captureChecks.stale) reasons.push("capture_stale");
+      captureFreshness = captureChecks.recent === captureChecks.expected ? "recent_checks" : "attention";
+    }
     db.exec("COMMIT");
     return { schemaVersion: 1, checkedAt: new Date(now).toISOString(), status: reasons.length ? "attention" : "queue_clear",
       reasons, batches: { total, pending, blocked, delivered, limit: config[0] as number },
       payloadBytes: { used: bytes, limit: config[1] as number }, oldestUnsentEventAgeMs,
-      captureFreshness: "unknown", filesystemFreeSpace: "not-measured" };
+      captureFreshness, captureChecks, upstreamHealth: "unknown", filesystemFreeSpace: "not-measured" };
   } finally { db.close(); }
 }

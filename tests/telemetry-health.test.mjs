@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -8,6 +8,8 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { TelemetrySpool } from "../apps/telemetry-sender/spool.ts";
 import { readSpoolHealth } from "../apps/telemetry-sender/health.ts";
+import { captureFileOnce } from "../apps/telemetry-sender/file-capture.ts";
+import { DatabaseSync } from "node:sqlite";
 
 const producer = "fixture-producer", secret = "a".repeat(64);
 const now = Date.now();
@@ -99,5 +101,57 @@ test("payload capacity warns before enqueue limit and CLI returns attention code
     assert.match(missing.stderr, /telemetry_sender_failed/);
     assert.doesNotMatch(missing.stderr, /ENOENT|telemetry.sqlite/);
     assert.equal(existsSync(join(f.directory, "missing")), false);
+  } finally { f.cleanup(); }
+});
+test("idle capture is recent, stale checks alert, failures cannot look like quiet logs", () => {
+  const f = fixture();
+  const path = join(f.directory,"projected.jsonl");
+  const config = { path, source: { sourceId: "fixture-source", serviceId: "fixture", type: "application", provider: "oci" } };
+  try {
+    writeFileSync(path, "");
+    assert.equal(captureFileOnce(f.spool,config,now).state,"idle");
+    let report = readSpoolHealth(f.directory,producer,now,["fixture-source"]);
+    assert.equal(report.captureFreshness,"recent_checks");
+    assert.equal(report.upstreamHealth,"unknown");
+    report = readSpoolHealth(f.directory,producer,now+120_000,["fixture-source"]);
+    assert.deepEqual(report.reasons,["capture_stale"]);
+    writeFileSync(path,"invalid private payload\n");
+    assert.throws(()=>captureFileOnce(f.spool,config,now+1000));
+    report = readSpoolHealth(f.directory,producer,now+1000,["fixture-source"]);
+    assert.deepEqual(report.reasons,["capture_failed"]);
+    assert.doesNotMatch(JSON.stringify(report),/fixture-source|private payload|projected.jsonl/);
+    writeFileSync(path,"");
+    captureFileOnce(f.spool,config,now+2000);
+    f.spool.recordCaptureCheck("fixture-source","failed",now); // delayed worker cannot regress newer success
+    assert.equal(readSpoolHealth(f.directory,producer,now+2000,["fixture-source"]).captureFreshness,"recent_checks");
+  } finally { f.cleanup(); }
+});
+test("expected sources are explicit; missing and legacy check tables cannot pass", () => {
+  const f = fixture();
+  try {
+    assert.deepEqual(readSpoolHealth(f.directory,producer,now,["unseen"]).reasons,["capture_missing"]);
+    for (const expected of [[],["same","same"],["invalid/source"],Array.from({length:65},(_,i)=>`source-${i}`)]) {
+      assert.throws(()=>readSpoolHealth(f.directory,producer,now,expected),/invalid_configuration/);
+    }
+    const raw = new DatabaseSync(join(f.directory,"telemetry.sqlite"));
+    raw.exec("DROP TABLE capture_checks"); raw.close();
+    assert.deepEqual(readSpoolHealth(f.directory,producer,now,["unseen"]).reasons,["capture_missing"]);
+    assert.equal(readSpoolHealth(f.directory,producer,now).captureFreshness,"unknown");
+    const check = new DatabaseSync(join(f.directory,"telemetry.sqlite"));
+    assert.equal(check.prepare("SELECT name FROM sqlite_master WHERE name='capture_checks'").get(),undefined);
+    check.close();
+  } finally { f.cleanup(); }
+});
+test("health-sources CLI uses bounded expected list without registering a missing source", () => {
+  const f = fixture();
+  try {
+    const input = join(f.directory,"expected.json");writeFileSync(input,JSON.stringify({expectedSourceIds:["unseen-private-source"]}));
+    const cli = fileURLToPath(new URL("../apps/telemetry-sender/cli.ts",import.meta.url));
+    const tsx = fileURLToPath(new URL("../apps/web/node_modules/tsx/dist/cli.mjs",import.meta.url));
+    const result = spawnSync(process.execPath,[tsx,cli,"health-sources",f.directory,producer,input],{encoding:"utf8"});
+    assert.equal(result.status,2);
+    assert.equal(JSON.parse(result.stdout).captureChecks.missing,1);
+    assert.doesNotMatch(result.stdout,/unseen-private-source/);
+    assert.equal(f.spool.fileCursor("unseen-private-source","0".repeat(64)),null);
   } finally { f.cleanup(); }
 });

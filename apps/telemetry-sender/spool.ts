@@ -45,6 +45,8 @@ export class TelemetrySpool {
         due REAL NOT NULL DEFAULT 0, lease_until REAL NOT NULL DEFAULT 0, token TEXT, reason TEXT);
       CREATE INDEX IF NOT EXISTS jobs_due ON jobs(state,due,lease_until);`);
     this.db.exec(`CREATE TABLE IF NOT EXISTS file_cursors(source TEXT PRIMARY KEY, configuration TEXT NOT NULL, cursor TEXT NOT NULL);`);
+    this.db.exec(`CREATE TABLE IF NOT EXISTS capture_checks(source TEXT PRIMARY KEY, checked_at INTEGER NOT NULL,
+      last_success INTEGER, result TEXT NOT NULL);`);
     try {
       this.transaction(() => {
         const existing = this.db.prepare("SELECT producer,configuration FROM metadata").get();
@@ -97,6 +99,17 @@ export class TelemetrySpool {
   }
   status() {
     return this.db.prepare("SELECT state,count(*) AS batches,coalesce(sum(length(raw)),0) AS bytes,min(oldest) AS oldest FROM jobs GROUP BY state ORDER BY state").all();
+  }
+  recordCaptureCheck(source: string, result: "checked" | "failed", at: number) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(source) || !["checked","failed"].includes(result) ||
+        !Number.isSafeInteger(at) || at < 0) throw new SpoolError("invalid_configuration");
+    // Only checkpointed sources: no arbitrary/unbounded source registration through diagnostics.
+    this.db.prepare(`INSERT INTO capture_checks(source,checked_at,last_success,result)
+      SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM file_cursors WHERE source=?)
+      ON CONFLICT(source) DO UPDATE SET checked_at=excluded.checked_at,result=excluded.result,
+        last_success=CASE WHEN excluded.result='checked' THEN excluded.checked_at ELSE capture_checks.last_success END
+      WHERE excluded.checked_at>=capture_checks.checked_at`)
+      .run(source,at,result === "checked" ? at : null,result,source);
   }
   private claim(): Job | undefined {
     return this.transaction(() => {

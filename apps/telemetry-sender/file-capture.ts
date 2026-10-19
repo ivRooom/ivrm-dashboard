@@ -13,12 +13,26 @@ const hash = (data: string | Uint8Array) => createHash("sha256").update(data).di
 
 /** Only explicitly registered, projected JSONL files. Never infer actor/IP/attacks. */
 export function captureFileOnce(spool: TelemetrySpool, config: FileSource, now = Date.now()) {
-  return capture(spool,config,now);
+  return checkedCapture(spool,config,now);
 }
 
 /** The trusted projector/operator must close the old writer before sealing it. */
 export function captureSealedRotationOnce(spool: TelemetrySpool, config: FileSource, seal: SealedRotation, now = Date.now()) {
-  return capture(spool,config,now,seal);
+  return checkedCapture(spool,config,now,seal);
+}
+
+function checkedCapture(spool: TelemetrySpool, config: FileSource, now: number, seal?: SealedRotation) {
+  if (!Number.isSafeInteger(now) || now < 0) throw new SpoolError("invalid_configuration");
+  try {
+    const result = capture(spool,config,now,seal);
+    if (result.state !== "rotation_already_completed") spool.recordCaptureCheck(config.source.sourceId,"checked",now);
+    return result;
+  } catch (error) {
+    // Never persist raw errors, log paths or payloads. A failed diagnostic write remains a failure.
+    const source = config?.source?.sourceId;
+    if (typeof source === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(source)) spool.recordCaptureCheck(source,"failed",now);
+    throw error;
+  }
 }
 
 function capture(spool: TelemetrySpool, config: FileSource, now: number, seal?: SealedRotation) {
