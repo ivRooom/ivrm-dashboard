@@ -1,11 +1,18 @@
 import { openSync, readSync, closeSync } from "node:fs";
 import { TelemetrySpool } from "./spool";
+import { readSpoolHealth } from "./health";
 import { captureFileOnce, captureSealedRotationOnce, type FileSource } from "./file-capture";
 
 function main() {
   const [command,directory,producer,input,...extra] = process.argv.slice(2);
-  if (!["enqueue","capture-once","drain-once","status","send-once"].includes(command) || !directory || !producer || extra.length ||
+  if (!["enqueue","capture-once","drain-once","status","health","send-once"].includes(command) || !directory || !producer || extra.length ||
       (["enqueue","capture-once","drain-once"].includes(command) ? !input : input !== undefined)) throw new Error("invalid_arguments");
+  if (command === "health") {
+    const health = readSpoolHealth(directory, producer);
+    console.log(JSON.stringify(health));
+    if (health.status === "attention") process.exitCode = 2;
+    return;
+  }
   const spool = new TelemetrySpool(directory,producer);
   return (async()=>{
     try {

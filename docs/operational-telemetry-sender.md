@@ -25,6 +25,16 @@ pnpm --filter @ivrm/web exec tsx ../telemetry-sender/cli.ts status ABSOLUTE_PRIV
 
 エラー出力は固定文字列のみ。statusはstateごとの件数・byte数・最古イベント時刻を返し、本文や送信元個人情報を出さない。blocked件数やoldestの監視・通知接続は次工程で、現時点ではdashboardに自動表示されない。
 
+### 既存キューの診断
+
+`pnpm --filter @ivrm/web exec tsx ../telemetry-sender/cli.ts health ABSOLUTE_PRIVATE_DIRECTORY PRODUCER_ID`
+
+既存DBだけをread-only transactionで読む。DBがなければ作成せず固定エラー・exit 1。本文・source名・producer名・credentialは出力せず、pending/blocked/delivered件数、payload使用量と上限、最古の未送信イベントの経過時間をJSONで返す。読取中に送信・claim・再試行・削除・migrationは行わない。
+
+blockedが1件以上、未送信イベントが5分以上古い、batch台帳または本文容量が80%以上なら`attention`・exit 2。それ以外は`queue_clear`・exit 0。送信完了行も重複台帳の上限を使うため件数監視に含む。経過時間はeventのobservedAtからで、enqueue時刻や厳密な送信遅延ではない。
+
+`queue_clear`は収集元/送信経路全体の正常判定ではない。収集停止で何もenqueueされない場合もあり、`captureFreshness: unknown`を保持する。filesystem空き容量やSQLite/journal使用量も未計測。通知・timer・Consoleへの接続、閾値の環境別採否は未実装。Windows ACLは本番対応していない。診断だけで本番配備/契約candidateの送信禁止を解除しない。
+
 ## 保全・容量・セキュリティ
 
 - 送信前の本文をローカル保存する。送信元アダプターは**enqueue前に秘密情報を除外・マスキング**する必要がある。受信側のマスキングだけでローカル原文が消えることはない。鍵は本文に含めない。
