@@ -52,6 +52,10 @@ jobs:
           createdb -h localhost -U postgres telemetry_test
           psql postgresql://postgres@localhost:5432/telemetry_test -v ON_ERROR_STOP=1 -f tests/telemetry-db-fixture.sql -f supabase/migrations/20261018002103_operational_telemetry_foundation.sql
           pnpm --filter @ivrm/web exec tsx --test ../../tests/telemetry-db.test.mjs
+      - name: ログ出力の内容・改行・フィールド境界をテスト
+        run: node --experimental-strip-types --test tests/log-export.test.mjs
+      - name: Backup判定の複合異常・復元証跡をテスト
+        run: node --experimental-strip-types --test tests/backup-health.test.mjs
       - name: Cloud Monitorの認証・鮮度境界をテスト
         run: node --experimental-strip-types --test tests/cloud-monitor-core.test.mjs tests/service-catalog.test.mjs tests/runtime-inventory-core.test.mjs
       - name: Cloud Collectorをテスト
