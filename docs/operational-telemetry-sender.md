@@ -65,3 +65,9 @@ sender初期化は既存queueを保持したままlocal SQLiteへ追加tableを�
 Producerは将来の各環境アダプター、consumerはdashboard受信API、Contractはoperational-telemetry.v1 candidate。PR #147をbaseとするstacked PRで、contracts→受信側のmerged pin更新/PR147→本PRの順にmergeする。既存Minecraft senderを置き換えない。
 
 本番導入前に、アダプターのrotation/checkpoint、送信量・ディスク/DB/通信費、S3保全、blocked通知、保持期間、Linuxでのプロセスkill/ディスク満杯試験を追加する。対象を限定した承認後に1送信元から開始する。Rollbackはアダプター/送信timer停止、queue保全、受信側flag無効化。SQLite削除・証跡削除は行わない。本PRで本番配置・起動・Secret・課金変更は行っていない。
+
+### 保存先filesystemの空き容量
+
+health/health-sourcesはqueue directoryのstatfsをread-onlyで取得する。呼出しユーザーが使えるbavailを使い、64MiB未満または全体の5%未満ならfilesystem_capacityを返す。固定inode上限が報告されるfilesystemでは残り5%未満でfilesystem_inodes。inode上限0はnot-reportedであり無制限を保証しない。返すのはbyte数と取得状態のみでmount/pathを含めない。filesystemFreeSpaceはmeasured、詳細はfilesystemへ追加する。
+
+statfs失敗・不正値は固定エラー/exit 1で正常へ代替しない。閾値は暫定の運用診断値でSLOではない。quota、他プロセスによる急増、SQLite journal最大容量、暗号化、I/O成功を保証しない。ネットワークmountではstatfsの所要時間をNode内で制限できないため、配備対象は既存方針のローカルディスクとし、timer接続時は外側のtimeoutも設計する。自動削除・vacuum・quota/ディスク拡張は行わない。本番Windows ACL未対応を維持する。
