@@ -34,7 +34,7 @@ TOTP: 秘密をserverで生成し、登録者への一時表示後に正しい�
 
 1. factor/challenge/proofのデータモデル、暗号化鍵の運用、復旧/初回登録、endpoint権限表と脅威境界を確定。ライブラリの現行仕様・依存評価を記録。
 2. 非本番でWebAuthn/TOTP登録・検証、共有rate limit、replay拒否、session binding、復旧を実装し統合テストする。本番gateは切り替えない。
-3. 共通server authorizationにMFA proof検証を統合。全page/API/mutationと旧Cloudflare Access fallback経路を一覧で検証し、いずれかの認証経路だけが抜けないことを確認する。
+3. 共通server authorizationにMFA proof検証を統合。人のsessionで利用する全page/API/mutationと旧Cloudflare Access fallback経路を一覧で検証し、いずれかの認証経路だけが抜けないことを確認する。非対話の`/api/agent/*`は既存machine credential・HMAC/nonce/source allowlist、`/api/reliability/burn-reconcile`は専用machine認証で保護し、人のMFA proofを要求して収集/reconcileを止めない。`/api/public/status-feed`は公開用の許可済みprojectionだけを返し、認証不要のまま管理情報やmutationを公開しない。route例外はこの固定用途に限定し、人が操作する管理APIを例外へ追加しない。
 4. 移行coverage、管理者の紛失復旧と重要操作step-upを受入後、認証設定変更の専用change-controlで本番必須化する。
 
 ## 必須の否定テスト
