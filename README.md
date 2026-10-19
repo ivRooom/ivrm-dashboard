@@ -162,3 +162,7 @@ Productionの現在状態、CI、PR、Deployment、Agent rollout状況はREADME�
 3. Issue #71 Phase C — Overview UX Refresh
 4. Issue #68 — Logs / Lifecycle Operations
 5. Issue #70 — Activity ingestion / Queue Health
+
+## Agent Skills / 運用手順
+
+[Repository固有Agent Skills](.agents/skills/README.md) を追加しています。監視切り分けと安全な運用操作を分離し、MCP/Pluginの接続・最小権限・承認は [ivrm-platform共通スキル](https://github.com/ivRooom/ivrm-platform/tree/main/.agents/skills) に従って都度検証します。監視コードやUIが存在するだけで本番機能が有効化されたと判断しないでください。
