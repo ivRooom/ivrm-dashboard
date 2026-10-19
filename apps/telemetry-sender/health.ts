@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { lstatSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
+import { readFilesystemCapacity } from "./filesystem-health";
 
 /** Existing spool only: no creation, migration, claim, retry, deletion or network. */
 export function readSpoolHealth(directory: string, producer: string, now = Date.now(), expectedSources?: readonly string[]) {
@@ -12,6 +13,8 @@ export function readSpoolHealth(directory: string, producer: string, now = Date.
   const stat = lstatSync(file);
   if (!dir.isDirectory() || dir.isSymbolicLink() || !stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 ||
       (process.platform !== "win32" && ((dir.mode & 0o077) || (stat.mode & 0o077)))) throw new Error("unsafe_spool");
+  // Failure is unknown/error, never substitute ample space. No disk writes or allocation probes.
+  const filesystem = readFilesystemCapacity(directory);
   const db = new DatabaseSync(file, { readOnly: true });
   try {
     db.exec("PRAGMA busy_timeout=2000; BEGIN");
@@ -31,6 +34,7 @@ export function readSpoolHealth(directory: string, producer: string, now = Date.
         ((pending + blocked > 0) && (oldest === null || !Number.isFinite(oldest) || oldest < 0 || oldest > now + 60_000))) throw new Error("invalid_spool_status");
     const oldestUnsentEventAgeMs = oldest === null ? null : Math.max(0, now - oldest);
     const reasons: string[] = [];
+    reasons.push(...filesystem.reasons);
     if (blocked) reasons.push("blocked_batches");
     if (oldestUnsentEventAgeMs !== null && oldestUnsentEventAgeMs >= 300_000) reasons.push("old_unsent_events");
     if (total >= config[0] * 0.8) reasons.push("batch_capacity");
@@ -59,6 +63,7 @@ export function readSpoolHealth(directory: string, producer: string, now = Date.
     return { schemaVersion: 1, checkedAt: new Date(now).toISOString(), status: reasons.length ? "attention" : "queue_clear",
       reasons, batches: { total, pending, blocked, delivered, limit: config[0] as number },
       payloadBytes: { used: bytes, limit: config[1] as number }, oldestUnsentEventAgeMs,
-      captureFreshness, captureChecks, upstreamHealth: "unknown", filesystemFreeSpace: "not-measured" };
+      captureFreshness, captureChecks, upstreamHealth: "unknown", filesystemFreeSpace: "measured",
+      filesystem: { totalBytes: filesystem.totalBytes, availableBytes: filesystem.availableBytes, inodeAvailability: filesystem.inodeAvailability } };
   } finally { db.close(); }
 }

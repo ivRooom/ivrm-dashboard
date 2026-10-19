@@ -76,7 +76,8 @@ test("empty initialized spool does not assert source or filesystem health", () =
     const report = readSpoolHealth(f.directory, producer, now);
     assert.equal(report.status, "queue_clear");
     assert.equal(report.captureFreshness, "unknown");
-    assert.equal(report.filesystemFreeSpace, "not-measured");
+    assert.equal(report.filesystemFreeSpace, "measured");
+    assert.ok(report.filesystem.availableBytes >= 0);
     assert.throws(() => readSpoolHealth(f.directory, producer, NaN), /invalid_configuration/);
   } finally { f.cleanup(); }
 });

@@ -33,7 +33,7 @@ pnpm --filter @ivrm/web exec tsx ../telemetry-sender/cli.ts status ABSOLUTE_PRIV
 
 blockedが1件以上、未送信イベントが5分以上古い、batch台帳または本文容量が80%以上なら`attention`・exit 2。それ以外は`queue_clear`・exit 0。送信完了行も重複台帳の上限を使うため件数監視に含む。経過時間はeventのobservedAtからで、enqueue時刻や厳密な送信遅延ではない。
 
-`queue_clear`は収集元/送信経路全体の正常判定ではない。収集停止で何もenqueueされない場合もあり、`captureFreshness: unknown`を保持する。filesystem空き容量やSQLite/journal使用量も未計測。通知・timer・Consoleへの接続、閾値の環境別採否は未実装。Windows ACLは本番対応していない。診断だけで本番配備/契約candidateの送信禁止を解除しない。
+`queue_clear`は収集元/送信経路全体の正常判定ではない。収集停止で何もenqueueされない場合もあり、期待sourceリストなしでは`captureFreshness: unknown`を保持する。filesystem空き容量は後述のstatfsで測定するが、SQLite/journal個別使用量は未計測。通知・timer・Consoleへの接続、閾値の環境別採否は未実装。Windows ACLは本番対応していない。診断だけで本番配備/契約candidateの送信禁止を解除しない。
 
 ### 収集処理の確認時刻
 
@@ -65,3 +65,9 @@ sender初期化は既存queueを保持したままlocal SQLiteへ追加tableを�
 Producerは将来の各環境アダプター、consumerはdashboard受信API、Contractはoperational-telemetry.v1 candidate。PR #147をbaseとするstacked PRで、contracts→受信側のmerged pin更新/PR147→本PRの順にmergeする。既存Minecraft senderを置き換えない。
 
 本番導入前に、アダプターのrotation/checkpoint、送信量・ディスク/DB/通信費、S3保全、blocked通知、保持期間、Linuxでのプロセスkill/ディスク満杯試験を追加する。対象を限定した承認後に1送信元から開始する。Rollbackはアダプター/送信timer停止、queue保全、受信側flag無効化。SQLite削除・証跡削除は行わない。本PRで本番配置・起動・Secret・課金変更は行っていない。
+
+### 保存先filesystemの空き容量
+
+health/health-sourcesはqueue directoryのstatfsをread-onlyで取得する。呼出しユーザーが使えるbavailを使い、64MiB未満または全体の5%未満ならfilesystem_capacityを返す。固定inode上限が報告されるfilesystemでは残り5%未満でfilesystem_inodes。inode上限0はnot-reportedであり無制限を保証しない。返すのはbyte数と取得状態のみでmount/pathを含めない。filesystemFreeSpaceはmeasured、詳細はfilesystemへ追加する。
+
+statfs失敗・不正値は固定エラー/exit 1で正常へ代替しない。閾値は暫定の運用診断値でSLOではない。quota、他プロセスによる急増、SQLite journal最大容量、暗号化、I/O成功を保証しない。ネットワークmountではstatfsの所要時間をNode内で制限できないため、配備対象は既存方針のローカルディスクとし、timer接続時は外側のtimeoutも設計する。自動削除・vacuum・quota/ディスク拡張は行わない。本番Windows ACL未対応を維持する。
