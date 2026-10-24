@@ -1,10 +1,9 @@
 import importlib.util
 import json
-import os
-import tarfile
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 MODULE_PATH = Path(__file__).with_name("ivrm-backup-report-success.py")
@@ -20,9 +19,7 @@ class BackupReportSuccessTests(unittest.TestCase):
             root = Path(directory)
             backup = root / "minecraft-main-20261024-150000.tar.gz"
             backup.write_bytes(b"archive")
-            marker = root / "start.marker"
-            marker.touch()
-            os.utime(marker, (backup.stat().st_mtime - 1, backup.stat().st_mtime - 1))
+            (root / f"{backup.name}.pending").touch()
             evidence_dir = root / "evidence"
             evidence_dir.mkdir()
             (evidence_dir / f"{backup.name}.json").write_text(json.dumps({
@@ -31,8 +28,8 @@ class BackupReportSuccessTests(unittest.TestCase):
                 "sha256Hex": "a" * 64,
             }))
             with mock.patch.object(MODULE, "BACKUP_DIR", root), mock.patch.object(
-                MODULE, "MARKER", marker
-            ), mock.patch.object(MODULE, "EVIDENCE_DIR", evidence_dir):
+                MODULE, "EVIDENCE_DIR", evidence_dir
+            ):
                 runs = MODULE.build_runs("oci-minecraft-01")
             self.assertEqual(len(runs), 1)
             self.assertIs(runs[0]["sha256Verified"], True)
@@ -53,6 +50,31 @@ class BackupReportSuccessTests(unittest.TestCase):
             with mock.patch.object(MODULE, "EVIDENCE_DIR", evidence):
                 with self.assertRaisesRegex(ValueError, "remote_verification_missing"):
                     MODULE.verified_evidence(path)
+
+    def test_successful_report_removes_pending_marker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            backup = root / "minecraft-main-20261024-150000.tar.gz"
+            backup.write_bytes(b"archive")
+            pending = root / f"{backup.name}.pending"
+            pending.touch()
+            evidence_dir = root / "evidence"
+            evidence_dir.mkdir()
+            (evidence_dir / f"{backup.name}.json").write_text(json.dumps({
+                "remoteVerified": True,
+                "sizeBytes": backup.stat().st_size,
+                "sha256Hex": "a" * 64,
+            }))
+            report = root / "report.json"
+            with mock.patch.object(MODULE, "BACKUP_DIR", root), mock.patch.object(
+                MODULE, "EVIDENCE_DIR", evidence_dir
+            ), mock.patch.object(MODULE, "REPORT", report), mock.patch.object(
+                MODULE, "REPORTER", root / "reporter.py"
+            ), mock.patch.object(
+                MODULE.subprocess, "run", return_value=SimpleNamespace(returncode=0)
+            ), mock.patch.dict(MODULE.os.environ, {"IVRM_AGENT_SERVER_ID": "oci-minecraft-01"}):
+                self.assertEqual(MODULE.main(), 0)
+            self.assertFalse(pending.exists())
 
 
 if __name__ == "__main__":

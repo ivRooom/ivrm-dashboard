@@ -23,6 +23,7 @@ This specification covers Minecraft world backups produced on `oci-minecraft-01`
 A successful archive must:
 
 - be created atomically as `*.partial` and renamed only after `tar` succeeds;
+- retain a `*.pending` marker until remote verification and Backup Center reporting both succeed, so partial multi-target failures are retried;
 - contain at least one `level.dat` world marker;
 - contain no absolute or parent-traversal paths;
 - exclude runtime credentials, including `.rcon-cli.env`, `.rcon-cli.yaml`, and `secrets/`;
@@ -30,6 +31,8 @@ A successful archive must:
 - have a local SHA-256 calculated over the exact archive bytes;
 - be uploaded with S3 SHA-256 checksum calculation enabled;
 - have matching remote content length, a stored S3 checksum and matching `ivrm-sha256` source metadata before `sha256Verified=true` is reported.
+
+If `save-off` succeeded, the job must confirm both `save-on` and a final save before success. A failed confirmation keeps the cleanup target registered for the EXIT retry and fails the service visibly.
 
 Archive names are `minecraft-<mode>-YYYYMMDD-HHMMSS.tar.gz`. The reporter UUID remains deterministic for a given host and filename.
 

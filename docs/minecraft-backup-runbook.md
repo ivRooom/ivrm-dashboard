@@ -106,8 +106,9 @@ Preconditions: merged commit SHA, CI Green, clean active backup job, free disk s
 
 5. Preserve root ownership and existing executable modes. Do not modify `/etc/ivrm-agent/agent.env`.
 6. Run one manual backup. Abort if sensitive-file validation, archive validation, S3 checksum verification or report submission fails.
-7. Confirm the latest artifact does not contain `.rcon-cli.env` or `.rcon-cli.yaml` by listing names only.
-8. Observe the next scheduled run before closing the change.
+7. Confirm no stale `*.pending` marker remains after successful report submission. A marker after failure must be retried, not deleted manually.
+8. Confirm the latest artifact does not contain `.rcon-cli.env` or `.rcon-cli.yaml` by listing names only.
+9. Observe the next scheduled run before closing the change.
 
 Rollback: restore all four files from the same rollback directory, then run syntax/tests. Do not delete newly created safe artifacts during rollback.
 

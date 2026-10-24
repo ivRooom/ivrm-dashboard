@@ -16,21 +16,28 @@ export AWS_PAGER=""
   exit 2
 }
 
-RUN_MARKER="$(mktemp)"
 OBJECTS_JSON="$(mktemp)"
 HEAD_JSON="$(mktemp)"
 EVIDENCE_DIR="${IVRM_BACKUP_EVIDENCE_DIR:-/run/ivrm-backup/evidence}"
-cleanup() { rm -f -- "${RUN_MARKER}" "${OBJECTS_JSON}" "${HEAD_JSON}"; }
+cleanup() { rm -f -- "${OBJECTS_JSON}" "${HEAD_JSON}"; }
 trap cleanup EXIT
-touch "${RUN_MARKER}"
 install -d -m 0750 "${EVIDENCE_DIR}"
 
+set +e
 "${BACKUP_BIN}"
-mapfile -d '' NEW_FILES < <(
-  find "${BACKUP_DIR}" -maxdepth 1 -type f -name '*.tar.gz' -newer "${RUN_MARKER}" -print0 | sort -z
+PRODUCER_RC=$?
+set -e
+
+mapfile -d '' PENDING_MARKERS < <(
+  find "${BACKUP_DIR}" -maxdepth 1 -type f -name '*.tar.gz.pending' -print0 | sort -z
 )
 
-for file in "${NEW_FILES[@]}"; do
+for marker in "${PENDING_MARKERS[@]}"; do
+  file="${marker%.pending}"
+  [[ -f "${file}" ]] || {
+    echo "ERROR: pending marker has no archive: ${marker}" >&2
+    exit 1
+  }
   base="$(basename "${file}")"
   key="minecraft/daily/${base}"
   evidence="$(${EVIDENCE_BIN} "${file}")"
@@ -99,3 +106,5 @@ for key in "${DELETE_KEYS[@]}"; do
 done
 
 find "${BACKUP_DIR}" -maxdepth 1 -type f -name '*.partial' -mtime +1 -print -delete
+
+exit "${PRODUCER_RC}"

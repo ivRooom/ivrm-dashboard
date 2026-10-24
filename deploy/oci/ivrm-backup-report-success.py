@@ -14,7 +14,6 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 BACKUP_DIR = Path(os.environ.get("IVRM_BACKUP_DIR", "/opt/ivrm/backup/minecraft"))
-MARKER = Path(os.environ.get("IVRM_BACKUP_MARKER", "/run/ivrm-backup/start.marker"))
 EVIDENCE_DIR = Path(os.environ.get("IVRM_BACKUP_EVIDENCE_DIR", "/run/ivrm-backup/evidence"))
 REPORT = Path(os.environ.get("IVRM_BACKUP_REPORT", "/run/ivrm-backup/backup-report.json"))
 REPORTER = Path(os.environ.get("IVRM_BACKUP_REPORTER", "/opt/ivrm/ivrm-backup-reporter.py"))
@@ -38,12 +37,11 @@ def verified_evidence(path: Path) -> dict[str, object]:
 
 
 def build_runs(server_id: str) -> list[dict[str, object]]:
-    marker_mtime = MARKER.stat().st_mtime
     candidates = sorted(
         (
-            path
-            for path in BACKUP_DIR.glob("minecraft-*.tar.gz")
-            if PATTERN.fullmatch(path.name) and path.stat().st_mtime >= marker_mtime - 1
+            Path(str(marker)[: -len(".pending")])
+            for marker in BACKUP_DIR.glob("minecraft-*.tar.gz.pending")
+            if PATTERN.fullmatch(Path(str(marker)[: -len(".pending")]).name)
         ),
         key=lambda path: path.stat().st_mtime,
     )[-20:]
@@ -85,10 +83,6 @@ def main() -> int:
     if not server_id:
         print("IVRM_AGENT_SERVER_IDがありません", file=sys.stderr)
         return 1
-    if not MARKER.exists():
-        print("Backup開始マーカーがありません", file=sys.stderr)
-        return 1
-
     runs = build_runs(server_id)
     if not runs:
         print("今回新規作成されたBackupはありません。Report送信をSkipします。")
@@ -99,7 +93,14 @@ def main() -> int:
     temporary.write_text(json.dumps({"runs": runs}, separators=(",", ":")) + "\n", encoding="utf-8")
     os.chmod(temporary, 0o640)
     os.replace(temporary, REPORT)
-    return subprocess.run([sys.executable, str(REPORTER), "--input", str(REPORT)], check=False).returncode
+    result = subprocess.run([sys.executable, str(REPORTER), "--input", str(REPORT)], check=False)
+    if result.returncode == 0:
+        for run in runs:
+            timestamp = datetime.fromisoformat(str(run["startedAt"]).replace("Z", "+00:00"))
+            local_stamp = timestamp.astimezone(ZoneInfo("Asia/Tokyo")).strftime("%Y%m%d-%H%M%S")
+            marker = BACKUP_DIR / f'{run["backupTarget"]}-{local_stamp}.tar.gz.pending'
+            marker.unlink(missing_ok=True)
+    return result.returncode
 
 
 if __name__ == "__main__":

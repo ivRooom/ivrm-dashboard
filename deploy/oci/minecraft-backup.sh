@@ -27,17 +27,26 @@ rcon_exec() {
 restore_saves() {
   local container="$1"
   if is_running "${container}"; then
-    rcon_exec "${container}" save-on || true
-    rcon_exec "${container}" save-all flush || rcon_exec "${container}" save-all || true
+    rcon_exec "${container}" save-on || return 1
+    rcon_exec "${container}" save-all flush || rcon_exec "${container}" save-all || return 1
   fi
 }
 
 cleanup() {
+  local rc=$?
   if [[ -n "${FROZEN_CONTAINER}" ]]; then
-    restore_saves "${FROZEN_CONTAINER}"
+    if restore_saves "${FROZEN_CONTAINER}"; then
+      FROZEN_CONTAINER=""
+    else
+      echo "CRITICAL: world saves could not be re-enabled for ${FROZEN_CONTAINER}" >&2
+      rc=1
+    fi
   fi
+  exit "${rc}"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 has_existing_backup() {
   compgen -G "${BACKUP_DIR}/$1-*.tar.gz" >/dev/null
@@ -101,8 +110,12 @@ backup_server() {
   tar_rc=$?
 
   if [[ "${running}" -eq 1 && "${save_off}" -eq 1 ]]; then
-    restore_saves "${container}"
-    FROZEN_CONTAINER=""
+    if restore_saves "${container}"; then
+      FROZEN_CONTAINER=""
+    else
+      echo "CRITICAL: world saves could not be re-enabled for ${container}" >&2
+      FAILED=1
+    fi
   fi
 
   if [[ "${tar_rc}" -ne 0 ]]; then
@@ -113,6 +126,7 @@ backup_server() {
   fi
 
   mv -- "${partial}" "${output}"
+  touch -- "${output}.pending"
   echo "Created: ${output}"
 }
 
@@ -124,7 +138,7 @@ backup_server minecraft-atm10 mc-atm10 /opt/ivrm/compose/minecraft-atm10
 backup_server minecraft-main mc-main /opt/ivrm/compose/minecraft-main
 
 for prefix in minecraft-paper minecraft-skyblock minecraft-hardcore minecraft-gtnh minecraft-atm10 minecraft-main; do
-  mapfile -t backups < <(find "${BACKUP_DIR}" -maxdepth 1 -type f -name "${prefix}-*.tar.gz" -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
+  mapfile -t backups < <(find "${BACKUP_DIR}" -maxdepth 1 -type f -name "${prefix}-*.tar.gz" ! -exec test -e '{}.pending' \; -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
   if (( ${#backups[@]} > LOCAL_KEEP )); then
     printf '%s\0' "${backups[@]:LOCAL_KEEP}" | xargs -0r rm -f --
   fi
