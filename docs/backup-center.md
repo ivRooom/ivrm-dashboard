@@ -233,4 +233,8 @@ Readyには少なくとも次を要求する。
 - Remote Sync遅延
 - Checksum失敗
 
+Minecraftのproducer・停止時Policy運用・復元試験は
+[`minecraft-backup-spec.md`](minecraft-backup-spec.md) と
+[`minecraft-backup-runbook.md`](minecraft-backup-runbook.md) を正本とする。
+
 Recovered Incident / MTTRには、開始時刻と復旧時刻を構造化データで証明できるものだけを使用する。

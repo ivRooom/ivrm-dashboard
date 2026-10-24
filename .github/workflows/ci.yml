@@ -124,6 +124,13 @@ jobs:
         run: python3 -m py_compile deploy/oci/ivrm-backup-reporter.py
       - name: Backup Reporterをテスト
         run: python3 -m unittest deploy/oci/test_ivrm_backup_reporter.py
+      - name: Backup Artifact Evidenceをテスト
+        run: |
+          python3 -m py_compile deploy/oci/ivrm-backup-evidence.py
+          python3 -m unittest deploy/oci/test_ivrm_backup_evidence.py
+          python3 -m py_compile deploy/oci/ivrm-backup-report-success.py
+          python3 -m unittest deploy/oci/test_ivrm_backup_report_success.py
+          bash deploy/oci/test_minecraft_backup_scripts.sh
       - name: Log Reporterの構文を確認
         run: python3 -m py_compile deploy/oci/ivrm-log-reporter.py
       - name: Log Reporterをテスト
