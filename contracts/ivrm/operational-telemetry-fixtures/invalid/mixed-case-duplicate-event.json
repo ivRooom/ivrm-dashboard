@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "producerId": "fixture-producer",
+  "batchId": "00000000-0000-4000-8000-000000000001",
+  "events": [
+    {
+      "eventId": "abcdefab-0000-4000-8000-000000000001",
+      "observedAt": "2026-10-17T09:00:00Z",
+      "source": { "sourceId": "fixture-log", "serviceId": "fixture", "type": "container", "provider": "oci" },
+      "kind": "log", "level": "info", "outcome": "observed", "message": "fixture"
+    },
+    {
+      "eventId": "ABCDEFAB-0000-4000-8000-000000000001",
+      "observedAt": "2026-10-17T09:00:00Z",
+      "source": { "sourceId": "fixture-log", "serviceId": "fixture", "type": "container", "provider": "oci" },
+      "kind": "log", "level": "info", "outcome": "observed", "message": "fixture"
+    }
+  ]
+}

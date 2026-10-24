@@ -1,0 +1,1005 @@
+{
+  "bundleVersion": 1,
+  "contract": {
+    "id": "operational-telemetry",
+    "version": "1.0.0",
+    "sourceRepository": "ivRooom/ivrm-contracts"
+  },
+  "ingest": {
+    "method": "POST",
+    "path": "/api/agent/telemetry",
+    "authentication": {
+      "type": "hmac-sha256",
+      "producerHeader": "X-IVRM-Producer-ID",
+      "subjectBinding": {
+        "bodyField": "producerId",
+        "header": "X-IVRM-Producer-ID",
+        "credentialSubject": "authenticatedProducerId",
+        "comparison": "exact-equality",
+        "mismatchStatus": 401
+      },
+      "timestampHeader": "X-IVRM-Timestamp",
+      "nonceHeader": "X-IVRM-Nonce",
+      "signatureHeader": "X-IVRM-Signature",
+      "canonicalPayload": "POST\n/api/agent/telemetry\nPRODUCER_ID\nTIMESTAMP\nNONCE\nBODY",
+      "timestampFormat": "unix-seconds-integer",
+      "maxSkewSeconds": 300,
+      "noncePattern": "^[0-9a-f]{32}$",
+      "signaturePattern": "^[0-9a-f]{64}$",
+      "nonceRetentionSeconds": 600,
+      "retryResigns": true,
+      "bodyPreservedOnRetry": true
+    },
+    "limits": {
+      "maxBytes": 65536,
+      "maxEvents": 100,
+      "maxEventAgeSeconds": 604800,
+      "maxEventFutureSeconds": 30,
+      "contentEncoding": "identity"
+    },
+    "idempotency": {
+      "batchKey": [
+        "producerId",
+        "batchId"
+      ],
+      "eventKey": [
+        "producerId",
+        "eventId"
+      ],
+      "newStatus": 202,
+      "replayStatus": 200,
+      "changedPayloadStatus": 409,
+      "atomicBatch": true,
+      "batchComparison": "sha256-raw-body-bytes",
+      "eventComparison": "sha256-recursive-lexicographic-object-keys-compact-json-utf8",
+      "unicodeNormalization": "none",
+      "arrayOrder": "preserved",
+      "duplicateEventIdsWithinBatchStatus": 400,
+      "uuidKeyComparison": "case-insensitive-uuid-value"
+    },
+    "batchSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "https://ivrm.jp/contracts/operations/telemetry/v1/batch.schema.json",
+      "title": "Operational Telemetry Batch v1",
+      "description": "Additive, opt-in telemetry protocol. Authentication and source registration are mandatory independently of schema validation. Existing Minecraft log ingest is unchanged.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "batchId",
+        "producerId",
+        "events"
+      ],
+      "x-ivrm-body-max-bytes": 65536,
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "batchId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "producerId": {
+          "$ref": "#/$defs/identifier",
+          "x-ivrm-authenticated-subject": {
+            "header": "X-IVRM-Producer-ID",
+            "mustEqual": "authenticatedProducerId",
+            "mismatchStatus": 401
+          },
+          "description": "Must equal the verified producer header and authenticated credential subject before source authorization, attribution or idempotency lookup."
+        },
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/event"
+          }
+        }
+      },
+      "$defs": {
+        "identifier": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:[0-5]\\d(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "serviceId",
+            "sourceId",
+            "type",
+            "provider"
+          ],
+          "properties": {
+            "serviceId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "sourceId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "type": {
+              "enum": [
+                "container",
+                "systemd",
+                "application",
+                "edge",
+                "cloud_audit",
+                "os_auth"
+              ]
+            },
+            "provider": {
+              "enum": [
+                "oci",
+                "aws_ec2",
+                "aws_lightsail",
+                "vercel",
+                "cloudflare",
+                "netlify",
+                "supabase",
+                "other"
+              ]
+            },
+            "resourceId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "hostId": {
+              "$ref": "#/$defs/identifier"
+            }
+          },
+          "description": "Must match the authenticated producer's server-side source registry. Identifiers are opaque references; never commands, internal addresses, provider credentials or resource URLs."
+        },
+        "actor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "provider"
+          ],
+          "properties": {
+            "type": {
+              "enum": [
+                "human",
+                "service",
+                "system",
+                "unauthenticated",
+                "unknown"
+              ]
+            },
+            "provider": {
+              "$ref": "#/$defs/identifier"
+            },
+            "subjectId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "displayName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "role": {
+              "$ref": "#/$defs/identifier"
+            }
+          },
+          "description": "Source-observed audit snapshot, not an authorization claim. Do not infer membership or external/intruder status from UUID/IP. Display names are untrusted text. Omit unknown fields; never store session tokens, hashes or recovery codes."
+        },
+        "clientIp": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "address",
+            "provenance"
+          ],
+          "properties": {
+            "address": {
+              "type": "string",
+              "anyOf": [
+                {
+                  "format": "ipv4"
+                },
+                {
+                  "format": "ipv6"
+                }
+              ],
+              "maxLength": 45
+            },
+            "provenance": {
+              "enum": [
+                "direct_peer",
+                "verified_edge"
+              ]
+            }
+          },
+          "description": "Optional restricted personal data. Only registered trusted ingress adapters may emit this field. Never accept arbitrary forwarded headers. Absence means unknown, not local or safe. RBAC, masking and retention are required at storage/query boundaries."
+        },
+        "event": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "eventId",
+            "observedAt",
+            "source",
+            "kind",
+            "level",
+            "outcome",
+            "message"
+          ],
+          "properties": {
+            "eventId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "observedAt": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "source": {
+              "$ref": "#/$defs/source"
+            },
+            "kind": {
+              "enum": [
+                "log",
+                "access",
+                "authentication",
+                "authorization",
+                "operation",
+                "configuration",
+                "detection"
+              ]
+            },
+            "level": {
+              "enum": [
+                "debug",
+                "info",
+                "warning",
+                "error",
+                "critical"
+              ]
+            },
+            "outcome": {
+              "enum": [
+                "observed",
+                "succeeded",
+                "failed",
+                "denied",
+                "blocked",
+                "unknown"
+              ]
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "actor": {
+              "$ref": "#/$defs/actor"
+            },
+            "clientIp": {
+              "$ref": "#/$defs/clientIp"
+            },
+            "requestId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "traceId": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            "action": {
+              "$ref": "#/$defs/identifier"
+            },
+            "targetId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "ruleId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "confidence": {
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "unknown"
+              ]
+            }
+          },
+          "description": "Producer-redacted bounded fact. Consumer redacts again before persistence. receivedAt and attribution/ingress trust are assigned server-side, never accepted as producer fields. Raw request bodies/headers, credentials, command lines and arbitrary metadata are forbidden. ObservedAt is source event time, never transport attempt time. A detection is not proof of successful intrusion."
+        }
+      }
+    },
+    "responseSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "https://ivrm.jp/contracts/operations/telemetry/v1/response.schema.json",
+      "title": "Operational Telemetry Receipt v1",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accepted",
+        "batchId",
+        "replayed",
+        "acceptedEvents",
+        "duplicateEvents"
+      ],
+      "properties": {
+        "accepted": {
+          "const": true
+        },
+        "batchId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "replayed": {
+          "type": "boolean"
+        },
+        "acceptedEvents": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "duplicateEvents": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "description": "202 for a new durable transaction, 200 for an identical batch replay. acceptedEvents + duplicateEvents equals request event count; the replay returns the original receipt with replayed=true. Partial acceptance is forbidden. ACK proves durable ingest, not AWS archival."
+    },
+    "wire": {
+      "securitySchemes": {
+        "producerHmac": {
+          "type": "apiKey",
+          "in": "header",
+          "name": "X-IVRM-Signature",
+          "description": "HMAC-SHA256 signature, not a static API key. Additional identity/timestamp/nonce headers and canonical payload rules are mandatory; see x-ivrm-authentication."
+        }
+      },
+      "security": [
+        {
+          "producerHmac": []
+        }
+      ],
+      "parameters": [
+        {
+          "in": "header",
+          "name": "X-IVRM-Producer-ID",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+          }
+        },
+        {
+          "in": "header",
+          "name": "X-IVRM-Timestamp",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{1,12}$"
+          }
+        },
+        {
+          "in": "header",
+          "name": "X-IVRM-Nonce",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        },
+        {
+          "in": "header",
+          "name": "X-IVRM-Signature",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      ],
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "$id": "https://ivrm.jp/contracts/operations/telemetry/v1/batch.schema.json",
+              "title": "Operational Telemetry Batch v1",
+              "description": "Additive, opt-in telemetry protocol. Authentication and source registration are mandatory independently of schema validation. Existing Minecraft log ingest is unchanged.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "schemaVersion",
+                "batchId",
+                "producerId",
+                "events"
+              ],
+              "x-ivrm-body-max-bytes": 65536,
+              "properties": {
+                "schemaVersion": {
+                  "const": 1
+                },
+                "batchId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "producerId": {
+                  "$ref": "#/$defs/identifier",
+                  "x-ivrm-authenticated-subject": {
+                    "header": "X-IVRM-Producer-ID",
+                    "mustEqual": "authenticatedProducerId",
+                    "mismatchStatus": 401
+                  },
+                  "description": "Must equal the verified producer header and authenticated credential subject before source authorization, attribution or idempotency lookup."
+                },
+                "events": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 100,
+                  "items": {
+                    "$ref": "#/$defs/event"
+                  }
+                }
+              },
+              "$defs": {
+                "identifier": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+                },
+                "timestamp": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:[0-5]\\d(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$"
+                },
+                "source": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "serviceId",
+                    "sourceId",
+                    "type",
+                    "provider"
+                  ],
+                  "properties": {
+                    "serviceId": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "sourceId": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "type": {
+                      "enum": [
+                        "container",
+                        "systemd",
+                        "application",
+                        "edge",
+                        "cloud_audit",
+                        "os_auth"
+                      ]
+                    },
+                    "provider": {
+                      "enum": [
+                        "oci",
+                        "aws_ec2",
+                        "aws_lightsail",
+                        "vercel",
+                        "cloudflare",
+                        "netlify",
+                        "supabase",
+                        "other"
+                      ]
+                    },
+                    "resourceId": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "hostId": {
+                      "$ref": "#/$defs/identifier"
+                    }
+                  },
+                  "description": "Must match the authenticated producer's server-side source registry. Identifiers are opaque references; never commands, internal addresses, provider credentials or resource URLs."
+                },
+                "actor": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "type",
+                    "provider"
+                  ],
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "human",
+                        "service",
+                        "system",
+                        "unauthenticated",
+                        "unknown"
+                      ]
+                    },
+                    "provider": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "subjectId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "displayName": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80
+                    },
+                    "role": {
+                      "$ref": "#/$defs/identifier"
+                    }
+                  },
+                  "description": "Source-observed audit snapshot, not an authorization claim. Do not infer membership or external/intruder status from UUID/IP. Display names are untrusted text. Omit unknown fields; never store session tokens, hashes or recovery codes."
+                },
+                "clientIp": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "address",
+                    "provenance"
+                  ],
+                  "properties": {
+                    "address": {
+                      "type": "string",
+                      "anyOf": [
+                        {
+                          "format": "ipv4"
+                        },
+                        {
+                          "format": "ipv6"
+                        }
+                      ],
+                      "maxLength": 45
+                    },
+                    "provenance": {
+                      "enum": [
+                        "direct_peer",
+                        "verified_edge"
+                      ]
+                    }
+                  },
+                  "description": "Optional restricted personal data. Only registered trusted ingress adapters may emit this field. Never accept arbitrary forwarded headers. Absence means unknown, not local or safe. RBAC, masking and retention are required at storage/query boundaries."
+                },
+                "event": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "eventId",
+                    "observedAt",
+                    "source",
+                    "kind",
+                    "level",
+                    "outcome",
+                    "message"
+                  ],
+                  "properties": {
+                    "eventId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "observedAt": {
+                      "$ref": "#/$defs/timestamp"
+                    },
+                    "source": {
+                      "$ref": "#/$defs/source"
+                    },
+                    "kind": {
+                      "enum": [
+                        "log",
+                        "access",
+                        "authentication",
+                        "authorization",
+                        "operation",
+                        "configuration",
+                        "detection"
+                      ]
+                    },
+                    "level": {
+                      "enum": [
+                        "debug",
+                        "info",
+                        "warning",
+                        "error",
+                        "critical"
+                      ]
+                    },
+                    "outcome": {
+                      "enum": [
+                        "observed",
+                        "succeeded",
+                        "failed",
+                        "denied",
+                        "blocked",
+                        "unknown"
+                      ]
+                    },
+                    "message": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2048
+                    },
+                    "actor": {
+                      "$ref": "#/$defs/actor"
+                    },
+                    "clientIp": {
+                      "$ref": "#/$defs/clientIp"
+                    },
+                    "requestId": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "traceId": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{32}$"
+                    },
+                    "action": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "targetId": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "ruleId": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "confidence": {
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "unknown"
+                      ]
+                    }
+                  },
+                  "description": "Producer-redacted bounded fact. Consumer redacts again before persistence. receivedAt and attribution/ingress trust are assigned server-side, never accepted as producer fields. Raw request bodies/headers, credentials, command lines and arbitrary metadata are forbidden. ObservedAt is source event time, never transport attempt time. A detection is not proof of successful intrusion."
+                }
+              }
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Identical batch replay; original receipt with replayed=true",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "$id": "https://ivrm.jp/contracts/operations/telemetry/v1/response.schema.json",
+                "title": "Operational Telemetry Receipt v1",
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "accepted",
+                  "batchId",
+                  "replayed",
+                  "acceptedEvents",
+                  "duplicateEvents"
+                ],
+                "properties": {
+                  "accepted": {
+                    "const": true
+                  },
+                  "batchId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "replayed": {
+                    "type": "boolean"
+                  },
+                  "acceptedEvents": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "duplicateEvents": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  }
+                },
+                "description": "202 for a new durable transaction, 200 for an identical batch replay. acceptedEvents + duplicateEvents equals request event count; the replay returns the original receipt with replayed=true. Partial acceptance is forbidden. ACK proves durable ingest, not AWS archival."
+              }
+            }
+          }
+        },
+        "202": {
+          "description": "New durable batch; replayed=false",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "$id": "https://ivrm.jp/contracts/operations/telemetry/v1/response.schema.json",
+                "title": "Operational Telemetry Receipt v1",
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "accepted",
+                  "batchId",
+                  "replayed",
+                  "acceptedEvents",
+                  "duplicateEvents"
+                ],
+                "properties": {
+                  "accepted": {
+                    "const": true
+                  },
+                  "batchId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "replayed": {
+                    "type": "boolean"
+                  },
+                  "acceptedEvents": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "duplicateEvents": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  }
+                },
+                "description": "202 for a new durable transaction, 200 for an identical batch replay. acceptedEvents + duplicateEvents equals request event count; the replay returns the original receipt with replayed=true. Partial acceptance is forbidden. ACK proves durable ingest, not AWS archival."
+              }
+            }
+          }
+        },
+        "400": {
+          "description": "Invalid shape or event semantics",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "accepted",
+                  "code"
+                ],
+                "properties": {
+                  "accepted": {
+                    "const": false
+                  },
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "invalid_payload"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "401": {
+          "description": "Authentication failed, stale attempt or nonce replay",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "accepted",
+                  "code"
+                ],
+                "properties": {
+                  "accepted": {
+                    "const": false
+                  },
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "authentication_failed"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "403": {
+          "description": "Unregistered or unauthorized source",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "accepted",
+                  "code"
+                ],
+                "properties": {
+                  "accepted": {
+                    "const": false
+                  },
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "source_not_allowed"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "404": {
+          "description": "Telemetry endpoint is not enabled",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "accepted",
+                  "code"
+                ],
+                "properties": {
+                  "accepted": {
+                    "const": false
+                  },
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "not_enabled"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "409": {
+          "description": "Same batch/event ID with changed content",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "accepted",
+                  "code"
+                ],
+                "properties": {
+                  "accepted": {
+                    "const": false
+                  },
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "content_conflict"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "413": {
+          "description": "Payload exceeds byte limit",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "accepted",
+                  "code"
+                ],
+                "properties": {
+                  "accepted": {
+                    "const": false
+                  },
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "payload_too_large"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "415": {
+          "description": "Unsupported content type or encoding",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "accepted",
+                  "code"
+                ],
+                "properties": {
+                  "accepted": {
+                    "const": false
+                  },
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "unsupported_media_type"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "429": {
+          "description": "Quota exceeded",
+          "headers": {
+            "Retry-After": {
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "accepted",
+                  "code"
+                ],
+                "properties": {
+                  "accepted": {
+                    "const": false
+                  },
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "rate_limited"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "503": {
+          "description": "Durable store unavailable; retry with backoff",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "accepted",
+                  "code"
+                ],
+                "properties": {
+                  "accepted": {
+                    "const": false
+                  },
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "storage_unavailable",
+                      "service_not_configured"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

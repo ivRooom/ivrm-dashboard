@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "batchId": "00000000-0000-4000-8000-000000000001",
+  "producerId": "fixture-producer",
+  "events": [
+    {
+      "eventId": "00000000-0000-4000-8000-000000000002",
+      "observedAt": "2026-10-17T09:00:00Z",
+      "source": {
+        "serviceId": "fixture-service",
+        "sourceId": "fixture-container",
+        "type": "edge",
+        "provider": "cloudflare",
+        "hostId": "fixture-host"
+      },
+      "kind": "authentication",
+      "level": "warning",
+      "outcome": "denied",
+      "message": "Redacted fixture log",
+      "actor": {
+        "type": "unauthenticated",
+        "provider": "fixture-idp"
+      },
+      "clientIp": {
+        "address": "192.0.2.10",
+        "provenance": "verified_edge"
+      },
+      "requestId": "fixture-request"
+    }
+  ]
+}
