@@ -3,7 +3,7 @@ set -uo pipefail
 
 BACKUP_DIR="${IVRM_BACKUP_DIR:-/opt/ivrm/backup/minecraft}"
 LOCAL_KEEP="${IVRM_BACKUP_LOCAL_KEEP:-2}"
-DATE="$(date '+%Y%m%d-%H%M%S')"
+DATE="$(TZ=Asia/Tokyo date '+%Y%m%d-%H%M%S')"
 FAILED=0
 FROZEN_CONTAINER=""
 
@@ -126,8 +126,17 @@ backup_server() {
     return 1
   fi
 
-  mv -- "${partial}" "${output}"
-  touch -- "${output}.pending"
+  if ! mv -- "${partial}" "${output}"; then
+    echo "ERROR: Failed to finalize ${output}" >&2
+    FAILED=1
+    return 1
+  fi
+  if ! touch -- "${output}.pending"; then
+    echo "ERROR: Failed to create pending marker for ${output}" >&2
+    rm -f -- "${output}"
+    FAILED=1
+    return 1
+  fi
   echo "Created: ${output}"
   [[ "${restore_failed}" -eq 0 ]]
 }

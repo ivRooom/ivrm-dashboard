@@ -51,6 +51,27 @@ class BackupReportSuccessTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "remote_verification_missing"):
                     MODULE.verified_evidence(path)
 
+    def test_skips_unverified_artifact_and_reports_verified_one(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            evidence_dir = root / "evidence"
+            evidence_dir.mkdir()
+            for mode in ("broken", "main"):
+                backup = root / f"minecraft-{mode}-20261024-150000.tar.gz"
+                backup.write_bytes(b"archive")
+                (root / f"{backup.name}.pending").touch()
+            good = root / "minecraft-main-20261024-150000.tar.gz"
+            (evidence_dir / f"{good.name}.json").write_text(json.dumps({
+                "remoteVerified": True,
+                "sizeBytes": good.stat().st_size,
+                "sha256Hex": "a" * 64,
+            }))
+            with mock.patch.object(MODULE, "BACKUP_DIR", root), mock.patch.object(
+                MODULE, "EVIDENCE_DIR", evidence_dir
+            ):
+                runs = MODULE.build_runs("oci-minecraft-01")
+            self.assertEqual([run["gameMode"] for run in runs], ["main"])
+
     def test_successful_report_removes_pending_marker(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

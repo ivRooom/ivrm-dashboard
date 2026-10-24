@@ -50,7 +50,11 @@ def build_runs(server_id: str) -> list[dict[str, object]]:
     for path in candidates:
         match = PATTERN.fullmatch(path.name)
         assert match is not None
-        verified_evidence(path)
+        try:
+            verified_evidence(path)
+        except (OSError, ValueError) as error:
+            print(f"Skip unverified artifact {path.name}: {error}", file=sys.stderr)
+            continue
         started_at = datetime.strptime(match.group("stamp"), "%Y%m%d-%H%M%S").replace(
             tzinfo=ZoneInfo("Asia/Tokyo")
         ).astimezone(timezone.utc)

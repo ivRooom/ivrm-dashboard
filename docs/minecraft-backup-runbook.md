@@ -114,7 +114,7 @@ Rollback: restore all four files from the same rollback directory, then run synt
 
 ## Isolated monthly restore test
 
-1. Select an S3 Daily or Weekly artifact and record key, version ID, size and checksum without exposing credentials.
+1. Select a newly produced S3 Daily or Weekly artifact, or one whose stored evidence proves that `.rcon-cli.*`, `secrets/` and other forbidden paths are absent. Record key, version ID, size and checksum without exposing credentials. Historical artifacts without that proof remain metadata-only inventory and must not be downloaded or extracted.
 2. Download into a new `mktemp -d` directory outside every production bind mount.
 3. Run `ivrm-backup-evidence` and compare the expected SHA-256.
 4. Extract only after path validation has passed.

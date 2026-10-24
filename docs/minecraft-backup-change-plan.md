@@ -39,7 +39,7 @@ High Risk when applied: production infrastructure, backup retention/cost, monito
 
 ## Rollback
 
-- Restore the four prior root-owned executables from the change-specific rollback directory.
+- Restore the four prior root-owned executables and the systemd drop-in from the change-specific rollback directory. If the drop-in did not previously exist, remove the newly installed drop-in and run `systemctl daemon-reload`.
 - Restore prior policy `enabled` values only if the corresponding runtime expectation is still correct.
 - Keep new safe artifacts; do not restore credential-containing archives as current.
 - Stop further credential/object operations if any target mapping is ambiguous.
