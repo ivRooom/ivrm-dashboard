@@ -2,6 +2,8 @@
 
 更新: 2026-10-25 / Issue [#138](https://github.com/ivRooom/ivrm-dashboard/issues/138), [#117](https://github.com/ivRooom/ivrm-dashboard/issues/117)
 
+PR: [#158](https://github.com/ivRooom/ivrm-dashboard/pull/158)。CIの最新head結果はPRのChecksを参照する。merge/deployは独立gate。
+
 ## 実装範囲
 
 - branch `codex/backup-policy-lifecycle`、base main `b35ad5f3cd1fab9323a60d87cbd13d5730c8a2f8`。
@@ -13,7 +15,7 @@
 
 ローカル13件のbackup health/境界/RPCエラー試験と型チェック成功。使い捨てPostgreSQL17（tmpfs、task label付き）で実migration・既存実装のclaim/delivery gateを使い、pair/30日制限、exact signal/policy、historical event、queued/claimed、自然な期限切れ、sent履歴、v1/ACLを検証して成功。外部通知なし。CIにも同じ試験を接続。
 
-Build成功、全39件のNodeテスト成功。独立read-only reviewの対象競合・理由文字数/Unicode差異を修正し、focused13件/型チェック/実PostgreSQLを再検証成功。GitHub CI/PRは作成後に追記。本番migration/metadata設定/新Web配備は未実行。実backupのchecksum全読取/取り出し/復元試験は未実施。現実のarchiveを検証したという意味ではない。
+Build成功、全39件のNodeテスト成功。独立read-only reviewの対象競合・理由文字数/Unicode差異を修正し、focused13件/型チェック/実PostgreSQLを再検証成功。絵文字・タブ・Unicode空白・過大paddingを含むDB/Webの制約整合も検証し、最終独立reviewの追加指摘なし。実operator prepare/resumeも5対象だけへの適用とmain除外、enabled維持を検証した。本番migration/metadata設定/新Web配備は未実行。実backupのchecksum全読取/取り出し/復元試験は未実施。現実のarchiveを検証したという意味ではない。
 
 ## 導入順と承認対象
 
