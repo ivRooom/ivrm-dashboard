@@ -68,6 +68,16 @@ class BackupEvidenceTests(unittest.TestCase):
             with self.assertRaisesRegex(MODULE.EvidenceError, "archive_path_unsafe"):
                 MODULE.inspect_archive(path)
 
+    def test_rejects_corrupt_gzip_trailer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "backup.tar.gz"
+            archive(path, ["data/world/level.dat"])
+            value = bytearray(path.read_bytes())
+            value[-8] ^= 0xFF
+            path.write_bytes(value)
+            with self.assertRaisesRegex(MODULE.EvidenceError, "archive_invalid"):
+                MODULE.inspect_archive(path)
+
     def test_remote_verification_requires_size_and_sha256(self):
         local = {"sizeBytes": 4, "sha256Base64": "YWJjZA==", "sha256Hex": "61626364"}
         valid = {

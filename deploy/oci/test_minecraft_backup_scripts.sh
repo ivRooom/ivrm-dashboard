@@ -20,6 +20,7 @@ grep -Fq -- 'ivrm-sha256=' "${S3}"
 grep -Fq -- '*.tar.gz.pending' "${S3}"
 grep -Fq -- 'touch -- "${output}.pending"' "${LOCAL}"
 grep -Fq -- 'CRITICAL: world saves could not be re-enabled' "${LOCAL}"
+grep -Fq -- 'break' "${LOCAL}"
 grep -Fq -- 'IVRM_BACKUP_BUCKET=replace-with-production-bucket' "${ENV_EXAMPLE}"
 grep -Fq -- 'EnvironmentFile=/etc/ivrm-agent/backup.env' "${DROP_IN}"
 

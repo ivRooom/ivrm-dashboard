@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import gzip
 import hashlib
 import json
 import tarfile
@@ -39,6 +40,11 @@ def inspect_archive(path: Path) -> dict[str, object]:
     world_markers: list[str] = []
 
     try:
+        # tarfile may stop at the tar end marker before gzip validates its trailer.
+        # Consume the complete gzip member first so CRC/truncation failures are fatal.
+        with gzip.open(path, "rb") as stream:
+            for _ in iter(lambda: stream.read(1024 * 1024), b""):
+                pass
         with tarfile.open(path, "r:gz") as archive:
             for member in archive:
                 member_path = safe_member_name(member.name)
@@ -46,7 +52,7 @@ def inspect_archive(path: Path) -> dict[str, object]:
                     forbidden.append(member.name)
                 if member.isfile() and member_path.name in WORLD_MARKERS:
                     world_markers.append(member.name)
-    except (tarfile.TarError, OSError) as error:
+    except (gzip.BadGzipFile, EOFError, tarfile.TarError, OSError) as error:
         raise EvidenceError("archive_invalid") from error
 
     if forbidden:

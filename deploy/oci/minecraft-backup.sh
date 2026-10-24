@@ -57,7 +57,7 @@ backup_server() {
   local data_dir="${compose_dir}/data"
   local output="${BACKUP_DIR}/${name}-${DATE}.tar.gz"
   local partial="${output}.partial"
-  local running=0 save_off=0 tar_rc=0
+  local running=0 save_off=0 tar_rc=0 restore_failed=0
 
   if [[ ! -d "${data_dir}" ]]; then
     echo "Skip ${name}: data directory not found."
@@ -115,6 +115,7 @@ backup_server() {
     else
       echo "CRITICAL: world saves could not be re-enabled for ${container}" >&2
       FAILED=1
+      restore_failed=1
     fi
   fi
 
@@ -122,20 +123,28 @@ backup_server() {
     echo "ERROR: Failed to backup ${name}" >&2
     rm -f -- "${partial}"
     FAILED=1
-    return
+    return 1
   fi
 
   mv -- "${partial}" "${output}"
   touch -- "${output}.pending"
   echo "Created: ${output}"
+  [[ "${restore_failed}" -eq 0 ]]
 }
 
-backup_server minecraft-paper mc-paper /opt/ivrm/compose/minecraft-paper
-backup_server minecraft-skyblock mc-skyblock /opt/ivrm/compose/minecraft-skyblock
-backup_server minecraft-hardcore mc-hardcore /opt/ivrm/compose/minecraft-hardcore
-backup_server minecraft-gtnh mc-gtnh /opt/ivrm/compose/minecraft-gtnh
-backup_server minecraft-atm10 mc-atm10 /opt/ivrm/compose/minecraft-atm10
-backup_server minecraft-main mc-main /opt/ivrm/compose/minecraft-main
+while IFS='|' read -r name container compose_dir; do
+  if ! backup_server "${name}" "${container}" "${compose_dir}"; then
+    FAILED=1
+    break
+  fi
+done <<'TARGETS'
+minecraft-paper|mc-paper|/opt/ivrm/compose/minecraft-paper
+minecraft-skyblock|mc-skyblock|/opt/ivrm/compose/minecraft-skyblock
+minecraft-hardcore|mc-hardcore|/opt/ivrm/compose/minecraft-hardcore
+minecraft-gtnh|mc-gtnh|/opt/ivrm/compose/minecraft-gtnh
+minecraft-atm10|mc-atm10|/opt/ivrm/compose/minecraft-atm10
+minecraft-main|mc-main|/opt/ivrm/compose/minecraft-main
+TARGETS
 
 for prefix in minecraft-paper minecraft-skyblock minecraft-hardcore minecraft-gtnh minecraft-atm10 minecraft-main; do
   mapfile -t backups < <(find "${BACKUP_DIR}" -maxdepth 1 -type f -name "${prefix}-*.tar.gz" ! -exec test -e '{}.pending' \; -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
