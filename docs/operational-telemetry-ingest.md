@@ -39,3 +39,7 @@ DBテストは破棄可能なローカルPostgreSQLのみで実行する。`test
 - Production DB、IAM、Secret、timer、flagや新規費用の承認はこのPRに含まれない。無料枠内であるとの判断もしていない。
 
 残件: collector、ログ検索UI、S3定期保存、保持期間、エクスポート監査、通知設定、認証強化、全環境の操作アダプター。
+
+## 2026-10-24 main統合と契約否定fixture同期
+
+最新mainのbackup診断とlog exportを維持してCI競合を解消。契約PR18のraw-byte/UUID重複検証修正に合わせcandidate revisionを1f8674dへ更新し、mixed-case duplicate fixtureを追加した。bundle内容/hashは変更なし。candidateによる本番有効化禁止は維持。共有DB migration/Secret/source登録/flag/timerは変更していない。
