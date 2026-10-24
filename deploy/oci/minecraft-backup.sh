@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+BACKUP_DIR="${IVRM_BACKUP_DIR:-/opt/ivrm/backup/minecraft}"
+LOCAL_KEEP="${IVRM_BACKUP_LOCAL_KEEP:-2}"
+DATE="$(date '+%Y%m%d-%H%M%S')"
+FAILED=0
+FROZEN_CONTAINER=""
+
+[[ "${LOCAL_KEEP}" =~ ^[1-9][0-9]*$ ]] || {
+  echo "ERROR: IVRM_BACKUP_LOCAL_KEEP must be a positive integer" >&2
+  exit 2
+}
+
+mkdir -p "${BACKUP_DIR}"
+
+is_running() {
+  docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null | grep -qx true
+}
+
+rcon_exec() {
+  local container="$1"
+  shift
+  docker exec "${container}" rcon-cli "$@" >/dev/null 2>&1
+}
+
+restore_saves() {
+  local container="$1"
+  if is_running "${container}"; then
+    rcon_exec "${container}" save-on || true
+    rcon_exec "${container}" save-all flush || rcon_exec "${container}" save-all || true
+  fi
+}
+
+cleanup() {
+  if [[ -n "${FROZEN_CONTAINER}" ]]; then
+    restore_saves "${FROZEN_CONTAINER}"
+  fi
+}
+trap cleanup EXIT INT TERM
+
+has_existing_backup() {
+  compgen -G "${BACKUP_DIR}/$1-*.tar.gz" >/dev/null
+}
+
+backup_server() {
+  local name="$1" container="$2" compose_dir="$3"
+  local data_dir="${compose_dir}/data"
+  local output="${BACKUP_DIR}/${name}-${DATE}.tar.gz"
+  local partial="${output}.partial"
+  local running=0 save_off=0 tar_rc=0
+
+  if [[ ! -d "${data_dir}" ]]; then
+    echo "Skip ${name}: data directory not found."
+    return 0
+  fi
+  if ! is_running "${container}"; then
+    if has_existing_backup "${name}"; then
+      echo "Skip ${name}: ${container} is stopped and an existing backup is available."
+      return 0
+    fi
+    echo "Baseline backup: ${container} is stopped and no local backup exists."
+  else
+    running=1
+  fi
+
+  if [[ "${running}" -eq 1 ]]; then
+    rcon_exec "${container}" save-all flush || rcon_exec "${container}" save-all || true
+    if rcon_exec "${container}" save-off; then
+      save_off=1
+      FROZEN_CONTAINER="${container}"
+      sleep 2
+      rcon_exec "${container}" save-all flush || rcon_exec "${container}" save-all || true
+    else
+      echo "WARN: save-off failed for ${container}."
+    fi
+  fi
+
+  local -a items=(data)
+  if [[ "${name}" == "minecraft-main" ]]; then
+    [[ -f "${compose_dir}/compose.yml" ]] && items+=(compose.yml)
+    [[ -f "${compose_dir}/image-digest.txt" ]] && items+=(image-digest.txt)
+    [[ -d "${compose_dir}/mods" ]] && items+=(mods)
+    [[ -d "${compose_dir}/config" ]] && items+=(config)
+    [[ -d "${compose_dir}/extras" ]] && items+=(extras)
+  fi
+
+  rm -f -- "${partial}"
+  tar -C "${compose_dir}" \
+    --exclude='data/.rcon-cli.env' \
+    --exclude='data/.rcon-cli.yaml' \
+    --exclude='data/config/spark/tmp' \
+    --exclude='data/config/spark/tmp/*' \
+    --exclude='data/logs' \
+    --exclude='data/crash-reports' \
+    --exclude='data/.cache' \
+    --exclude='data/backups' \
+    --exclude='secrets' \
+    --exclude='secrets/*' \
+    -czf "${partial}" "${items[@]}"
+  tar_rc=$?
+
+  if [[ "${running}" -eq 1 && "${save_off}" -eq 1 ]]; then
+    restore_saves "${container}"
+    FROZEN_CONTAINER=""
+  fi
+
+  if [[ "${tar_rc}" -ne 0 ]]; then
+    echo "ERROR: Failed to backup ${name}" >&2
+    rm -f -- "${partial}"
+    FAILED=1
+    return
+  fi
+
+  mv -- "${partial}" "${output}"
+  echo "Created: ${output}"
+}
+
+backup_server minecraft-paper mc-paper /opt/ivrm/compose/minecraft-paper
+backup_server minecraft-skyblock mc-skyblock /opt/ivrm/compose/minecraft-skyblock
+backup_server minecraft-hardcore mc-hardcore /opt/ivrm/compose/minecraft-hardcore
+backup_server minecraft-gtnh mc-gtnh /opt/ivrm/compose/minecraft-gtnh
+backup_server minecraft-atm10 mc-atm10 /opt/ivrm/compose/minecraft-atm10
+backup_server minecraft-main mc-main /opt/ivrm/compose/minecraft-main
+
+for prefix in minecraft-paper minecraft-skyblock minecraft-hardcore minecraft-gtnh minecraft-atm10 minecraft-main; do
+  mapfile -t backups < <(find "${BACKUP_DIR}" -maxdepth 1 -type f -name "${prefix}-*.tar.gz" -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
+  if (( ${#backups[@]} > LOCAL_KEEP )); then
+    printf '%s\0' "${backups[@]:LOCAL_KEEP}" | xargs -0r rm -f --
+  fi
+done
+
+exit "${FAILED}"
