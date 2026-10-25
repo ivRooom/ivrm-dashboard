@@ -15,8 +15,15 @@ FROZEN_CONTAINER=""
 mkdir -p "${BACKUP_DIR}"
 
 container_state() {
-  local state
+  local state container_ids
   if ! state="$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null)"; then
+    if ! container_ids="$(docker ps -aq --filter "name=^/$1$")"; then
+      return 1
+    fi
+    if [[ -z "${container_ids}" ]]; then
+      echo missing
+      return 0
+    fi
     return 1
   fi
   case "${state}" in
@@ -35,6 +42,9 @@ rcon_exec() {
 restore_saves() {
   local container="$1" state
   if ! state="$(container_state "${container}")"; then
+    return 1
+  fi
+  if [[ "${state}" == "missing" ]]; then
     return 1
   fi
   if [[ "${state}" == "running" ]]; then
@@ -79,12 +89,12 @@ backup_server() {
     FAILED=1
     return 1
   fi
-  if [[ "${state}" == "stopped" ]]; then
+  if [[ "${state}" != "running" ]]; then
     if has_existing_backup "${name}"; then
-      echo "Skip ${name}: ${container} is stopped and an existing backup is available."
+      echo "Skip ${name}: ${container} is ${state} and an existing backup is available."
       return 0
     fi
-    echo "Baseline backup: ${container} is stopped and no local backup exists."
+    echo "Baseline backup: ${container} is ${state} and no local backup exists."
   else
     running=1
   fi
