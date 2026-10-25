@@ -6,6 +6,7 @@ LOCAL_KEEP="${IVRM_BACKUP_LOCAL_KEEP:-2}"
 DATE="$(TZ=Asia/Tokyo date '+%Y%m%d-%H%M%S')"
 FAILED=0
 FROZEN_CONTAINER=""
+SANITIZED_PROPERTIES_DIR=""
 
 [[ "${LOCAL_KEEP}" =~ ^[1-9][0-9]*$ ]] || {
   echo "ERROR: IVRM_BACKUP_LOCAL_KEEP must be a positive integer" >&2
@@ -45,6 +46,11 @@ restore_saves() {
 
 cleanup() {
   local rc=$?
+  if [[ -n "${SANITIZED_PROPERTIES_DIR}" ]]; then
+    rm -f -- "${SANITIZED_PROPERTIES_DIR}/server.properties"
+    rmdir -- "${SANITIZED_PROPERTIES_DIR}" 2>/dev/null || rc=1
+    SANITIZED_PROPERTIES_DIR=""
+  fi
   if [[ -n "${FROZEN_CONTAINER}" ]]; then
     if restore_saves "${FROZEN_CONTAINER}"; then
       FROZEN_CONTAINER=""
@@ -113,7 +119,7 @@ backup_server() {
     fi
   fi
 
-  local -a items=(data)
+  local -a items=(data) sanitized_items=()
   if [[ "${name}" == "minecraft-main" ]]; then
     [[ -f "${compose_dir}/compose.yml" ]] && items+=(compose.yml)
     [[ -f "${compose_dir}/image-digest.txt" ]] && items+=(image-digest.txt)
@@ -122,10 +128,31 @@ backup_server() {
     [[ -d "${compose_dir}/extras" ]] && items+=(extras)
   fi
 
+  if [[ -f "${data_dir}/server.properties" ]]; then
+    if ! SANITIZED_PROPERTIES_DIR="$(mktemp -d)"; then
+      echo "ERROR: Failed to create server.properties staging directory for ${name}" >&2
+      FAILED=1
+      return 1
+    fi
+    if ! sed -E 's/^([[:space:]]*rcon\.password([[:space:]]*[=:][[:space:]]*|[[:space:]]+)).*/\1/' \
+      "${data_dir}/server.properties" >"${SANITIZED_PROPERTIES_DIR}/server.properties"; then
+      echo "ERROR: Failed to sanitize server.properties for ${name}" >&2
+      FAILED=1
+      return 1
+    fi
+    if ! chmod 0600 "${SANITIZED_PROPERTIES_DIR}/server.properties"; then
+      echo "ERROR: Failed to protect sanitized server.properties for ${name}" >&2
+      FAILED=1
+      return 1
+    fi
+    sanitized_items=(-C "${SANITIZED_PROPERTIES_DIR}" --transform='s|^server.properties$|data/server.properties|' server.properties)
+  fi
+
   rm -f -- "${partial}"
   tar -C "${compose_dir}" \
     --exclude='data/.rcon-cli.env' \
     --exclude='data/.rcon-cli.yaml' \
+    --exclude='data/server.properties' \
     --exclude='data/config/spark/tmp' \
     --exclude='data/config/spark/tmp/*' \
     --exclude='data/logs' \
@@ -134,8 +161,13 @@ backup_server() {
     --exclude='data/backups' \
     --exclude='secrets' \
     --exclude='secrets/*' \
-    -czf "${partial}" "${items[@]}"
+    -czf "${partial}" "${items[@]}" "${sanitized_items[@]}"
   tar_rc=$?
+  if [[ -n "${SANITIZED_PROPERTIES_DIR}" ]]; then
+    rm -f -- "${SANITIZED_PROPERTIES_DIR}/server.properties"
+    rmdir -- "${SANITIZED_PROPERTIES_DIR}" || tar_rc=1
+    SANITIZED_PROPERTIES_DIR=""
+  fi
 
   if [[ "${running}" -eq 1 && "${save_off}" -eq 1 ]]; then
     if restore_saves "${container}"; then

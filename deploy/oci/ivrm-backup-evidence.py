@@ -8,6 +8,7 @@ import base64
 import gzip
 import hashlib
 import json
+import re
 import tarfile
 from pathlib import Path, PurePosixPath
 
@@ -16,6 +17,7 @@ FORBIDDEN_BASENAMES = {
     ".rcon-cli.yaml",
 }
 WORLD_MARKERS = {"level.dat"}
+RCON_PASSWORD = re.compile(r"^\s*rcon\.password(?:\s*[=:]\s*|\s+)(.*)$")
 
 
 class EvidenceError(ValueError):
@@ -48,8 +50,17 @@ def inspect_archive(path: Path) -> dict[str, object]:
         with tarfile.open(path, "r:gz") as archive:
             for member in archive:
                 member_path = safe_member_name(member.name)
-                if member_path.name in FORBIDDEN_BASENAMES:
+                if member_path.name in FORBIDDEN_BASENAMES or "secrets" in member_path.parts:
                     forbidden.append(member.name)
+                if member.isfile() and member_path.as_posix() == "data/server.properties":
+                    source = archive.extractfile(member)
+                    if source is None or member.size > 1024 * 1024:
+                        raise EvidenceError("server_properties_invalid")
+                    properties = source.read().decode("iso-8859-1")
+                    for line in properties.splitlines():
+                        match = RCON_PASSWORD.match(line)
+                        if match and match.group(1).strip():
+                            raise EvidenceError("archive_contains_rcon_password")
                 if member.isfile() and member_path.name in WORLD_MARKERS:
                     world_markers.append(member.name)
     except (gzip.BadGzipFile, EOFError, tarfile.TarError, OSError) as error:

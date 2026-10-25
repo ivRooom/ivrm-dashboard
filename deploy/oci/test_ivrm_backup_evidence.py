@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import base64
 import hashlib
 import importlib.util
@@ -15,10 +17,10 @@ assert SPEC.loader is not None
 SPEC.loader.exec_module(MODULE)
 
 
-def archive(path: Path, names: list[str]) -> None:
+def archive(path: Path, names: list[str], bodies: dict[str, bytes] | None = None) -> None:
     with tarfile.open(path, "w:gz") as output:
         for name in names:
-            body = b"test"
+            body = (bodies or {}).get(name, b"test")
             info = tarfile.TarInfo(name)
             info.size = len(body)
             output.addfile(info, io.BytesIO(body))
@@ -42,6 +44,29 @@ class BackupEvidenceTests(unittest.TestCase):
                 archive(path, ["data/world/level.dat", name])
                 with self.assertRaisesRegex(MODULE.EvidenceError, "sensitive_runtime_file"):
                     MODULE.inspect_archive(path)
+
+    def test_rejects_nonempty_rcon_password_in_server_properties(self):
+        for setting in (b"rcon.password=secret", b"rcon.password: secret", b"rcon.password secret"):
+            with self.subTest(setting=setting), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "backup.tar.gz"
+                names = ["data/world/level.dat", "data/server.properties"]
+                archive(path, names, {"data/server.properties": b"motd=test\n" + setting + b"\n"})
+                with self.assertRaisesRegex(MODULE.EvidenceError, "rcon_password"):
+                    MODULE.inspect_archive(path)
+
+    def test_accepts_sanitized_server_properties(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "backup.tar.gz"
+            names = ["data/world/level.dat", "data/server.properties"]
+            archive(path, names, {"data/server.properties": b"motd=test\nrcon.password=\n"})
+            MODULE.inspect_archive(path)
+
+    def test_rejects_secrets_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "backup.tar.gz"
+            archive(path, ["data/world/level.dat", "secrets/token"])
+            with self.assertRaisesRegex(MODULE.EvidenceError, "sensitive_runtime_file"):
+                MODULE.inspect_archive(path)
 
     def test_rejects_archive_without_world_marker(self):
         with tempfile.TemporaryDirectory() as directory:
