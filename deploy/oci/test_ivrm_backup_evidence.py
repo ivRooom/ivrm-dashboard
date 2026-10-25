@@ -45,21 +45,13 @@ class BackupEvidenceTests(unittest.TestCase):
                 with self.assertRaisesRegex(MODULE.EvidenceError, "sensitive_runtime_file"):
                     MODULE.inspect_archive(path)
 
-    def test_rejects_nonempty_rcon_password_in_server_properties(self):
-        for setting in (b"rcon.password=secret", b"rcon.password: secret", b"rcon.password secret"):
-            with self.subTest(setting=setting), tempfile.TemporaryDirectory() as directory:
-                path = Path(directory) / "backup.tar.gz"
-                names = ["data/world/level.dat", "data/server.properties"]
-                archive(path, names, {"data/server.properties": b"motd=test\n" + setting + b"\n"})
-                with self.assertRaisesRegex(MODULE.EvidenceError, "rcon_password"):
-                    MODULE.inspect_archive(path)
-
-    def test_accepts_sanitized_server_properties(self):
+    def test_rejects_server_properties_even_if_rcon_password_is_empty(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "backup.tar.gz"
             names = ["data/world/level.dat", "data/server.properties"]
             archive(path, names, {"data/server.properties": b"motd=test\nrcon.password=\n"})
-            MODULE.inspect_archive(path)
+            with self.assertRaisesRegex(MODULE.EvidenceError, "sensitive_runtime_file"):
+                MODULE.inspect_archive(path)
 
     def test_rejects_secrets_directory(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -71,7 +63,7 @@ class BackupEvidenceTests(unittest.TestCase):
     def test_rejects_archive_without_world_marker(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "backup.tar.gz"
-            archive(path, ["data/config/server.properties"])
+            archive(path, ["data/config/example.conf"])
             with self.assertRaisesRegex(MODULE.EvidenceError, "world_marker_missing"):
                 MODULE.inspect_archive(path)
 
