@@ -16,7 +16,7 @@ const chunks = [
   definition("supabase/migrations/202608130021_notification_delivery_lifecycle.sql", "notification_channel_ready_v1"),
   definition("supabase/migrations/202608130022_notification_ordering_and_policy_retirement.sql", "notification_delivery_block_reason_v1"),
   definition("supabase/migrations/202608140007_reliability_burn_deescalation_suppression.sql", "claim_notification_outbox_v1"),
-  read("supabase/migrations/20261024100017_backup_policy_lifecycle.sql"),
+  read("supabase/migrations/20261025015453_backup_policy_lifecycle.sql"),
   read("tests/backup-age-pause-db.sql"),
   // Exercise the actual operator scripts, including main exclusion and rollback.
   `insert into public.hosts(id,server_id) values ('00000000-0000-4000-8000-000000000003','oci-minecraft-01');

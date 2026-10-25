@@ -17,9 +17,9 @@
 
 ## 一時停止の適用
 
-Migration `20261024100017_backup_policy_lifecycle.sql`と新Webを先に導入し、v2 RPC/認可/ページ受入を確認する。Migrationは保持設定やpause値を変更しない。
+Migration `20261025015453_backup_policy_lifecycle.sql`と新Webを先に導入し、v2 RPC/認可/ページ受入を確認する。Migrationは保持設定やpause値を変更しない。
 
-最初の候補は`oci-minecraft-01`のPaper/Skyblock/Hardcore/GTNH/ATM10、Ageだけを2026-11-01 15:00 JSTまで。mainは対象外。実施前に現時点でも停止/廃止予定であることを再照合し、対象/期限/戻し方を含む承認を確認する。適用SQLは[prepare](../../deploy/sql/backup-age-pause-prepare.sql)、[解除](../../deploy/sql/backup-age-pause-resume.sql)。prepareは**明示transaction**、対象5件・full・mode・enabledを照合し、相違ならrollback。実行例（接続先/credentialは承認済み秘密管理経路から渡す）:
+2026-10-25に`oci-minecraft-01`のPaper/Skyblock/Hardcore/GTNH/ATM10へ、Ageだけを2026-11-01 15:00 JSTまで停止する設定を承認・適用済み。mainは対象外。詳細は[適用記録](../backup-age-pause-handoff.md)。以後の変更も、実施前に現時点の停止/廃止予定を再照合し、対象/期限/戻し方を含む承認を確認する。適用SQLは[prepare](../../deploy/sql/backup-age-pause-prepare.sql)、[解除](../../deploy/sql/backup-age-pause-resume.sql)。prepareは**明示transaction**、対象5件・full・mode・enabledを照合し、相違/既存pauseがあればrollback。以下は初回設定の実行例であり、適用済み環境へ無条件再実行しない（接続先/credentialは承認済み秘密管理経路から渡す）:
 
 ```bash
 psql "$APPROVED_DATABASE_URL" -X -v ON_ERROR_STOP=1 \
