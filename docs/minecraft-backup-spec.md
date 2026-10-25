@@ -27,6 +27,7 @@ A successful archive must:
 - contain at least one `level.dat` world marker;
 - contain no absolute or parent-traversal paths;
 - exclude runtime credentials, including `.rcon-cli.env`, `.rcon-cli.yaml`, and `secrets/`;
+- exclude `data/server.properties` entirely because it can contain RCON credentials, and reject evidence for any archive containing that file; restore procedures must supply a reviewed credential-free template before startup;
 - pass gzip/tar parsing before upload;
 - have a local SHA-256 calculated over the exact archive bytes;
 - be uploaded with S3 SHA-256 checksum calculation enabled;

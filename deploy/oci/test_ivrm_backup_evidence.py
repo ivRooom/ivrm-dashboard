@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import base64
 import hashlib
 import importlib.util
@@ -15,10 +17,10 @@ assert SPEC.loader is not None
 SPEC.loader.exec_module(MODULE)
 
 
-def archive(path: Path, names: list[str]) -> None:
+def archive(path: Path, names: list[str], bodies: dict[str, bytes] | None = None) -> None:
     with tarfile.open(path, "w:gz") as output:
         for name in names:
-            body = b"test"
+            body = (bodies or {}).get(name, b"test")
             info = tarfile.TarInfo(name)
             info.size = len(body)
             output.addfile(info, io.BytesIO(body))
@@ -43,10 +45,25 @@ class BackupEvidenceTests(unittest.TestCase):
                 with self.assertRaisesRegex(MODULE.EvidenceError, "sensitive_runtime_file"):
                     MODULE.inspect_archive(path)
 
+    def test_rejects_server_properties_even_if_rcon_password_is_empty(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "backup.tar.gz"
+            names = ["data/world/level.dat", "data/server.properties"]
+            archive(path, names, {"data/server.properties": b"motd=test\nrcon.password=\n"})
+            with self.assertRaisesRegex(MODULE.EvidenceError, "sensitive_runtime_file"):
+                MODULE.inspect_archive(path)
+
+    def test_rejects_secrets_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "backup.tar.gz"
+            archive(path, ["data/world/level.dat", "secrets/token"])
+            with self.assertRaisesRegex(MODULE.EvidenceError, "sensitive_runtime_file"):
+                MODULE.inspect_archive(path)
+
     def test_rejects_archive_without_world_marker(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "backup.tar.gz"
-            archive(path, ["data/config/server.properties"])
+            archive(path, ["data/config/example.conf"])
             with self.assertRaisesRegex(MODULE.EvidenceError, "world_marker_missing"):
                 MODULE.inspect_archive(path)
 

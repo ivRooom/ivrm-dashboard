@@ -126,6 +126,7 @@ backup_server() {
   tar -C "${compose_dir}" \
     --exclude='data/.rcon-cli.env' \
     --exclude='data/.rcon-cli.yaml' \
+    --exclude='data/server.properties' \
     --exclude='data/config/spark/tmp' \
     --exclude='data/config/spark/tmp/*' \
     --exclude='data/logs' \

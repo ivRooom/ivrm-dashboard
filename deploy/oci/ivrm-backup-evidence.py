@@ -14,6 +14,7 @@ from pathlib import Path, PurePosixPath
 FORBIDDEN_BASENAMES = {
     ".rcon-cli.env",
     ".rcon-cli.yaml",
+    "server.properties",
 }
 WORLD_MARKERS = {"level.dat"}
 
@@ -48,7 +49,7 @@ def inspect_archive(path: Path) -> dict[str, object]:
         with tarfile.open(path, "r:gz") as archive:
             for member in archive:
                 member_path = safe_member_name(member.name)
-                if member_path.name in FORBIDDEN_BASENAMES:
+                if member_path.name in FORBIDDEN_BASENAMES or "secrets" in member_path.parts:
                     forbidden.append(member.name)
                 if member.isfile() and member_path.name in WORLD_MARKERS:
                     world_markers.append(member.name)

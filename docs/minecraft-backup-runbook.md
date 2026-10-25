@@ -118,10 +118,11 @@ Rollback: restore all four files from the same rollback directory, then run synt
 2. Download into a new `mktemp -d` directory outside every production bind mount.
 3. Run `ivrm-backup-evidence` and compare the expected SHA-256.
 4. Extract only after path validation has passed.
-5. Start with a dedicated compose project, no public route, no production RCON secret and no writable production mount.
-6. Verify world load, clean log startup, representative player data/inventory and clean shutdown.
-7. Record artifact SHA, source run ID, test time and result. Only then report `restoreTestedAt` against the tested policy.
-8. Remove the isolated environment after retaining the non-secret evidence log.
+5. Supply a reviewed `data/server.properties` template with fresh credentials; never copy this file from a historical archive.
+6. Start with a dedicated compose project, no public route, no production RCON secret and no writable production mount.
+7. Verify world load, clean log startup, representative player data/inventory and clean shutdown.
+8. Record artifact SHA, source run ID, test time and result. Only then report `restoreTestedAt` against the tested policy.
+9. Remove the isolated environment after retaining the non-secret evidence log.
 
 ## Potential credential exposure response
 
