@@ -131,7 +131,7 @@ Docker監視のOCI配置・更新手順は[`docs/oci-docker-monitoring.md`](docs
 
 `/login`などPublic Routeには管理Console Shellを表示しません。未実装の`/logs`はIssue #68でRouteが実装されるまでNavigationへ追加しません。
 
-詳細は[`docs/architecture.md`](docs/architecture.md)を参照してください。
+詳細は[`docs/architecture.md`](docs/architecture.md)を参照してください。運用Consoleの要件・代表API・DBテーブル/ER・受入/テスト/信頼境界の横断インデックスは[システム仕様書（2026-10-26照合）](docs/system-specifications-20261026.md)へ整理しています。
 
 ## 開発方針
 
