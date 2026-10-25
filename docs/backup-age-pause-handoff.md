@@ -16,7 +16,7 @@ PR: [#158](https://github.com/ivRooom/ivrm-dashboard/pull/158)。CIの最新head
 - 未認証`/backups`は307 login、`/api/logs`401、private/no-storeを維持。`/login`200。既存browser接続はtimeoutのため認証済み実画面の目視受入は未実施。DB read modelと配備commitの照合を受入証跡とし、ブラウザー確認済みと偽装しない。
 - OCI read-onlyでmain healthy、10/25 03時backup exit0を確認。host/timer/producer/保存世代/削除/IAM/Secret/新resource変更なし。
 
-初回productionのrollback先は`dpl_pTjWqibMeufqCTJkoQyZ9TYUgBL2`（旧main b35ad5f）。Age再開は既存resume SQLへ上記と同一のuntil/reasonを渡す。追加列は残す。下の「未実行」記録は実装時点の履歴であり、この適用記録で更新する。
+初回productionのrollback先は`dpl_pTjWqibMeufqCTJkoQyZ9TYUgBL2`（旧main b35ad5f）。Age再開は既存resume SQLへ上記と同一のuntil/reasonを渡す。追加列は残す。以下の仕様・検証・手順は上記の適用結果と合わせて参照する。
 
 ## 実装範囲
 
@@ -29,7 +29,7 @@ PR: [#158](https://github.com/ivRooom/ivrm-dashboard/pull/158)。CIの最新head
 
 ローカル13件のbackup health/境界/RPCエラー試験と型チェック成功。使い捨てPostgreSQL17（tmpfs、task label付き）で実migration・既存実装のclaim/delivery gateを使い、pair/30日制限、exact signal/policy、historical event、queued/claimed、自然な期限切れ、sent履歴、v1/ACLを検証して成功。外部通知なし。CIにも同じ試験を接続。
 
-Build成功、全39件のNodeテスト成功。独立read-only reviewの対象競合・理由文字数/Unicode差異を修正し、focused13件/型チェック/実PostgreSQLを再検証成功。絵文字・タブ・Unicode空白・過大paddingを含むDB/Webの制約整合も検証し、最終独立reviewの追加指摘なし。実operator prepare/resumeも5対象だけへの適用とmain除外、enabled維持を検証した。本番migration/metadata設定/新Web配備は未実行。実backupのchecksum全読取/取り出し/復元試験は未実施。現実のarchiveを検証したという意味ではない。
+Build成功、全39件のNodeテスト成功。独立read-only reviewの対象競合・理由文字数/Unicode差異を修正し、focused13件/型チェック/実PostgreSQLを再検証成功。絵文字・タブ・Unicode空白・過大paddingを含むDB/Webの制約整合も検証し、最終独立reviewの追加指摘なし。実operator prepare/resumeも5対象だけへの適用とmain除外、enabled維持を検証した。本番migration/metadata設定/新Web配備は上記適用記録のとおり実行済み。実backupのchecksum全読取/取り出し/復元試験は未実施。現実のarchiveを検証したという意味ではない。
 
 ## 導入順と承認対象
 
