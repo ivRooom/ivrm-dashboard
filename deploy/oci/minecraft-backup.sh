@@ -15,9 +15,12 @@ FROZEN_CONTAINER=""
 mkdir -p "${BACKUP_DIR}"
 
 container_state() {
-  local state
+  local state container_ids
   if ! state="$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null)"; then
-    if docker info >/dev/null 2>&1; then
+    if ! container_ids="$(docker ps -aq --filter "name=^/$1$")"; then
+      return 1
+    fi
+    if [[ -z "${container_ids}" ]]; then
       echo missing
       return 0
     fi
