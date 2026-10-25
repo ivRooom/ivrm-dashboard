@@ -14,8 +14,16 @@ FROZEN_CONTAINER=""
 
 mkdir -p "${BACKUP_DIR}"
 
-is_running() {
-  docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null | grep -qx true
+container_state() {
+  local state
+  if ! state="$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null)"; then
+    return 1
+  fi
+  case "${state}" in
+    true) echo running ;;
+    false) echo stopped ;;
+    *) return 1 ;;
+  esac
 }
 
 rcon_exec() {
@@ -25,8 +33,11 @@ rcon_exec() {
 }
 
 restore_saves() {
-  local container="$1"
-  if is_running "${container}"; then
+  local container="$1" state
+  if ! state="$(container_state "${container}")"; then
+    return 1
+  fi
+  if [[ "${state}" == "running" ]]; then
     rcon_exec "${container}" save-on || return 1
     rcon_exec "${container}" save-all flush || rcon_exec "${container}" save-all || return 1
   fi
@@ -57,13 +68,18 @@ backup_server() {
   local data_dir="${compose_dir}/data"
   local output="${BACKUP_DIR}/${name}-${DATE}.tar.gz"
   local partial="${output}.partial"
-  local running=0 save_off=0 tar_rc=0 restore_failed=0
+  local running=0 save_off=0 tar_rc=0 restore_failed=0 state
 
   if [[ ! -d "${data_dir}" ]]; then
     echo "Skip ${name}: data directory not found."
     return 0
   fi
-  if ! is_running "${container}"; then
+  if ! state="$(container_state "${container}")"; then
+    echo "ERROR: unable to inspect container state for ${container}" >&2
+    FAILED=1
+    return 1
+  fi
+  if [[ "${state}" == "stopped" ]]; then
     if has_existing_backup "${name}"; then
       echo "Skip ${name}: ${container} is stopped and an existing backup is available."
       return 0
@@ -74,14 +90,26 @@ backup_server() {
   fi
 
   if [[ "${running}" -eq 1 ]]; then
-    rcon_exec "${container}" save-all flush || rcon_exec "${container}" save-all || true
-    if rcon_exec "${container}" save-off; then
-      save_off=1
-      FROZEN_CONTAINER="${container}"
-      sleep 2
-      rcon_exec "${container}" save-all flush || rcon_exec "${container}" save-all || true
-    else
-      echo "WARN: save-off failed for ${container}."
+    if ! rcon_exec "${container}" save-all flush && ! rcon_exec "${container}" save-all; then
+      echo "ERROR: pre-backup save failed for ${container}" >&2
+      FAILED=1
+      return 1
+    fi
+    if ! rcon_exec "${container}" save-off; then
+      echo "ERROR: save-off failed for ${container}" >&2
+      FAILED=1
+      return 1
+    fi
+    save_off=1
+    FROZEN_CONTAINER="${container}"
+    sleep 2
+    if ! rcon_exec "${container}" save-all flush && ! rcon_exec "${container}" save-all; then
+      echo "ERROR: frozen-world flush failed for ${container}" >&2
+      FAILED=1
+      if restore_saves "${container}"; then
+        FROZEN_CONTAINER=""
+      fi
+      return 1
     fi
   fi
 

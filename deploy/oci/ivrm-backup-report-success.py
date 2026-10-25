@@ -44,7 +44,7 @@ def build_runs(server_id: str) -> list[dict[str, object]]:
             if PATTERN.fullmatch(Path(str(marker)[: -len(".pending")]).name)
         ),
         key=lambda path: path.stat().st_mtime,
-    )[-20:]
+    )
 
     runs: list[dict[str, object]] = []
     for path in candidates:
@@ -79,7 +79,7 @@ def build_runs(server_id: str) -> list[dict[str, object]]:
                 "failureCode": None,
             }
         )
-    return runs
+    return runs[-20:]
 
 
 def main() -> int:
