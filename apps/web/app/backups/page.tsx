@@ -14,6 +14,7 @@ import { MetricLineChart, type MetricChartMarker } from "../../components/metric
 import {
   BACKUP_RANGE_CONFIG,
   getBackupCenterSnapshot,
+  isBackupAgePaused,
   parseBackupRange,
   type BackupHealth,
   type BackupRange,
@@ -284,7 +285,9 @@ export default async function BackupsPage({ searchParams }: PageProps) {
                       </div>
 
                       <div className={styles.metricGrid}>
-                        <div><span>Backup Age</span><strong>{formatAge(target.backupAgeSeconds)}</strong><small>Warn {formatAge(target.warningAfterSeconds)} / Crit {formatAge(target.criticalAfterSeconds)}</small></div>
+                        <div><span>Backup Age</span><strong>{formatAge(target.backupAgeSeconds)}</strong><small>Warn {formatAge(target.warningAfterSeconds)} / Crit {formatAge(target.criticalAfterSeconds)}</small>
+                          {isBackupAgePaused(target, Date.parse(endAt)) ? <small>Age判定・通知のみ停止: {formatDateTime(target.agePausedUntil ?? null)}まで / {target.agePauseReason}</small> : null}
+                        </div>
                         <div><span>最新結果</span><strong>{target.latest ? outcomeLabels[target.latest.outcome] : "—"}</strong><small>{formatDateTime(target.latest?.completedAt ?? target.latest?.startedAt ?? null)}</small></div>
                         <div><span>容量</span><strong>{formatBytes(target.latestSuccess?.sizeBytes ?? null)}</strong><small>最新成功Run</small></div>
                         <div><span>所要時間</span><strong>{formatDuration(target.latest?.durationSeconds ?? null)}</strong><small>最新Run</small></div>

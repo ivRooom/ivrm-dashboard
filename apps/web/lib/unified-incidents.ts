@@ -5,6 +5,7 @@ import {
 } from "./backup-incident-context";
 import {
   getBackupCenterSnapshot,
+  isBackupAgePaused,
   type BackupCenterSnapshot,
   type BackupHistoryRun,
   type BackupTargetSnapshot,
@@ -409,7 +410,7 @@ function deriveActiveBackupIncidents(
     }
 
     if (
-      target.backupAgeSeconds !== null &&
+      !isBackupAgePaused(target, now) && target.backupAgeSeconds !== null &&
       target.backupAgeSeconds > target.warningAfterSeconds
     ) {
       hasPolicyDependentSignal = true;

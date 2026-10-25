@@ -2,6 +2,11 @@
 
 ## 目的
 
+仕様: [Backup Age一時停止](backup-age-pause-spec.md)。運用・変更・復元:
+[バックアップ運用手順](runbooks/minecraft-backup-operations.md)、
+[隔離復元手順](runbooks/minecraft-backup-restore.md)。
+準備済みコードと本番への適用状態は[実装引継ぎ](backup-age-pause-handoff.md)で区別する。
+
 IVRM Consoleの`/backups`で、Minecraft系バックアップの鮮度・成否・整合性・Remote Sync・Retention・Restore Testを読み取り専用で確認する。
 
 Backup Centerはバックアップを実行・削除・復元しない。既存バックアップジョブが生成した構造化結果だけを受信する。

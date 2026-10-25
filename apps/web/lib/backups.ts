@@ -28,6 +28,8 @@ export type BackupTargetSnapshot = {
   criticalAfterSeconds: number;
   remoteSyncWarningSeconds: number;
   restoreTestWarningSeconds: number;
+  agePausedUntil?: string | null;
+  agePauseReason?: string | null;
   latest: BackupRunSummary | null;
   latestSuccess: BackupSuccessSummary | null;
   health: BackupHealth;
@@ -252,6 +254,11 @@ function parseCenterRows(payload: unknown): Omit<BackupTargetSnapshot, "health" 
     const criticalAfterSeconds = integer(row.critical_after_seconds);
     const remoteSyncWarningSeconds = integer(row.remote_sync_warning_seconds);
     const restoreTestWarningSeconds = integer(row.restore_test_warning_seconds);
+    const agePausedUntil = nullableTimestamp(row.age_paused_until);
+    // PostgreSQL char_length counts code points, not UTF-16 units.
+    const agePauseReason = typeof row.age_pause_reason === "string" &&
+      Array.from(row.age_pause_reason).length <= 256 && row.age_pause_reason.trim()
+      ? row.age_pause_reason : null;
     const latest = parseLatest(row);
     const latestSuccess = parseLatestSuccess(row);
     if (
@@ -259,12 +266,14 @@ function parseCenterRows(payload: unknown): Omit<BackupTargetSnapshot, "health" 
       !hostDisplayName || !backupTarget || !gameMode || !backupType || !BACKUP_TYPES.has(backupType) ||
       remoteSyncRequired === null || warningAfterSeconds === null || criticalAfterSeconds === null ||
       remoteSyncWarningSeconds === null || restoreTestWarningSeconds === null ||
-      latest === undefined || latestSuccess === undefined
+      latest === undefined || latestSuccess === undefined || agePausedUntil === undefined ||
+      (agePausedUntil === null ? row.age_pause_reason !== null : !agePauseReason?.trim())
     ) throw new Error("Backup Centerレスポンス形式が不正です");
     return {
       policyId, hostId, serverId, hostDisplayName, backupTarget, gameMode, backupType,
       remoteSyncRequired, warningAfterSeconds, criticalAfterSeconds,
       remoteSyncWarningSeconds, restoreTestWarningSeconds, latest, latestSuccess,
+      agePausedUntil, agePauseReason,
     };
   });
 }
@@ -338,12 +347,21 @@ function healthRank(health: BackupHealth): number {
   return { healthy: 0, unknown: 1, warning: 2, critical: 3 }[health];
 }
 
+export function isBackupAgePaused(
+  target: Pick<BackupTargetSnapshot, "agePausedUntil" | "agePauseReason">,
+  nowMs: number,
+): boolean {
+  return Boolean(target.agePauseReason?.trim() && target.agePausedUntil &&
+    Date.parse(target.agePausedUntil) > nowMs);
+}
+
 export function evaluateTarget(
   target: Omit<BackupTargetSnapshot, "health" | "healthReasons" | "backupAgeSeconds" | "remoteSyncPending" | "restoreReadiness">,
   nowMs: number,
 ): BackupTargetSnapshot {
   const reasons: string[] = [];
   const success = target.latestSuccess;
+  const agePaused = isBackupAgePaused(target, nowMs);
   const latest = target.latest;
   const backupAgeSeconds = success
     ? Math.max(0, Math.floor((nowMs - Date.parse(success.completedAt)) / 1_000))
@@ -361,10 +379,10 @@ export function evaluateTarget(
   if (!success) {
     reasons.push("成功済みバックアップをまだ確認できません");
   } else {
-    if (backupAgeSeconds !== null && backupAgeSeconds > target.criticalAfterSeconds) {
+    if (!agePaused && backupAgeSeconds !== null && backupAgeSeconds > target.criticalAfterSeconds) {
       health = "critical";
       reasons.push("最新成功がCritical SLAを超過しています");
-    } else if (backupAgeSeconds !== null && backupAgeSeconds > target.warningAfterSeconds && health !== "critical") {
+    } else if (!agePaused && backupAgeSeconds !== null && backupAgeSeconds > target.warningAfterSeconds && health !== "critical") {
       health = "warning";
       reasons.push("最新成功がWarning SLAを超過しています");
     }
@@ -419,13 +437,15 @@ export function evaluateTarget(
     }
   }
 
-  if (health === "healthy" && reasons.length === 0) reasons.push("最新成功・整合性・SLAに異常はありません");
+  if (health === "healthy" && reasons.length === 0) reasons.push(agePaused
+    ? "Age判定は一時停止中です。その他の取得済み保管証跡に異常はありません"
+    : "最新成功・整合性・SLAに異常はありません");
   return { ...target, health, healthReasons: reasons, backupAgeSeconds, remoteSyncPending, restoreReadiness };
 }
 
 export async function getBackupCenterSnapshot(range: BackupRange): Promise<BackupCenterSnapshot> {
   const [centerPayload, history] = await Promise.all([
-    callRpc("get_backup_center_v1", {}),
+    callRpc("get_backup_center_v2", {}),
     getAllBackupHistory(range),
   ]);
   const generatedAt = new Date().toISOString();
