@@ -37,7 +37,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const beforeId = parsePositiveInteger(beforeIdRaw);
   const beforeTimestamp = beforeOccurredAtRaw ? Date.parse(beforeOccurredAtRaw) : NaN;
   const beforeOccurredAt = Number.isFinite(beforeTimestamp)
-    ? new Date(beforeTimestamp).toISOString()
+    ? beforeOccurredAtRaw
     : null;
   if (
     (beforeOccurredAtRaw !== null && !beforeOccurredAt) ||
