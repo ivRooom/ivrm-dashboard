@@ -77,7 +77,8 @@ jobs:
 
   agent:
     name: Agent
-    runs-on: ubuntu-latest
+    # Python 3.9 is unavailable on ubuntu-latest (26.04); match PR #169.
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
