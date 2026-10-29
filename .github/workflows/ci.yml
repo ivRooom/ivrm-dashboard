@@ -41,6 +41,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Operation Agent HMACと内部エラー分類をテスト
         run: node --experimental-strip-types --test tests/operation-agent-auth-core.test.mjs tests/operation-internal-error.test.mjs
+      - name: Security Event投影の非機密化・検知表現をテスト
+        run: node --experimental-strip-types --test tests/security-event-projection.test.mjs
       - name: 型チェック
         run: pnpm typecheck
       - name: Backupの証拠・期限付きAge停止をテスト
