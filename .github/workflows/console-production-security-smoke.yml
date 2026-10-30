@@ -1,0 +1,48 @@
+name: Console Production Security Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - security/console-production-acceptance-20261030
+
+permissions:
+  contents: read
+
+jobs:
+  production-smoke:
+    name: Health and unauthenticated audit access
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify live public health endpoint (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(mktemp)"
+          status="$(curl --silent --show-error --max-time 20 --output "$body" --write-out '%{http_code}' https://console.ivrm.jp/api/health)"
+          if [[ "$status" != "200" ]]; then
+            echo "Unexpected /api/health HTTP status: $status"
+            exit 1
+          fi
+          jq -e '.status == "ok" and .service == "ivrm-dashboard-web" and (.timestamp | type == "string")' "$body" >/dev/null
+          echo "Public health schema verified (no credentials used)"
+
+      - name: Deny anonymous Security Events requests (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(mktemp)"
+          status="$(curl --silent --show-error --max-time 20 --output "$body" --write-out '%{http_code}' https://console.ivrm.jp/api/security/events)"
+          case "$status" in
+            401|403) ;;
+            *)
+              echo "Anonymous Security Events access was not denied: HTTP $status"
+              exit 1
+              ;;
+          esac
+          if grep -Eq '"events"[[:space:]]*:' "$body"; then
+            echo "Anonymous response unexpectedly contained events"
+            exit 1
+          fi
+          echo "Anonymous access denied without returning audit data (HTTP $status)"
