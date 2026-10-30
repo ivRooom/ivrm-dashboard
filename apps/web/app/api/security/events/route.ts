@@ -13,6 +13,7 @@ export const runtime = "nodejs";
 
 const RESPONSE_HEADERS = {
   "Cache-Control": "private, no-store, max-age=0",
+  "Vary": "Cookie",
   "X-Content-Type-Options": "nosniff",
 };
 
