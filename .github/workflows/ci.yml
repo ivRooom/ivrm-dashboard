@@ -79,8 +79,7 @@ jobs:
 
   agent:
     name: Agent
-    # Python 3.9 is required by OCI-compatible collectors, but setup-python
-    # does not provide 3.9 for the ubuntu-26.04 image selected by latest.
+    # Python 3.9 is unavailable on ubuntu-latest (26.04); match PR #169.
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
