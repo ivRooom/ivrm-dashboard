@@ -12,5 +12,5 @@ test("Console CI executes patched Node.js 24 LTS", () => {
 
 test("Console accepts only supported security-patched Node.js lines", () => {
   const manifest = JSON.parse(readFileSync(root, "utf8"));
-  assert.equal(manifest.engines.node, "^22.23.4 || ^24.22.2 || ^26.13.0");
+  assert.equal(manifest.engines.node, "^24.22.2");
 });
