@@ -41,8 +41,8 @@ jobs:
               exit 1
               ;;
           esac
-          if grep -Eq '"events"[[:space:]]*:' "$body"; then
-            echo "Anonymous response unexpectedly contained events"
+          if ! jq -e 'type == "object" and (has("events") | not) and (.error | type == "string")' "$body" >/dev/null; then
+            echo "Anonymous response must be structured JSON with an error and no events field"
             exit 1
           fi
           echo "Anonymous access denied without returning audit data (HTTP $status)"
