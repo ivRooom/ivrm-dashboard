@@ -33,7 +33,9 @@ jobs:
         run: |
           set -euo pipefail
           body="$(mktemp)"
-          status="$(curl --silent --show-error --max-time 20 --output "$body" --write-out '%{http_code}' https://console.ivrm.jp/api/security/events)"
+          headers="$(mktemp)"
+          trap 'rm -f "$body" "$headers"' EXIT
+          status="$(curl --silent --show-error --max-time 20 --dump-header "$headers" --output "$body" --write-out '%{http_code}' https://console.ivrm.jp/api/security/events)"
           case "$status" in
             401|403) ;;
             *)
@@ -46,3 +48,20 @@ jobs:
             exit 1
           fi
           echo "Anonymous access denied without returning audit data (HTTP $status)"
+          # Do not let an intermediary cache or reuse auth-dependent audit responses.
+          # Match header names and values case-insensitively; never print response bodies.
+          if ! grep -qiE '^cache-control:[[:space:]]*.*(private).*no-store' "$headers" && \
+             ! grep -qiE '^cache-control:[[:space:]]*.*no-store.*private' "$headers"; then
+            echo "Security Events response is missing private/no-store cache controls"
+            exit 1
+          fi
+          if ! grep -qiE '^vary:[[:space:]]*.*cookie' "$headers"; then
+            echo "Security Events response is missing Vary: Cookie"
+            exit 1
+          fi
+          if ! grep -qiE '^x-content-type-options:[[:space:]]*nosniff' "$headers"; then
+            echo "Security Events response is missing nosniff"
+            exit 1
+          fi
+          echo "Anonymous Security Events cache-isolation headers verified"
+
