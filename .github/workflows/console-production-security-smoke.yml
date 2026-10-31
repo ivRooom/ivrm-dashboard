@@ -1,0 +1,69 @@
+name: Console Production Security Smoke
+
+# Run explicitly *after* Vercel reports the production deployment READY.
+# PR branch pushes cannot validate headers served by an older production release.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-smoke:
+    name: Health and unauthenticated audit access
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify live public health endpoint (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(mktemp)"
+          status="$(curl --silent --show-error --max-time 20 --output "$body" --write-out '%{http_code}' https://console.ivrm.jp/api/health)"
+          if [[ "$status" != "200" ]]; then
+            echo "Unexpected /api/health HTTP status: $status"
+            exit 1
+          fi
+          jq -e '.status == "ok" and .service == "ivrm-dashboard-web" and (.timestamp | type == "string")' "$body" >/dev/null
+          echo "Public health schema verified (no credentials used)"
+
+      - name: Deny anonymous Security Events requests (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(mktemp)"
+          headers="$(mktemp)"
+          trap 'rm -f "$body" "$headers"' EXIT
+          status="$(curl --silent --show-error --max-time 20 --dump-header "$headers" --output "$body" --write-out '%{http_code}' https://console.ivrm.jp/api/security/events)"
+          case "$status" in
+            401|403) ;;
+            *)
+              echo "Anonymous Security Events access was not denied: HTTP $status"
+              exit 1
+              ;;
+          esac
+          if ! jq -e 'type == "object" and (.error | type == "string") and ([.. | objects | has("events")] | any | not)' "$body" >/dev/null; then
+            echo "Anonymous response must be structured JSON with an error and no events field"
+            exit 1
+          fi
+          echo "Anonymous access denied without returning audit data (HTTP $status)"
+          # Do not let an intermediary cache or reuse auth-dependent audit responses.
+          # Match header names and values case-insensitively; never print response bodies.
+          # Combine repeated fields, then match complete comma-separated directives.
+          cache_control="$(awk 'tolower($0) ~ /^cache-control:/ {sub(/^[^:]*:[[:space:]]*/, ""); printf "%s,", tolower($0)}' "$headers" | tr -d '\r')"
+          if ! printf '%s' "$cache_control" | tr ',' '\n' | grep -qxE '[[:space:]]*private[[:space:]]*' || \
+             ! printf '%s' "$cache_control" | tr ',' '\n' | grep -qxE '[[:space:]]*no-store[[:space:]]*'; then
+            echo "Security Events response is missing private/no-store cache controls"
+            exit 1
+          fi
+          vary_fields="$(awk 'tolower($0) ~ /^vary:/ {sub(/^[^:]*:[[:space:]]*/, ""); printf "%s,", tolower($0)}' "$headers" | tr -d '\r')"
+          if ! printf '%s' "$vary_fields" | tr ',' '\n' | grep -qxE '[[:space:]]*cookie[[:space:]]*'; then
+            echo "Security Events response is missing Vary: Cookie"
+            exit 1
+          fi
+          if ! grep -qiE '^x-content-type-options:[[:space:]]*nosniff' "$headers"; then
+            echo "Security Events response is missing nosniff"
+            exit 1
+          fi
+          echo "Anonymous Security Events cache-isolation headers verified"
+
