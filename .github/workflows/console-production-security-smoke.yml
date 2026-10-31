@@ -1,10 +1,9 @@
 name: Console Production Security Smoke
 
+# Run explicitly *after* Vercel reports the production deployment READY.
+# PR branch pushes cannot validate headers served by an older production release.
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - security/console-production-acceptance-20261030
 
 permissions:
   contents: read
