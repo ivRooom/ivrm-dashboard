@@ -51,6 +51,7 @@ function accessError(
   const headers = {
     "Cache-Control": "private, no-store, max-age=0",
     "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+    "Vary": "Cookie",
     "X-Content-Type-Options": "nosniff",
   };
   if (request.nextUrl.pathname.startsWith("/api/")) {
@@ -70,6 +71,7 @@ function accessError(
 function discordAuthenticationRequired(request: NextRequest): NextResponse {
   const headers = {
     "Cache-Control": "private, no-store, max-age=0",
+    "Vary": "Cookie",
     "X-Content-Type-Options": "nosniff",
   };
   if (request.nextUrl.pathname.startsWith("/api/")) {
