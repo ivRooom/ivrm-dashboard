@@ -36,9 +36,11 @@ jobs:
       - name: Node.jsを準備
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24.22.2
       - name: 依存関係をインストール
         run: pnpm install --frozen-lockfile
+      - name: Node.js runtime patch floor regression
+        run: node --test tests/node-security-runtime.test.mjs
       - name: Operation Agent HMACと内部エラー分類をテスト
         run: node --experimental-strip-types --test tests/operation-agent-auth-core.test.mjs tests/operation-internal-error.test.mjs
       - name: Security Event投影の非機密化・検知表現をテスト
