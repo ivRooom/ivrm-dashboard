@@ -42,19 +42,22 @@ jobs:
               exit 1
               ;;
           esac
-          if ! jq -e 'type == "object" and (has("events") | not) and (.error | type == "string")' "$body" >/dev/null; then
+          if ! jq -e 'type == "object" and (.error | type == "string") and ([.. | objects | has("events")] | any | not)' "$body" >/dev/null; then
             echo "Anonymous response must be structured JSON with an error and no events field"
             exit 1
           fi
           echo "Anonymous access denied without returning audit data (HTTP $status)"
           # Do not let an intermediary cache or reuse auth-dependent audit responses.
           # Match header names and values case-insensitively; never print response bodies.
-          if ! grep -qiE '^cache-control:[[:space:]]*.*(private).*no-store' "$headers" && \
-             ! grep -qiE '^cache-control:[[:space:]]*.*no-store.*private' "$headers"; then
+          # Combine repeated fields, then match complete comma-separated directives.
+          cache_control="$(awk 'tolower($0) ~ /^cache-control:/ {sub(/^[^:]*:[[:space:]]*/, ""); printf "%s,", tolower($0)}' "$headers" | tr -d '\r')"
+          if ! printf '%s' "$cache_control" | tr ',' '\n' | grep -qxE '[[:space:]]*private[[:space:]]*' || \
+             ! printf '%s' "$cache_control" | tr ',' '\n' | grep -qxE '[[:space:]]*no-store[[:space:]]*'; then
             echo "Security Events response is missing private/no-store cache controls"
             exit 1
           fi
-          if ! grep -qiE '^vary:[[:space:]]*.*cookie' "$headers"; then
+          vary_fields="$(awk 'tolower($0) ~ /^vary:/ {sub(/^[^:]*:[[:space:]]*/, ""); printf "%s,", tolower($0)}' "$headers" | tr -d '\r')"
+          if ! printf '%s' "$vary_fields" | tr ',' '\n' | grep -qxE '[[:space:]]*cookie[[:space:]]*'; then
             echo "Security Events response is missing Vary: Cookie"
             exit 1
           fi
