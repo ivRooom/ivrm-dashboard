@@ -30,14 +30,19 @@ Docker / Minecraft / systemd / backup scripts
 ```text
 ivrm-dashboard/
 ├─ apps/
-│  ├─ web/          # Next.js管理画面
-│  └─ agent/        # Go製の監視Agent
+│  ├─ web/                      # Next.js管理画面
+│  ├─ agent/                    # Go製の監視Agent
+│  ├─ cloud-collector/          # 収集系（役割の詳細は未整備）
+│  ├─ minecraft-metrics-bridge/ # 収集系（役割の詳細は未整備）
+│  └─ runtime-collector/        # 収集系（役割の詳細は未整備）
 ├─ deploy/
 │  └─ oci/          # OCI向けsystemd・Docker状態収集
 ├─ supabase/
 │  └─ migrations/   # DBマイグレーション
 └─ docs/            # 設計・セキュリティ・運用資料
 ```
+
+※ collector 系3件（`cloud-collector` / `minecraft-metrics-bridge` / `runtime-collector`）は実在するが、役割の詳細は未整備（2026-11-10 時点）。
 
 ## 初期対象
 
