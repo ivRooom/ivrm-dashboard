@@ -8,7 +8,7 @@
 #     (the pg_net/vault kick function is replaced by a direct curl; the token
 #      was rotated at cutover and lives in /etc/ivrm-dashboard-timers/burn-token)
 set -u
-PSQL="/usr/bin/runuser -u postgres -- /usr/bin/psql -d ivrm_dashboard -At"
+PSQL="/usr/sbin/runuser -u postgres -- /usr/bin/psql -d ivrm_dashboard -At"
 
 $PSQL -c "select public.capture_expired_container_maintenance_events()" >/dev/null 2>&1 \
   || logger -t ivrm-dash-minutely "maintenance-expiry failed"
