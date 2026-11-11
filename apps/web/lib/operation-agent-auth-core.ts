@@ -14,14 +14,20 @@ export class OperationAgentAuthError extends Error {
   }
 }
 
-export function parseAgentSecretMap(raw: string | undefined): Record<string, string> {
-  if (!raw) throw new OperationAgentAuthError(503, "service_not_configured");
+export function parseAgentSecretMap(raw: string | undefined, label = "map"): Record<string, string> {
+  if (!raw) {
+    console.error(`[agent-secrets] ${label}: value is missing or empty`);
+    throw new OperationAgentAuthError(503, "service_not_configured");
+  }
   try {
     const value = JSON.parse(raw) as unknown;
     if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error();
     const result: Record<string, string> = {};
     for (const [serverId, secret] of Object.entries(value)) {
       if (!/^[A-Za-z0-9._-]{1,64}$/.test(serverId) || typeof secret !== "string" || secret.length < 32) {
+        console.error(
+          `[agent-secrets] ${label}: invalid entry key=${JSON.stringify(serverId)} valueType=${typeof secret} valueLength=${typeof secret === "string" ? secret.length : -1} rawLength=${raw.length}`,
+        );
         throw new Error();
       }
       result[serverId] = secret;
@@ -29,17 +35,23 @@ export function parseAgentSecretMap(raw: string | undefined): Record<string, str
     return result;
   } catch (error) {
     if (error instanceof OperationAgentAuthError) throw error;
+    if (error instanceof SyntaxError) {
+      console.error(`[agent-secrets] ${label}: JSON parse failed rawLength=${raw.length}: ${error.message}`);
+    }
     throw new OperationAgentAuthError(503, "service_not_configured");
   }
 }
 
 export function parseAgentSecretMaps(base: string | undefined, additional?: string): Record<string, string> {
-  const result = parseAgentSecretMap(base);
+  const result = parseAgentSecretMap(base, "base");
   if (!additional) return result;
-  const extra = parseAgentSecretMap(additional);
+  const extra = parseAgentSecretMap(additional, "additional");
   for (const [id, secret] of Object.entries(extra)) {
     // Never let a new Secret silently replace a credential in the original map.
-    if (Object.hasOwn(result, id)) throw new OperationAgentAuthError(503, "service_not_configured");
+    if (Object.hasOwn(result, id)) {
+      console.error(`[agent-secrets] additional: key overlap on ${JSON.stringify(id)}`);
+      throw new OperationAgentAuthError(503, "service_not_configured");
+    }
     Object.defineProperty(result, id, { value: secret, enumerable: true });
   }
   return result;
