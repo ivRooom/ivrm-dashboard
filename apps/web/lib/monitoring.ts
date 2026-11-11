@@ -23,7 +23,7 @@ export type ContainerHealth =
   | "none"
   | "unknown";
 
-export type ContainerExpectedState = "running" | "stopped" | "absent";
+export type ContainerExpectedState = "running" | "stopped" | "absent" | "on-demand";
 
 type HostRow = {
   id: string;
@@ -227,6 +227,32 @@ function determineContainerStatus(
         : "error";
     case "absent":
       return container.state === "not_found" ? "standby" : "error";
+    case "on-demand":
+      if (
+        container.state === "exited" ||
+        container.state === "created" ||
+        container.state === "not_found"
+      ) {
+        return "standby";
+      }
+      if (
+        container.oom_killed ||
+        container.health === "unhealthy" ||
+        container.state === "dead" ||
+        container.state === "removing" ||
+        container.state === "unknown"
+      ) {
+        return "error";
+      }
+      if (
+        container.state === "restarting" ||
+        container.state === "paused" ||
+        container.health === "starting" ||
+        container.health === "unknown"
+      ) {
+        return "stale";
+      }
+      return container.state === "running" ? "online" : "error";
     case "running":
       if (
         container.oom_killed ||
