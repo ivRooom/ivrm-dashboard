@@ -41,7 +41,8 @@ begin
     load_average_1, load_average_5, load_average_15, uptime_seconds
   ) values (
     p_host_id, 'repro-184', p_received_at, p_received_at,
-    md5(random()::text || clock_timestamp()::text), md5(random()::text),
+    md5(random()::text || clock_timestamp()::text),
+    md5(random()::text || clock_timestamp()::text) || md5(random()::text),
     2, 1024, 512, 1024, 512, 0.1, 0.1, 0.1, 60
   )
   returning id into v_heartbeat_id;
