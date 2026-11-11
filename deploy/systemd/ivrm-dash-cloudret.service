@@ -1,0 +1,8 @@
+[Unit]
+Description=ivrm-dashboard cloud monitor history retention
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=postgres
+ExecStart=/usr/bin/psql -d ivrm_dashboard -At -c "select public.prune_cloud_monitor_history_v1()"

@@ -1,0 +1,34 @@
+services:
+  postgrest:
+    image: postgrest/postgrest:v12.2.3
+    container_name: ivrm-postgrest
+    restart: unless-stopped
+    environment:
+      PGRST_DB_URI: ${PGRST_DB_URI}
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: ivrm_dashboard_anon
+      PGRST_JWT_SECRET: ${PGRST_JWT_SECRET}
+      PGRST_SERVER_PORT: 3000
+    volumes:
+      - /opt/ivrm/api/postgresql-ca:/run/ivrm/postgresql-ca:ro
+    networks:
+      - ivrm-runtime-edge
+  dispatch-worker:
+    build: ./worker
+    image: ivrm-dispatch-worker:latest
+    container_name: ivrm-dispatch-worker
+    restart: unless-stopped
+    environment:
+      DASHBOARD_DATABASE_URL_FILE: /run/secrets/dburl
+      DASHBOARD_PG_CA_FILE: /run/ivrm/postgresql-ca/ivrm-db-ca.crt
+      DISCORD_WEBHOOK_URL_FILE: /run/secrets/webhook
+      WORKER_INTERVAL_MS: "60000"
+    volumes:
+      - /opt/ivrm/dashboard/secrets/worker-db-url:/run/secrets/dburl:ro
+      - /opt/ivrm/dashboard/secrets/discord-webhook-url:/run/secrets/webhook:ro
+      - /opt/ivrm/api/postgresql-ca:/run/ivrm/postgresql-ca:ro
+    networks:
+      - ivrm-runtime-edge
+networks:
+  ivrm-runtime-edge:
+    external: true

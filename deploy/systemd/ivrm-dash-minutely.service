@@ -1,0 +1,7 @@
+[Unit]
+Description=ivrm-dashboard minutely jobs (pg_cron replacement)
+After=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/ivrm-dashboard-timers/ivrm-dash-minutely.sh

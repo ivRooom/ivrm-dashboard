@@ -1,0 +1,8 @@
+[Unit]
+Description=ivrm-dashboard console log retention
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=postgres
+ExecStart=/usr/bin/psql -d ivrm_dashboard -At -c "select public.prune_console_log_rows_v1(5000)"
