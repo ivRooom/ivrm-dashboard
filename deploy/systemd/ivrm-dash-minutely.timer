@@ -1,0 +1,9 @@
+[Unit]
+Description=Run ivrm-dashboard minutely jobs
+
+[Timer]
+OnCalendar=*-*-* *:*:10
+Persistent=true
+
+[Install]
+WantedBy=timers.target

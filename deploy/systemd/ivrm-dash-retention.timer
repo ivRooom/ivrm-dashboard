@@ -1,0 +1,9 @@
+[Unit]
+Description=Run ivrm-dashboard retention at :17 every 6 hours
+
+[Timer]
+OnCalendar=*-*-* 00,06,12,18:17:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,8 @@
+[Unit]
+Description=ivrm-dashboard observability rollup (5m)
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=postgres
+ExecStart=/usr/bin/psql -d ivrm_dashboard -At -c "select public.refresh_observability_rollups_v2(statement_timestamp() - interval '20 minutes', statement_timestamp())"

@@ -1,0 +1,1 @@
+{"dependencies":{"pg":"^8.13.1"},"description":"Polling replacement for the Supabase Edge Function notification-dispatch (ivrm-dashboard).","engines":{"node":">=20"},"main":"worker.mjs","name":"ivrm-dispatch-worker","private":true,"scripts":{"start":"node worker.mjs"},"type":"module","version":"1.0.0"}
