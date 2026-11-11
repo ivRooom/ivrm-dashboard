@@ -22,6 +22,7 @@ services:
       DASHBOARD_DATABASE_URL_FILE: /run/secrets/dburl
       DASHBOARD_PG_CA_FILE: /run/ivrm/postgresql-ca/ivrm-db-ca.crt
       DISCORD_WEBHOOK_URL_FILE: /run/secrets/webhook
+      DISCORD_MENTION_ROLE_ID: "1569975680542969887"
       WORKER_INTERVAL_MS: "60000"
     volumes:
       - /opt/ivrm/dashboard/secrets/worker-db-url:/run/secrets/dburl:ro

@@ -20,6 +20,7 @@ const CONSOLE_BASE_URL = "https://console.ivrm.jp";
 const INTERVAL_MS = Number(process.env.WORKER_INTERVAL_MS ?? 60_000);
 const RUN_ONCE = process.env.WORKER_RUN_ONCE === "1";
 const ALLOW_CUSTOM_WEBHOOK = process.env.WORKER_ALLOW_CUSTOM_WEBHOOK === "1";
+const MENTION_ROLE_ID = (process.env.DISCORD_MENTION_ROLE_ID ?? "").trim();
 
 function log(event, fields = {}) {
   console.log(JSON.stringify({ at: new Date().toISOString(), event, ...fields }));
@@ -53,6 +54,17 @@ function colorForSeverity(severity) {
     case "recovery": return 0x57f287;
     default: return 0x5865f2;
   }
+}
+
+// Issue #184: mention the response role only for notifications that need a
+// human now — newly opened criticals, escalations, and OOM kills. Warnings,
+// recoveries and re-delivery attempts never mention. Disabled unless
+// DISCORD_MENTION_ROLE_ID holds a plausible Discord role id.
+function shouldMentionRow(row) {
+  if (!/^[0-9]{17,20}$/.test(MENTION_ROLE_ID)) return false;
+  if (typeof row.signal_key === "string" && row.signal_key.endsWith(":oom_killed")) return true;
+  if (row.transition === "escalated") return true;
+  return row.transition === "opened" && row.severity === "critical";
 }
 
 function transitionLabel(transition) {
@@ -155,6 +167,10 @@ async function deliverLegacyRow(pool, webhook, claimToken, row) {
         timestamp: row.occurred_at,
       }],
     };
+    if (shouldMentionRow(row)) {
+      payload.content = `<@&${MENTION_ROLE_ID}>`;
+      payload.allowed_mentions = { parse: [], roles: [MENTION_ROLE_ID] };
+    }
 
     const response = await postDiscord(webhook, payload);
     if (!response.ok) {

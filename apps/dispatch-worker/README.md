@@ -34,6 +34,22 @@ table reads (the `notification_channels` gate) need the bypass.
 | `WORKER_INTERVAL_MS` | Poll interval (default 60000) |
 | `WORKER_RUN_ONCE` | `1` = run one cycle and exit (testing) |
 | `WORKER_ALLOW_CUSTOM_WEBHOOK` | `1` = skip the Discord URL shape check (testing only) |
+| `DISCORD_MENTION_ROLE_ID` | Discord role id mentioned on critical notifications (see Mentions). Unset/invalid = mentions disabled. |
+
+## Mentions
+
+Monitor notifications (the legacy outbox path) mention the configured role
+only when a human needs to act now (Issue #184):
+
+- `opened` with severity `critical`
+- `escalated` (any severity — in practice the rank only rises to critical)
+- OOM kills (`signal_key` ending in `:oom_killed`)
+
+Warnings, recoveries, and re-delivery attempts never mention. The mention is
+sent as message `content` (`<@&role-id>`) with
+`allowed_mentions: { parse: [], roles: [role-id] }`, so nothing else in the
+payload can trigger a ping. Status-event deliveries (incidents, maintenance,
+announcements) are a separate stream and never mention.
 
 ## Deployment
 
