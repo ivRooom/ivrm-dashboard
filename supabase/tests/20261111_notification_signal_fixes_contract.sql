@@ -129,6 +129,32 @@ begin
   perform pg_temp.repro184_sample(v_host_id, 'mc-resource-like', v_now - interval '10 seconds', 'running', 'healthy');
 
   -- ================================================================
+  -- P1 追補（202611110004）: on-demand の停止に伴う exited + unhealthy の
+  --   同時遷移では Health Signal を立てない。Docker は停止したコンテナの
+  --   health を最後の値（unhealthy）に凍結するため、稼働中でないサンプルの
+  --   health は判定対象外（2026-11-11 19:59 の実地確認で検出）。
+  -- ================================================================
+  insert into public.container_expectations (host_id, container_name, expected_state)
+  values (v_host_id, 'exit-like', 'on-demand');
+  perform pg_temp.repro184_sample(v_host_id, 'exit-like', v_now - interval '40 seconds', 'running', 'healthy');
+  perform pg_temp.repro184_sample(v_host_id, 'exit-like', v_now - interval '10 seconds', 'exited', 'unhealthy', 0, false, 0);
+  perform public.reconcile_notification_container_signals_v1();
+
+  select count(*) into v_count
+  from public.notification_outbox
+  where host_id = v_host_id
+    and entity_name = 'exit-like'
+    and signal_key is not null;
+  perform pg_temp.repro184_assert(v_count = 0, 'p1b_on_demand_exit_unhealthy_no_notifications');
+
+  select count(*) into v_count
+  from public.notification_signal_state
+  where host_id = v_host_id
+    and entity_name = 'exit-like'
+    and active;
+  perform pg_temp.repro184_assert(v_count = 0, 'p1b_on_demand_exit_unhealthy_no_active_signals');
+
+  -- ================================================================
   -- P2 の回帰: expected=stopped の running 化は warning のまま。
   --   分類器（event）が warning で開いた Signal を、直後の reconcile が
   --   critical へ引き上げて escalated を作らないこと。
