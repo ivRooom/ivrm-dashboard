@@ -20,6 +20,7 @@ import {
   getMinecraftLiveMetrics,
   type LiveMetricSeries,
   type MinecraftLiveMetrics,
+  type LiveRangeId,
 } from "../../lib/minecraft-live-metrics";
 import styles from "./minecraft.module.css";
 
@@ -150,10 +151,14 @@ function LiveChart({
   label,
   series,
   metric,
+  max = 100,
+  caption,
 }: {
   label: string;
   series: LiveMetricSeries[];
   metric: "cpu" | "memory";
+  max?: number;
+  caption?: string;
 }) {
   const width = 600;
   const height = 150;
@@ -184,7 +189,7 @@ function LiveChart({
       }
       const x = padL + (index / Math.max(1, points.length - 1)) * innerW;
       const y =
-        padT + innerH - (Math.min(100, Math.max(0, value)) / 100) * innerH;
+        padT + innerH - (Math.min(max, Math.max(0, value)) / max) * innerH;
       current.push(`${x.toFixed(1)},${y.toFixed(1)}`);
     });
     flush();
@@ -192,10 +197,13 @@ function LiveChart({
   });
   return (
     <figure className={styles.liveChart}>
-      <figcaption>{label}（直近30分）</figcaption>
+      <figcaption>
+        {label}
+        {caption ? `（${caption}）` : ""}
+      </figcaption>
       <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label}>
-        {[0, 50, 100].map((value) => {
-          const y = padT + innerH - (value / 100) * innerH;
+        {[0, max / 2, max].map((value) => {
+          const y = padT + innerH - (value / max) * innerH;
           return (
             <g key={value}>
               <line
@@ -231,7 +239,31 @@ function liveStateBadge(state: string | undefined) {
   return <StatusBadge tone="neutral">未取得</StatusBadge>;
 }
 
-export default async function MinecraftPage() {
+type MinecraftPageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+const LIVE_RANGES = [
+  { id: "30m", label: "30分" },
+  { id: "2h", label: "2時間" },
+  { id: "24h", label: "24時間" },
+] as const;
+
+function jstDateString(offsetDays: number): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(Date.now() + offsetDays * 86_400_000));
+}
+
+export default async function MinecraftPage({ searchParams }: MinecraftPageProps) {
+  const params = await searchParams;
+  const liveRange: LiveRangeId =
+    params.range === "2h" || params.range === "24h" ? params.range : "30m";
+  const liveRangeLabel =
+    LIVE_RANGES.find((range) => range.id === liveRange)?.label ?? "30分";
   let overview: MinecraftOverview | null = null;
   let hasDataError = false;
 
@@ -248,6 +280,22 @@ export default async function MinecraftPage() {
   } catch (error) {
     console.error("Minecraftライブメトリクスの取得に失敗しました", error);
   }
+
+  const liveRangeData = liveMetrics?.ranges[liveRange] ?? { series: [], tps: [] };
+  const tpsValues = liveRangeData.tps.filter((v): v is number => v !== null);
+  const tpsSeries: LiveMetricSeries[] =
+    liveRangeData.tps.length >= 2
+      ? [
+          {
+            key: "game",
+            label: "TPS",
+            color: "#a78bfa",
+            cpu: liveRangeData.tps,
+            memory: [],
+          },
+        ]
+      : [];
+  const tpsMax = Math.max(20, ...tpsValues);
 
   const status = overview?.status ?? "unknown";
   const velocity = overview?.velocity ?? null;
@@ -545,16 +593,89 @@ export default async function MinecraftPage() {
                       </div>
                     </div>
                   </article>
-                  {liveMetrics.series.length > 0 ? (
+                  {liveMetrics.game ? (
+                    <article className={styles.card}>
+                      <div className={styles.cardHeader}>
+                        <div>
+                          <h3>ゲーム（生活サーバー）</h3>
+                          <p>TPS とティック時間（MSPT）です。</p>
+                        </div>
+                        <StatusBadge tone="info">TPS</StatusBadge>
+                      </div>
+                      <div className={styles.details}>
+                        <div>
+                          <span>TPS（1分平均）</span>
+                          <strong>
+                            {liveMetrics.game.tps1m?.toFixed(1) ?? "未取得"}
+                          </strong>
+                        </div>
+                        <div>
+                          <span>TPS（5分 / 15分）</span>
+                          <strong>
+                            {liveMetrics.game.tps5m?.toFixed(1) ?? "—"} /{" "}
+                            {liveMetrics.game.tps15m?.toFixed(1) ?? "—"}
+                          </strong>
+                        </div>
+                        <div>
+                          <span>MSPT 中央値 / p95</span>
+                          <strong>
+                            {liveMetrics.game.msptMedian1m?.toFixed(2) ?? "—"}ms /{" "}
+                            {liveMetrics.game.msptP951m?.toFixed(2) ?? "—"}ms
+                          </strong>
+                        </div>
+                        <div>
+                          <span>プレイヤー</span>
+                          <strong>
+                            {liveMetrics.players?.online ?? "未取得"}
+                            {liveMetrics.players?.max != null
+                              ? ` / ${liveMetrics.players.max} 人`
+                              : " 人"}
+                          </strong>
+                        </div>
+                      </div>
+                    </article>
+                  ) : null}
+                  {liveRangeData.series.length > 0 ? (
                     <article className={`${styles.card} ${styles.liveChartCard}`}>
-                      <LiveChart label="CPU使用率" series={liveMetrics.series} metric="cpu" />
+                      <nav className={styles.liveRangeNav} aria-label="表示範囲">
+                        {LIVE_RANGES.map((range) => (
+                          <a
+                            key={range.id}
+                            href={`/minecraft?range=${range.id}`}
+                            className={
+                              range.id === liveRange
+                                ? styles.liveRangeLinkActive
+                                : styles.liveRangeLink
+                            }
+                            aria-current={range.id === liveRange ? "page" : undefined}
+                          >
+                            {range.label}
+                          </a>
+                        ))}
+                      </nav>
+                      <LiveChart
+                        label="CPU使用率"
+                        series={liveRangeData.series}
+                        metric="cpu"
+                        caption={liveRangeLabel}
+                      />
                       <LiveChart
                         label="メモリ使用率"
-                        series={liveMetrics.series}
+                        series={liveRangeData.series}
                         metric="memory"
+                        caption={liveRangeLabel}
                       />
+                      {tpsSeries.length > 0 ? (
+                        <LiveChart
+                          label="TPS（生活サーバー）"
+                          series={tpsSeries}
+                          metric="cpu"
+                          max={tpsMax}
+                          caption={liveRangeLabel}
+                        />
+                      ) : null}
                       <div className={styles.liveLegend}>
-                        {liveMetrics.series.map((s) => (
+                        {liveRangeData.series.map((s) => (
                           <span key={s.key}>
                             <i style={{ background: s.color }} />
                             {s.label}
@@ -563,6 +684,47 @@ export default async function MinecraftPage() {
                       </div>
                     </article>
                   ) : null}
+                  <article className={styles.card}>
+                    <div className={styles.cardHeader}>
+                      <div>
+                        <h3>日次レポート・蓄積データ</h3>
+                        <p>毎朝 07:05 に前日分を集計しています。</p>
+                      </div>
+                      <StatusBadge tone="info">CSV</StatusBadge>
+                    </div>
+                    {liveMetrics.reports.length > 0 ? (
+                      <ul className={styles.liveReportList}>
+                        {liveMetrics.reports.map((report) => (
+                          <li key={report.date}>
+                            <a href={report.url} target="_blank" rel="noreferrer">
+                              {report.date} のレポート
+                            </a>
+                            <span>
+                              TPS 平均 {report.tpsAvg?.toFixed(1) ?? "—"} ・ ホストCPU
+                              最大 {report.cpuMaxHost?.toFixed(0) ?? "—"}%
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p>まだレポートがありません。</p>
+                    )}
+                    <p className={styles.liveCsvLinks}>
+                      CSV（10秒間隔）:{" "}
+                      <a
+                        href={`https://status.ivrm.jp/data/metrics-${jstDateString(0)}.csv`}
+                      >
+                        今日
+                      </a>{" "}
+                      ・{" "}
+                      <a
+                        href={`https://status.ivrm.jp/data/metrics-${jstDateString(-1)}.csv`}
+                      >
+                        昨日
+                      </a>{" "}
+                      ・ <a href="https://status.ivrm.jp/reports/">レポート一覧</a>
+                    </p>
+                  </article>
                 </div>
               </section>
             ) : null}
