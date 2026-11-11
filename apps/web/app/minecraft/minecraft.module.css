@@ -188,3 +188,56 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ライブメトリクス（Herta #857 P4） */
+.liveChartCard {
+  grid-column: 1 / -1;
+}
+
+.liveChart {
+  margin: 0 0 12px;
+}
+
+.liveChart figcaption {
+  font-size: 12px;
+  opacity: 0.75;
+  margin-bottom: 6px;
+}
+
+.liveChart svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.liveGridLine {
+  stroke: currentColor;
+  opacity: 0.18;
+  stroke-width: 1;
+}
+
+.liveAxisLabel {
+  fill: currentColor;
+  opacity: 0.65;
+  font-size: 10px;
+}
+
+.liveLegend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.liveLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.liveLegend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}

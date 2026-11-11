@@ -16,6 +16,11 @@ import {
   type MinecraftOverview,
 } from "../../lib/minecraft";
 import type { ContainerOverview } from "../../lib/monitoring";
+import {
+  getMinecraftLiveMetrics,
+  type LiveMetricSeries,
+  type MinecraftLiveMetrics,
+} from "../../lib/minecraft-live-metrics";
 import styles from "./minecraft.module.css";
 
 export const dynamic = "force-dynamic";
@@ -137,6 +142,95 @@ function containerTone(container: ContainerOverview | null): ConsoleTone {
   return "danger";
 }
 
+function formatLivePct(value: number | null): string {
+  return value === null ? "未取得" : `${value.toFixed(1)}%`;
+}
+
+function LiveChart({
+  label,
+  series,
+  metric,
+}: {
+  label: string;
+  series: LiveMetricSeries[];
+  metric: "cpu" | "memory";
+}) {
+  const width = 600;
+  const height = 150;
+  const padL = 34;
+  const padR = 8;
+  const padT = 10;
+  const padB = 10;
+  const innerW = width - padL - padR;
+  const innerH = height - padT - padB;
+  const runs = series.flatMap((s) => {
+    const points = s[metric];
+    const segments: { points: string; color: string; id: string }[] = [];
+    let current: string[] = [];
+    const flush = () => {
+      if (current.length > 1) {
+        segments.push({
+          points: current.join(" "),
+          color: s.color,
+          id: `${s.key}-${segments.length}`,
+        });
+      }
+      current = [];
+    };
+    points.forEach((value, index) => {
+      if (value === null) {
+        flush();
+        return;
+      }
+      const x = padL + (index / Math.max(1, points.length - 1)) * innerW;
+      const y =
+        padT + innerH - (Math.min(100, Math.max(0, value)) / 100) * innerH;
+      current.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+    });
+    flush();
+    return segments;
+  });
+  return (
+    <figure className={styles.liveChart}>
+      <figcaption>{label}（直近30分）</figcaption>
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label}>
+        {[0, 50, 100].map((value) => {
+          const y = padT + innerH - (value / 100) * innerH;
+          return (
+            <g key={value}>
+              <line
+                x1={padL}
+                y1={y}
+                x2={width - padR}
+                y2={y}
+                className={styles.liveGridLine}
+              />
+              <text x={4} y={y + 4} className={styles.liveAxisLabel}>
+                {value}
+              </text>
+            </g>
+          );
+        })}
+        {runs.map((run) => (
+          <polyline
+            key={run.id}
+            points={run.points}
+            fill="none"
+            stroke={run.color}
+            strokeWidth={2}
+          />
+        ))}
+      </svg>
+    </figure>
+  );
+}
+
+function liveStateBadge(state: string | undefined) {
+  if (state === "running") return <StatusBadge tone="success">稼働中</StatusBadge>;
+  if (state === "stopped") return <StatusBadge tone="neutral">停止中</StatusBadge>;
+  return <StatusBadge tone="neutral">未取得</StatusBadge>;
+}
+
 export default async function MinecraftPage() {
   let overview: MinecraftOverview | null = null;
   let hasDataError = false;
@@ -146,6 +240,13 @@ export default async function MinecraftPage() {
   } catch (error) {
     hasDataError = true;
     console.error("Minecraft総合状態の取得に失敗しました", error);
+  }
+
+  let liveMetrics: MinecraftLiveMetrics | null = null;
+  try {
+    liveMetrics = await getMinecraftLiveMetrics();
+  } catch (error) {
+    console.error("Minecraftライブメトリクスの取得に失敗しました", error);
   }
 
   const status = overview?.status ?? "unknown";
@@ -374,6 +475,97 @@ export default async function MinecraftPage() {
                 </article>
               </div>
             </section>
+
+            {liveMetrics ? (
+              <section aria-label="Minecraftライブメトリクス">
+                <SectionHeader
+                  eyebrow="LIVE METRICS"
+                  title="ライブメトリクス（OCIホスト）"
+                  description="status.ivrm.jp と同じ秒単位の収集データを表示します（15秒ごとに自動更新）。"
+                />
+                <div className={styles.grid}>
+                  <article className={styles.card}>
+                    <div className={styles.cardHeader}>
+                      <div>
+                        <h3>生活サーバー</h3>
+                        <p>mc-main コンテナの現在の使用率です。</p>
+                      </div>
+                      {liveStateBadge(liveMetrics.main?.state)}
+                    </div>
+                    <div className={styles.details}>
+                      <div>
+                        <span>CPU</span>
+                        <strong>{formatLivePct(liveMetrics.main?.cpuPct ?? null)}</strong>
+                      </div>
+                      <div>
+                        <span>メモリ</span>
+                        <strong>{formatLivePct(liveMetrics.main?.memPct ?? null)}</strong>
+                      </div>
+                    </div>
+                  </article>
+                  <article className={styles.card}>
+                    <div className={styles.cardHeader}>
+                      <div>
+                        <h3>資源サーバー</h3>
+                        <p>mc-resource コンテナの現在の使用率です。</p>
+                      </div>
+                      {liveStateBadge(liveMetrics.resource?.state)}
+                    </div>
+                    <div className={styles.details}>
+                      <div>
+                        <span>CPU</span>
+                        <strong>
+                          {formatLivePct(liveMetrics.resource?.cpuPct ?? null)}
+                        </strong>
+                      </div>
+                      <div>
+                        <span>メモリ</span>
+                        <strong>
+                          {formatLivePct(liveMetrics.resource?.memPct ?? null)}
+                        </strong>
+                      </div>
+                    </div>
+                  </article>
+                  <article className={styles.card}>
+                    <div className={styles.cardHeader}>
+                      <div>
+                        <h3>ホスト全体</h3>
+                        <p>OCI ホスト全体の使用率です。</p>
+                      </div>
+                      <StatusBadge tone="info">OCI</StatusBadge>
+                    </div>
+                    <div className={styles.details}>
+                      <div>
+                        <span>CPU</span>
+                        <strong>{formatLivePct(liveMetrics.host?.cpuPct ?? null)}</strong>
+                      </div>
+                      <div>
+                        <span>メモリ</span>
+                        <strong>{formatLivePct(liveMetrics.host?.memPct ?? null)}</strong>
+                      </div>
+                    </div>
+                  </article>
+                  {liveMetrics.series.length > 0 ? (
+                    <article className={`${styles.card} ${styles.liveChartCard}`}>
+                      <LiveChart label="CPU使用率" series={liveMetrics.series} metric="cpu" />
+                      <LiveChart
+                        label="メモリ使用率"
+                        series={liveMetrics.series}
+                        metric="memory"
+                      />
+                      <div className={styles.liveLegend}>
+                        {liveMetrics.series.map((s) => (
+                          <span key={s.key}>
+                            <i style={{ background: s.color }} />
+                            {s.label}
+                          </span>
+                        ))}
+                      </div>
+                    </article>
+                  ) : null}
+                </div>
+              </section>
+            ) : null}
 
             <StatePanel title="読み取り専用" variant="info">
               この画面は状態確認専用です。RCON、Docker Socket、forwarding.secret、PCF secret、プレイヤーIPは収集・表示しません。起動・停止・再起動などの操作は、認証・RBAC・監査ログ基盤の完成後に別タスクで追加します。
