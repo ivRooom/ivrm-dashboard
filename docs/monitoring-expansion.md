@@ -81,3 +81,21 @@ PostgreSQL サービス自体の監視は Agent の現行範囲外（将来課�
 - どのホストも `systemctl disable --now ivrm-agent`（と snapshot timer）で
   監視だけを止められる。対象ホスト上の本業プロセスには影響しない
 - 登録を取り消す場合は `hosts.enabled = false` に戻す（行は消さない）
+
+## 実施結果と env 登録の訂正（2026-11-11 深夜、全ホスト登録完了）
+
+全4ホスト（oci-minecraft-01 / aws-app-01 / lightsail-herta / ivrm-db-postgres-01）の登録が完了し、Heartbeat と container_samples の流入を確認した。ただし env 登録の手順には以下の重大な訂正がある。
+
+### ⚠️ base に `aws-app-01` を含めてはいけない
+
+- `IVRM_AGENT_SECRETS_ADDITIONAL_JSON`（追加マップ、2026-10-15 追加・書込専用で読み戻し不可）には **`aws-app-01` が含まれている**
+- base `IVRM_AGENT_SECRETS_JSON` に同じキーを含めると、`parseAgentSecretMaps` が重複キーで例外を投げ、**agent 系 API 全体が 503 `service_not_configured` になる**（2026-11-11 に実際に発生し、診断 PR #191 のログ `[agent-secrets] additional: key overlap on "aws-app-01"` で確定）
+- 現在の正しい構成:
+  - base = `{oci-minecraft-01, ivrm-db-postgres-01, lightsail-herta}`（aws-app-01 を含まない）
+  - 追加マップ = `{aws-app-01}`（推定。以後も変更しない）
+- 新規ホストを追加するときは base 側にだけキーを足す。追加マップは触らない
+- 同じ症状が出たら Runtime Logs の `[agent-secrets]` 行で失敗理由を確認できる（PR #191 で main に診断ログが入っている。秘密の値は出力されない）
+
+### env 値の回収方法
+
+各ホストの秘密値は、そのホスト自身の `/etc/ivrm-agent/agent.env` の `IVRM_AGENT_TOKEN` が正本。base を再構築する必要が生じたら、対象ホストから回収して組み立てる（aws-app-01 だけは追加マップ側なので base に入れない）。
