@@ -33,6 +33,7 @@ const expectedStateLabels: Record<ContainerExpectedState, string> = {
   running: "稼働",
   stopped: "停止",
   absent: "未作成",
+  "on-demand": "オンデマンド",
 };
 
 function statusTone(status: ContainerStatus): ConsoleTone {
