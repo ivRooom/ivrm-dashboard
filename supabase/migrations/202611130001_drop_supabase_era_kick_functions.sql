@@ -23,12 +23,17 @@
 -- failure surface and documents that the timer/worker paths are the
 -- supported mechanisms.
 --
--- Note: configure_observability_retention_v1 also references pg_cron
--- (flagged by supabase/checks/extension_dependencies.sql). It is NOT
--- included here: whether observability retention still needs a
--- configuration entry point on PG17 must be decided separately
--- (tracked in Issue #206).
+-- * configure_observability_retention_v1(boolean, int, int, int) is
+--   the pg_cron registration helper for observability retention. The
+--   retention job itself (run_observability_retention_v1) runs on PG17
+--   and observability_retention_state is current, but no application
+--   code calls this setter (only the original migration and docs
+--   mention it), and its cron.* references cannot work without pg_cron.
+--   Retention settings remain readable via
+--   get_observability_retention_state_v2; changing them on PG17 is a
+--   direct state update until a new configuration path is designed.
 
 drop function if exists public.set_reliability_burn_reconciler_v1(boolean);
 drop function if exists public.kick_reliability_burn_reconcile_v1();
 drop function if exists public.kick_notification_dispatch_v1();
+drop function if exists public.configure_observability_retention_v1(boolean, integer, integer, integer);
