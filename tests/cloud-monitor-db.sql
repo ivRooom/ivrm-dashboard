@@ -67,3 +67,8 @@ begin
     raise exception 'disabled target should be ignored without poisoning the collector batch'; end if;
 end; $$;
 select 'cloud monitoring database contracts passed' as result;
+
+-- Issue #215: apply the ingest-outage grouping migration and run its
+-- contracts in this same session, so the existing CI step covers them.
+\i supabase/migrations/202611140001_cloud_ingest_outage_grouping.sql
+\i tests/cloud-ingest-outage-db.sql
