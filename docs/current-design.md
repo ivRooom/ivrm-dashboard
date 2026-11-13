@@ -22,7 +22,7 @@ IVRM Agent (Go) on OCI / Lightsail / EC2
 ```
 - Docker Socket・SSH・RCON は外部公開しない。Agent 認証は Agent ID・Timestamp・Nonce・HMAC-SHA256 署名。Console の認証境界は Discord Session / RBAC。
 - 通知配送は `apps/dispatch-worker` が担う。Supabase Edge Function `notification-dispatch` の置換であり、PG17 上で claim / deliver / complete のサイクルを毎分ポーリングで直接実行する（Supabase 時代の pg_cron → pg_net → Edge Function という経路は PG17 stack には無い）。接続時は PostgREST authenticator ロールで認証し `ivrm_dashboard_service`（BYPASSRLS）を assume する（いずれも `apps/dispatch-worker/README.md` の記述による）。Console（apps/web）側の DB 接続方式の詳細は本改版では未確認。
-- Supabase Service Role Key に関する v0.1.0 の記述（利用先は Vercel 上の Console と Edge Function `notification-dispatch`）は移行前の構成のもので、現行の通知配送には当てはまらない。Edge Function の Production への配置状況は引き続き未確認。
+- Supabase Service Role Key に関する v0.1.0 の記述（利用先は Vercel 上の Console と Edge Function `notification-dispatch`）は移行前の構成のもので、現行の通知配送には当てはまらない。Edge Function の Production への配置状況は 2026-11-13 に確認済み (配置先の Supabase プロジェクト ivrm-core は 2026-11-11 に削除済みで到達先は存在せず、呼び出し元・デプロイ経路も repo 内に無い)。repo からも 2026-11-13 に撤去した (#212)。
 - apps/ は実在6件: `web`（Next.js 管理画面）、`agent`（Go 監視 Agent）、`cloud-collector`、`dispatch-worker`（通知配送 worker。v0.2.0 で追加確認）、`minecraft-metrics-bridge`、`runtime-collector`。
   - **乖離メモ**: README の構成図に載っているのは web と agent の2件だけで、collector 系3件は未記載。役割の詳細は今回未取得（名称からの推測で埋めない）。Phase 4 で README 側の更新候補。（v0.1.0 時点のメモ。v0.2.0 では dispatch-worker を実在アプリとして追記したのみで、このメモ自体は未解消）
 - supabase/ に config.toml、functions/、migrations/、tests/ が残存している（移行前の構成の残存物。現行の状態ストアは PG17 `ivrm_dashboard` であり、Supabase は現行の保存経路ではない）。

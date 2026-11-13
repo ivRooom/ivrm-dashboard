@@ -1,4 +1,6 @@
 # Notification Center 運用ガイド
+> **状態 (2026-11-13)**: 本書の Dispatcher / Vault / pg_net / Edge Function に関する記述は Supabase 時代の構成に基づく履歴である。現行の通知配送は `apps/dispatch-worker` (PG17 ポーリング) が担い、Edge Function `notification-dispatch` は repo から撤去済み・配置先プロジェクトも削除済み (ivrm-dashboard #212)。現行構成は `docs/current-design.md` を正とする。
+
 
 ## 目的
 
