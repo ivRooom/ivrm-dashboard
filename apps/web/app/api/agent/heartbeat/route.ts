@@ -6,48 +6,10 @@ import {
   parseHeartbeat,
   persistHeartbeat,
 } from "../../../../lib/heartbeat";
+import { readLimitedBody } from "../../../../lib/agent-ingest-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-async function readLimitedBody(request: Request): Promise<Uint8Array> {
-  const reader = request.body?.getReader();
-  if (!reader) {
-    return new Uint8Array();
-  }
-
-  const chunks: Uint8Array[] = [];
-  let totalBytes = 0;
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-      if (!value) {
-        continue;
-      }
-
-      totalBytes += value.byteLength;
-      if (totalBytes > MAX_HEARTBEAT_BODY_BYTES) {
-        await reader.cancel("payload_too_large").catch(() => undefined);
-        throw new HeartbeatError(413, "payload_too_large");
-      }
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-
-  const body = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    body.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return body;
-}
 
 export async function POST(request: Request) {
   try {
@@ -61,7 +23,9 @@ export async function POST(request: Request) {
       throw new HeartbeatError(413, "payload_too_large");
     }
 
-    const rawBody = await readLimitedBody(request);
+    const rawBody = await readLimitedBody(request, MAX_HEARTBEAT_BODY_BYTES, () =>
+      new HeartbeatError(413, "payload_too_large"),
+    );
     if (rawBody.byteLength === 0) {
       throw new HeartbeatError(400, "empty_payload");
     }
