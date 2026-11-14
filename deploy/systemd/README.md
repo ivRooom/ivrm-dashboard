@@ -9,6 +9,8 @@ are replaced by systemd timers on the database host:
 | ivrm-notification-reconcile-v1 | `* * * * *` | ivrm-dash-minutely (SQL) |
 | ivrm-notification-container-reconcile-v1 | `* * * * *` | ivrm-dash-minutely (SQL) |
 | ivrm-cloud-monitor-reconcile-v1 | `* * * * *` | ivrm-dash-minutely (SQL) |
+| (point-grant liveness reconcile, #221) | `* * * * *` | ivrm-dash-minutely (SQL) |
+| (point-grant liveness check, #221) | `*/10 * * * *` | ivrm-dash-points-check (psql to ivrm_api via read-only role + SQL) |
 | (console ingest health probe, #215) | `* * * * *` | ivrm-dash-minutely (curl + SQL) |
 | ivrm-reliability-burn-reconcile | `* * * * *` | ivrm-dash-minutely (HTTP kick to the console route) |
 | ivrm-notification-dispatch-v1 | `* * * * *` | apps/dispatch-worker (polling) |

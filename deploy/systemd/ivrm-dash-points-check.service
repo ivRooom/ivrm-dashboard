@@ -1,0 +1,7 @@
+[Unit]
+Description=ivrm-dashboard point-grant liveness checker (Issue #221)
+After=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/ivrm-dashboard-timers/ivrm-dash-points-check.sh
