@@ -72,7 +72,7 @@ function transitionLabel(transition) {
 }
 
 function sourceLabel(source) {
-  return { host: "HOST", container: "CONTAINER", backup: "BACKUP", reliability: "SLO", cloud: "CLOUD", points: "POINTS" }[source];
+  return { host: "HOST", container: "CONTAINER", backup: "BACKUP", reliability: "SLO", cloud: "CLOUD", points: "POINTS", quiz: "QUIZ" }[source];
 }
 
 function eventLabel(eventType) {
