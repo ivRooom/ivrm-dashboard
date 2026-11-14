@@ -1,5 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import { parseAgentSecretMaps } from "./operation-agent-auth-core";
+import { AgentIngestError, parseAgentSecretMaps } from "./operation-agent-auth-core";
 import { isIP } from "node:net";
 import {
   getConsoleLogSource,
@@ -51,14 +51,7 @@ type PersistResult =
   | "replayed_request"
   | "invalid_payload";
 
-export class LogReportError extends Error {
-  constructor(
-    public readonly status: number,
-    public readonly code: string,
-  ) {
-    super(code);
-  }
-}
+export class LogReportError extends AgentIngestError {}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

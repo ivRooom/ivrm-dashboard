@@ -1,5 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import { parseAgentSecretMaps } from "./operation-agent-auth-core";
+import { AgentIngestError, parseAgentSecretMaps } from "./operation-agent-auth-core";
 
 const MAX_CLOCK_SKEW_SECONDS = 300;
 const MAX_RUNS = 20;
@@ -84,14 +84,7 @@ const RUN_KEYS = new Set([
   "failureCode",
 ]);
 
-export class BackupReportError extends Error {
-  constructor(
-    public readonly status: number,
-    public readonly code: string,
-  ) {
-    super(code);
-  }
-}
+export class BackupReportError extends AgentIngestError {}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

@@ -3,7 +3,15 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 const MAX_CLOCK_SKEW_SECONDS = 300;
 export const MAX_OPERATION_AGENT_BODY_BYTES = 4 * 1024;
 
-export class OperationAgentAuthError extends Error {
+/**
+ * Shared error type for the Agent ingest libraries (heartbeat, log report,
+ * backup report and operation agent auth). Carries the HTTP status and the
+ * stable error code returned to agents. Each library keeps its own named
+ * subclass so existing `instanceof` checks keep working, while shared
+ * handling can catch this base class. Defined in this core module because
+ * it must stay free of relative imports for the Node test harness.
+ */
+export class AgentIngestError extends Error {
   readonly status: number;
   readonly code: string;
 
@@ -13,6 +21,8 @@ export class OperationAgentAuthError extends Error {
     this.code = code;
   }
 }
+
+export class OperationAgentAuthError extends AgentIngestError {}
 
 export function parseAgentSecretMap(raw: string | undefined, label = "map"): Record<string, string> {
   if (!raw) {
