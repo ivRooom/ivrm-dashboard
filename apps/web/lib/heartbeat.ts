@@ -3,6 +3,7 @@ import {
   createHmac,
   timingSafeEqual,
 } from "node:crypto";
+import { AgentIngestError } from "./agent-ingest-error";
 import { parseAgentSecretMaps } from "./operation-agent-auth-core";
 
 const MAX_CLOCK_SKEW_SECONDS = 300;
@@ -105,14 +106,7 @@ type PersistResult =
   | "replayed_request"
   | "invalid_payload";
 
-export class HeartbeatError extends Error {
-  constructor(
-    public readonly status: number,
-    public readonly code: string,
-  ) {
-    super(code);
-  }
-}
+export class HeartbeatError extends AgentIngestError {}
 
 function requireEnvironment(name: string): string {
   const value = process.env[name];

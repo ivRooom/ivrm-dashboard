@@ -1,18 +1,11 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
+import { AgentIngestError } from "./agent-ingest-error";
+
 const MAX_CLOCK_SKEW_SECONDS = 300;
 export const MAX_OPERATION_AGENT_BODY_BYTES = 4 * 1024;
 
-export class OperationAgentAuthError extends Error {
-  readonly status: number;
-  readonly code: string;
-
-  constructor(status: number, code: string) {
-    super(code);
-    this.status = status;
-    this.code = code;
-  }
-}
+export class OperationAgentAuthError extends AgentIngestError {}
 
 export function parseAgentSecretMap(raw: string | undefined, label = "map"): Record<string, string> {
   if (!raw) {
