@@ -3,6 +3,7 @@ import {
   reconcileReliabilityBurnNotifications,
   verifyReliabilityBurnReconcileToken,
 } from "../../../../lib/reliability-burn-notifications";
+import { readLimitedBody as readSharedLimitedBody } from "../../../../lib/agent-ingest-body";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -16,37 +17,17 @@ function json(status: number, body: Record<string, unknown>): Response {
   });
 }
 
+const PAYLOAD_TOO_LARGE = new Error("payload_too_large");
+
 async function readLimitedBody(request: Request): Promise<Uint8Array | null> {
   const declared = Number(request.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return null;
-  if (!request.body) return new Uint8Array();
-
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!value) continue;
-      total += value.byteLength;
-      if (total > MAX_BODY_BYTES) {
-        await reader.cancel().catch(() => undefined);
-        return null;
-      }
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
+    return await readSharedLimitedBody(request, MAX_BODY_BYTES, () => PAYLOAD_TOO_LARGE);
+  } catch (error) {
+    if (error === PAYLOAD_TOO_LARGE) return null;
+    throw error;
   }
-
-  const body = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    body.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return body;
 }
 
 export async function POST(request: Request): Promise<Response> {
