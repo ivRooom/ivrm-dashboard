@@ -83,3 +83,7 @@ select 'cloud monitoring database contracts passed' as result;
 -- contracts in this same session, so the existing CI step covers them.
 \i supabase/migrations/202611140003_point_grant_liveness.sql
 \i tests/point-grant-monitor-db.sql
+
+-- Issue #232: weekly inventory of long-active signals.
+\i supabase/migrations/202611140005_signal_inventory.sql
+\i tests/signal-inventory-db.sql
