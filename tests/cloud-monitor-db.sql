@@ -77,3 +77,8 @@ select 'cloud monitoring database contracts passed' as result;
 -- its contracts in this same session.
 \i supabase/migrations/202611140002_notification_host_signal_suppression.sql
 \i tests/notification-host-suppression-db.sql
+
+-- Issue #221: apply the point-grant liveness migration and run its
+-- contracts in this same session, so the existing CI step covers them.
+\i supabase/migrations/202611140003_point_grant_liveness.sql
+\i tests/point-grant-monitor-db.sql

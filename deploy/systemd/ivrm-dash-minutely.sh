@@ -4,6 +4,8 @@
 #   ivrm-notification-reconcile-v1        -> reconcile_notification_scheduled_signals_v1()
 #   ivrm-notification-container-reconcile -> reconcile_notification_container_signals_v1()
 #   ivrm-cloud-monitor-reconcile-v1       -> reconcile_cloud_monitor_signals_v1()
+#   (point-grant liveness, Issue #221)    -> reconcile_point_grant_signals_v1()
+#     (observations are recorded by ivrm-dash-points-check every 10 min)
 #   ivrm-reliability-burn-reconcile       -> HTTP kick to the console route
 #     (the pg_net/vault kick function is replaced by a direct curl; the token
 #      was rotated at cutover and lives in /etc/ivrm-dashboard-timers/burn-token)
@@ -33,6 +35,8 @@ $PSQL -c "select public.record_console_ingest_health_v1(${PROBE_CODE}, ${PROBE_D
 
 $PSQL -c "select public.reconcile_cloud_monitor_signals_v1()" >/dev/null 2>&1 \
   || logger -t ivrm-dash-minutely "cloud-monitor-reconcile failed"
+$PSQL -c "select public.reconcile_point_grant_signals_v1()" >/dev/null 2>&1 \
+  || logger -t ivrm-dash-minutely "point-grant-reconcile failed"
 
 TOKEN_FILE=/etc/ivrm-dashboard-timers/burn-token
 if [ -r "$TOKEN_FILE" ]; then
