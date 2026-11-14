@@ -1,5 +1,9 @@
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import { AgentIngestError, parseAgentSecretMaps } from "./operation-agent-auth-core";
+import {
+  AgentIngestError,
+  authenticateOperationAgentWithSecrets,
+  OperationAgentAuthError,
+  parseAgentSecretMaps,
+} from "./operation-agent-auth-core";
 
 const MAX_CLOCK_SKEW_SECONDS = 300;
 const MAX_RUNS = 20;
@@ -249,33 +253,14 @@ export function authenticateBackupReport(
   rawBody: Uint8Array,
   payload: BackupReportPayload,
 ): { nonce: string; bodySha256: string } {
-  const serverId = headers.get("x-ivrm-agent-id") ?? "";
-  const timestamp = headers.get("x-ivrm-timestamp") ?? "";
-  const nonce = headers.get("x-ivrm-nonce") ?? "";
-  const signature = headers.get("x-ivrm-signature") ?? "";
-
-  if (serverId !== payload.serverId) throw new BackupReportError(401, "agent_id_mismatch");
-  if (!/^\d{10}$/.test(timestamp)) throw new BackupReportError(401, "invalid_timestamp");
-  if (Math.abs(Date.now() / 1_000 - Number(timestamp)) > MAX_CLOCK_SKEW_SECONDS) {
-    throw new BackupReportError(401, "expired_request");
+  try {
+    return authenticateOperationAgentWithSecrets(headers, rawBody, payload.serverId, readAgentSecrets());
+  } catch (error) {
+    if (error instanceof OperationAgentAuthError) {
+      throw new BackupReportError(error.status, error.code);
+    }
+    throw error;
   }
-  if (!/^[a-f0-9]{32}$/.test(nonce)) throw new BackupReportError(401, "invalid_nonce");
-  if (!/^[a-f0-9]{64}$/.test(signature)) throw new BackupReportError(401, "invalid_signature");
-
-  const secret = readAgentSecrets()[serverId];
-  if (!secret) throw new BackupReportError(401, "unknown_agent");
-
-  const expected = createHmac("sha256", secret)
-    .update(timestamp).update(".").update(nonce).update(".").update(rawBody).digest();
-  const provided = Buffer.from(signature, "hex");
-  if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
-    throw new BackupReportError(401, "invalid_signature");
-  }
-
-  return {
-    nonce,
-    bodySha256: createHash("sha256").update(rawBody).digest("hex"),
-  };
 }
 
 function supabaseConfiguration(): { url: string; serviceRoleKey: string } {
