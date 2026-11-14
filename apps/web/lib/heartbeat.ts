@@ -2,8 +2,8 @@ import {
   AgentIngestError,
   authenticateOperationAgentWithSecrets,
   OperationAgentAuthError,
-  parseAgentSecretMaps,
 } from "./operation-agent-auth-core";
+import { callIngestRpc, readAgentSecrets } from "./agent-ingest-store";
 
 const MAX_CLOCK_SKEW_SECONDS = 300;
 const MAX_CONTAINERS = 20;
@@ -98,30 +98,8 @@ export type HeartbeatPayload = {
   minecraft: MinecraftHeartbeat | null;
 };
 
-type PersistResult =
-  | "accepted"
-  | "unknown_agent"
-  | "rate_limited"
-  | "replayed_request"
-  | "invalid_payload";
-
 export class HeartbeatError extends AgentIngestError {}
 
-function requireEnvironment(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new HeartbeatError(503, "service_not_configured");
-  }
-  return value;
-}
-
-function readAgentSecrets(): Record<string, string> {
-  try {
-    return parseAgentSecretMaps(process.env.IVRM_AGENT_SECRETS_JSON, process.env.IVRM_AGENT_SECRETS_ADDITIONAL_JSON);
-  } catch {
-    throw new HeartbeatError(503, "service_not_configured");
-  }
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -494,7 +472,7 @@ export function authenticateHeartbeat(
   payload: Pick<HeartbeatPayload, "serverId">,
 ): { nonce: string; bodySha256: string } {
   try {
-    return authenticateOperationAgentWithSecrets(headers, rawBody, payload.serverId, readAgentSecrets());
+    return authenticateOperationAgentWithSecrets(headers, rawBody, payload.serverId, readAgentSecrets(HeartbeatError));
   } catch (error) {
     if (error instanceof OperationAgentAuthError) {
       throw new HeartbeatError(error.status, error.code);
@@ -503,79 +481,27 @@ export function authenticateHeartbeat(
   }
 }
 
-function getSupabaseConfiguration(): { url: string; serviceRoleKey: string } {
-  return {
-    url: requireEnvironment("SUPABASE_URL").replace(/\/$/, ""),
-    serviceRoleKey: requireEnvironment("SUPABASE_SERVICE_ROLE_KEY"),
-  };
-}
-
-function supabaseHeaders(serviceRoleKey: string): HeadersInit {
-  return {
-    apikey: serviceRoleKey,
-    Authorization: `Bearer ${serviceRoleKey}`,
-    "Content-Type": "application/json",
-  };
-}
-
-function handlePersistResult(result: PersistResult): void {
-  switch (result) {
-    case "accepted":
-      return;
-    case "unknown_agent":
-      throw new HeartbeatError(401, result);
-    case "rate_limited":
-      throw new HeartbeatError(429, result);
-    case "replayed_request":
-      throw new HeartbeatError(409, result);
-    case "invalid_payload":
-      throw new HeartbeatError(400, result);
-  }
-}
-
 export async function persistHeartbeat(
   payload: HeartbeatPayload,
   nonce: string,
   bodySha256: string,
 ): Promise<void> {
-  const { url, serviceRoleKey } = getSupabaseConfiguration();
-  const response = await fetch(`${url}/rest/v1/rpc/insert_agent_heartbeat_v3`, {
-    method: "POST",
-    headers: supabaseHeaders(serviceRoleKey),
-    body: JSON.stringify({
-      p_server_id: payload.serverId,
-      p_agent_version: payload.agentVersion,
-      p_sent_at: payload.sentAt,
-      p_request_nonce: nonce,
-      p_body_sha256: bodySha256,
-      p_cpu_count: payload.host.cpuCount,
-      p_memory_total_bytes: payload.host.memoryTotalBytes,
-      p_memory_available_bytes: payload.host.memoryAvailableBytes,
-      p_disk_total_bytes: payload.host.diskTotalBytes,
-      p_disk_available_bytes: payload.host.diskAvailableBytes,
-      p_load_average_1: payload.host.loadAverage1,
-      p_load_average_5: payload.host.loadAverage5,
-      p_load_average_15: payload.host.loadAverage15,
-      p_uptime_seconds: payload.host.uptimeSeconds,
-      p_containers: payload.containers,
-      p_minecraft: payload.minecraft,
-    }),
-    cache: "no-store",
+  return callIngestRpc(HeartbeatError, "insert_agent_heartbeat_v3", {
+    p_server_id: payload.serverId,
+    p_agent_version: payload.agentVersion,
+    p_sent_at: payload.sentAt,
+    p_request_nonce: nonce,
+    p_body_sha256: bodySha256,
+    p_cpu_count: payload.host.cpuCount,
+    p_memory_total_bytes: payload.host.memoryTotalBytes,
+    p_memory_available_bytes: payload.host.memoryAvailableBytes,
+    p_disk_total_bytes: payload.host.diskTotalBytes,
+    p_disk_available_bytes: payload.host.diskAvailableBytes,
+    p_load_average_1: payload.host.loadAverage1,
+    p_load_average_5: payload.host.loadAverage5,
+    p_load_average_15: payload.host.loadAverage15,
+    p_uptime_seconds: payload.host.uptimeSeconds,
+    p_containers: payload.containers,
+    p_minecraft: payload.minecraft,
   });
-
-  if (!response.ok) {
-    throw new HeartbeatError(503, "storage_unavailable");
-  }
-
-  const result = (await response.json()) as PersistResult;
-  if (
-    result !== "accepted" &&
-    result !== "unknown_agent" &&
-    result !== "rate_limited" &&
-    result !== "replayed_request" &&
-    result !== "invalid_payload"
-  ) {
-    throw new HeartbeatError(503, "storage_unavailable");
-  }
-  handlePersistResult(result);
 }

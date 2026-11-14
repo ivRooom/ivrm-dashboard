@@ -2,8 +2,8 @@ import {
   AgentIngestError,
   authenticateOperationAgentWithSecrets,
   OperationAgentAuthError,
-  parseAgentSecretMaps,
 } from "./operation-agent-auth-core";
+import { callIngestRpc, readAgentSecrets } from "./agent-ingest-store";
 
 const MAX_CLOCK_SKEW_SECONDS = 300;
 const MAX_RUNS = 20;
@@ -57,13 +57,6 @@ export type BackupReportPayload = {
   reportedAt: string;
   runs: BackupRunReport[];
 };
-
-type PersistResult =
-  | "accepted"
-  | "unknown_agent"
-  | "rate_limited"
-  | "replayed_request"
-  | "invalid_payload";
 
 const backupTypes = new Set<string>(BACKUP_TYPES);
 const backupDestinations = new Set<string>(BACKUP_DESTINATIONS);
@@ -233,20 +226,6 @@ export function parseBackupReport(rawBody: Uint8Array): BackupReportPayload {
   };
 }
 
-function requireEnvironment(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new BackupReportError(503, "service_not_configured");
-  return value;
-}
-
-function readAgentSecrets(): Record<string, string> {
-  try {
-    return parseAgentSecretMaps(process.env.IVRM_AGENT_SECRETS_JSON, process.env.IVRM_AGENT_SECRETS_ADDITIONAL_JSON);
-  } catch (error) {
-    if (error instanceof BackupReportError) throw error;
-    throw new BackupReportError(503, "service_not_configured");
-  }
-}
 
 export function authenticateBackupReport(
   headers: Headers,
@@ -254,7 +233,7 @@ export function authenticateBackupReport(
   payload: BackupReportPayload,
 ): { nonce: string; bodySha256: string } {
   try {
-    return authenticateOperationAgentWithSecrets(headers, rawBody, payload.serverId, readAgentSecrets());
+    return authenticateOperationAgentWithSecrets(headers, rawBody, payload.serverId, readAgentSecrets(BackupReportError));
   } catch (error) {
     if (error instanceof OperationAgentAuthError) {
       throw new BackupReportError(error.status, error.code);
@@ -263,55 +242,16 @@ export function authenticateBackupReport(
   }
 }
 
-function supabaseConfiguration(): { url: string; serviceRoleKey: string } {
-  return {
-    url: requireEnvironment("SUPABASE_URL").replace(/\/$/, ""),
-    serviceRoleKey: requireEnvironment("SUPABASE_SERVICE_ROLE_KEY"),
-  };
-}
-
-function handlePersistResult(result: PersistResult): void {
-  if (result === "accepted") return;
-  if (result === "unknown_agent") throw new BackupReportError(401, result);
-  if (result === "rate_limited") throw new BackupReportError(429, result);
-  if (result === "replayed_request") throw new BackupReportError(409, result);
-  throw new BackupReportError(400, "invalid_payload");
-}
-
 export async function persistBackupReport(
   payload: BackupReportPayload,
   nonce: string,
   bodySha256: string,
 ): Promise<void> {
-  const { url, serviceRoleKey } = supabaseConfiguration();
-  const response = await fetch(`${url}/rest/v1/rpc/ingest_backup_report_v1`, {
-    method: "POST",
-    headers: {
-      apikey: serviceRoleKey,
-      Authorization: `Bearer ${serviceRoleKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      p_server_id: payload.serverId,
-      p_reported_at: payload.reportedAt,
-      p_request_nonce: nonce,
-      p_body_sha256: bodySha256,
-      p_runs: payload.runs,
-    }),
-    cache: "no-store",
-    signal: AbortSignal.timeout(10_000),
+  return callIngestRpc(BackupReportError, "ingest_backup_report_v1", {
+    p_server_id: payload.serverId,
+    p_reported_at: payload.reportedAt,
+    p_request_nonce: nonce,
+    p_body_sha256: bodySha256,
+    p_runs: payload.runs,
   });
-
-  if (!response.ok) throw new BackupReportError(503, "storage_unavailable");
-  const result = (await response.json()) as PersistResult;
-  if (![
-    "accepted",
-    "unknown_agent",
-    "rate_limited",
-    "replayed_request",
-    "invalid_payload",
-  ].includes(result)) {
-    throw new BackupReportError(503, "storage_unavailable");
-  }
-  handlePersistResult(result);
 }

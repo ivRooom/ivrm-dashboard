@@ -3,8 +3,8 @@ import {
   AgentIngestError,
   authenticateOperationAgentWithSecrets,
   OperationAgentAuthError,
-  parseAgentSecretMaps,
 } from "./operation-agent-auth-core";
+import { callIngestRpc, readAgentSecrets } from "./agent-ingest-store";
 import { isIP } from "node:net";
 import {
   getConsoleLogSource,
@@ -48,13 +48,6 @@ export type LogReportPayload = {
   reportedAt: string;
   entries: LogReportEntry[];
 };
-
-type PersistResult =
-  | "accepted"
-  | "unknown_agent"
-  | "rate_limited"
-  | "replayed_request"
-  | "invalid_payload";
 
 export class LogReportError extends AgentIngestError {}
 
@@ -193,20 +186,6 @@ export function parseLogReport(rawBody: Uint8Array): LogReportPayload {
   };
 }
 
-function requireEnvironment(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new LogReportError(503, "service_not_configured");
-  return value;
-}
-
-function readAgentSecrets(): Record<string, string> {
-  try {
-    return parseAgentSecretMaps(process.env.IVRM_AGENT_SECRETS_JSON, process.env.IVRM_AGENT_SECRETS_ADDITIONAL_JSON);
-  } catch (error) {
-    if (error instanceof LogReportError) throw error;
-    throw new LogReportError(503, "service_not_configured");
-  }
-}
 
 export function authenticateLogReport(
   headers: Headers,
@@ -214,7 +193,7 @@ export function authenticateLogReport(
   payload: LogReportPayload,
 ): { nonce: string; bodySha256: string } {
   try {
-    return authenticateOperationAgentWithSecrets(headers, rawBody, payload.serverId, readAgentSecrets());
+    return authenticateOperationAgentWithSecrets(headers, rawBody, payload.serverId, readAgentSecrets(LogReportError));
   } catch (error) {
     if (error instanceof OperationAgentAuthError) {
       throw new LogReportError(error.status, error.code);
@@ -223,55 +202,16 @@ export function authenticateLogReport(
   }
 }
 
-function supabaseConfiguration(): { url: string; serviceRoleKey: string } {
-  return {
-    url: requireEnvironment("SUPABASE_URL").replace(/\/$/, ""),
-    serviceRoleKey: requireEnvironment("SUPABASE_SERVICE_ROLE_KEY"),
-  };
-}
-
-function handlePersistResult(result: PersistResult): void {
-  if (result === "accepted") return;
-  if (result === "unknown_agent") throw new LogReportError(401, result);
-  if (result === "rate_limited") throw new LogReportError(429, result);
-  if (result === "replayed_request") throw new LogReportError(409, result);
-  throw new LogReportError(400, "invalid_payload");
-}
-
 export async function persistLogReport(
   payload: LogReportPayload,
   nonce: string,
   bodySha256: string,
 ): Promise<void> {
-  const { url, serviceRoleKey } = supabaseConfiguration();
-  const response = await fetch(`${url}/rest/v1/rpc/ingest_console_log_report_v1`, {
-    method: "POST",
-    headers: {
-      apikey: serviceRoleKey,
-      Authorization: `Bearer ${serviceRoleKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      p_server_id: payload.serverId,
-      p_reported_at: payload.reportedAt,
-      p_request_nonce: nonce,
-      p_body_sha256: bodySha256,
-      p_entries: payload.entries,
-    }),
-    cache: "no-store",
-    signal: AbortSignal.timeout(10_000),
+  return callIngestRpc(LogReportError, "ingest_console_log_report_v1", {
+    p_server_id: payload.serverId,
+    p_reported_at: payload.reportedAt,
+    p_request_nonce: nonce,
+    p_body_sha256: bodySha256,
+    p_entries: payload.entries,
   });
-
-  if (!response.ok) throw new LogReportError(503, "storage_unavailable");
-  const result = (await response.json()) as PersistResult;
-  if (![
-    "accepted",
-    "unknown_agent",
-    "rate_limited",
-    "replayed_request",
-    "invalid_payload",
-  ].includes(result)) {
-    throw new LogReportError(503, "storage_unavailable");
-  }
-  handlePersistResult(result);
 }
