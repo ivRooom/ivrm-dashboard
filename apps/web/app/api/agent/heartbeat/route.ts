@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import {
   authenticateHeartbeat,
   HeartbeatError,
@@ -7,9 +6,12 @@ import {
   persistHeartbeat,
 } from "../../../../lib/heartbeat";
 import { readLimitedBody } from "../../../../lib/agent-ingest-body";
+import { agentIngestErrorResponse, agentIngestJson } from "../../../../lib/agent-ingest-response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const RESPONSE_POLICY = { retryAfterSeconds: 10 };
 
 export async function POST(request: Request) {
   try {
@@ -34,25 +36,16 @@ export async function POST(request: Request) {
     const authentication = authenticateHeartbeat(request.headers, rawBody, payload);
     await persistHeartbeat(payload, authentication.nonce, authentication.bodySha256);
 
-    return NextResponse.json(
+    return agentIngestJson(
       { accepted: true, receivedAt: new Date().toISOString() },
-      { status: 202 },
+      202,
+      RESPONSE_POLICY,
     );
   } catch (error) {
-    if (error instanceof HeartbeatError) {
-      return NextResponse.json(
-        { accepted: false, error: error.code },
-        {
-          status: error.status,
-          headers: error.status === 429 ? { "Retry-After": "10" } : undefined,
-        },
-      );
-    }
+    const response = agentIngestErrorResponse(error, RESPONSE_POLICY);
+    if (response) return response;
 
     console.error("Heartbeat APIで予期しないエラーが発生しました");
-    return NextResponse.json(
-      { accepted: false, error: "internal_error" },
-      { status: 500 },
-    );
+    return agentIngestJson({ accepted: false, error: "internal_error" }, 500, RESPONSE_POLICY);
   }
 }
