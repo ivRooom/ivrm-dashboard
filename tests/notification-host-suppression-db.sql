@@ -102,8 +102,11 @@ insert into public.hosts (id, server_id, display_name, enabled)
 values ('aaaaaaaa-1111-4111-8111-111111111111', 'host-a', 'Host A', true)
 on conflict (id) do nothing;
 
+-- The seed heartbeat is 400 seconds old: past both the issue
+-- #230 thresholds (warning >150s, critical >300s) that migration
+-- 202611140004 installs earlier in this chain.
 insert into public.agent_heartbeats (host_id, received_at)
-values ('aaaaaaaa-1111-4111-8111-111111111111', clock_timestamp() - interval '300 seconds');
+values ('aaaaaaaa-1111-4111-8111-111111111111', clock_timestamp() - interval '400 seconds');
 
 create temporary table host_suppression_baseline (
   label text primary key,
@@ -131,9 +134,36 @@ begin
   delete from public.agent_heartbeats
   where host_id = 'aaaaaaaa-1111-4111-8111-111111111111';
   insert into public.agent_heartbeats (host_id, received_at)
-  values ('aaaaaaaa-1111-4111-8111-111111111111', clock_timestamp() - interval '300 seconds');
+  values ('aaaaaaaa-1111-4111-8111-111111111111', clock_timestamp() - interval '400 seconds');
 end;
 $$;
+
+-- Scenario 0 (issue #230 thresholds): at 200 seconds of age the
+-- warning threshold (150s) has passed but the critical threshold
+-- (300s) has not: exactly one opened warning, no escalation.
+-- Under the pre-#230 thresholds (45/180) this age escalated too.
+update public.agent_heartbeats
+set received_at = clock_timestamp() - interval '200 seconds'
+where host_id = 'aaaaaaaa-1111-4111-8111-111111111111';
+delete from public.console_ingest_health;
+select public.reconcile_notification_scheduled_signals_v1();
+
+do $$
+begin
+  if pg_temp.host_outbox_count() <> 1 then
+    raise exception 'scenario 0: expected exactly 1 outbox row (opened warning) at 200s age, got %', pg_temp.host_outbox_count();
+  end if;
+  if not exists (
+    select 1 from public.notification_signal_state
+    where signal_key = 'host:aaaaaaaa-1111-4111-8111-111111111111:heartbeat'
+      and active and severity = 'warning'
+  ) then
+    raise exception 'scenario 0: signal state is not active/warning at 200s age';
+  end if;
+end;
+$$;
+
+select pg_temp.host_reset();
 
 -- Scenario 1: no probe row -> baseline behaviour (opened + escalated).
 delete from public.console_ingest_health;
