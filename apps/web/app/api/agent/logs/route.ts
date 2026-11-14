@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import {
   authenticateLogReport,
   LogReportError,
@@ -7,9 +6,12 @@ import {
   persistLogReport,
 } from "../../../../lib/log-report";
 import { readLimitedBody } from "../../../../lib/agent-ingest-body";
+import { agentIngestErrorResponse, agentIngestJson } from "../../../../lib/agent-ingest-response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const RESPONSE_POLICY = { retryAfterSeconds: 2 };
 
 export async function POST(request: Request) {
   try {
@@ -32,41 +34,16 @@ export async function POST(request: Request) {
     const auth = authenticateLogReport(request.headers, rawBody, payload);
     await persistLogReport(payload, auth.nonce, auth.bodySha256);
 
-    return NextResponse.json(
+    return agentIngestJson(
       { accepted: true, receivedAt: new Date().toISOString(), entries: payload.entries.length },
-      {
-        status: 202,
-        headers: {
-          "Cache-Control": "no-store, max-age=0",
-          "X-Content-Type-Options": "nosniff",
-        },
-      },
+      202,
+      RESPONSE_POLICY,
     );
   } catch (error) {
-    if (error instanceof LogReportError) {
-      return NextResponse.json(
-        { accepted: false, error: error.code },
-        {
-          status: error.status,
-          headers: {
-            "Cache-Control": "no-store, max-age=0",
-            "X-Content-Type-Options": "nosniff",
-            ...(error.status === 429 ? { "Retry-After": "2" } : {}),
-          },
-        },
-      );
-    }
+    const response = agentIngestErrorResponse(error, RESPONSE_POLICY);
+    if (response) return response;
 
     console.error("Log Report APIで予期しないエラーが発生しました");
-    return NextResponse.json(
-      { accepted: false, error: "internal_error" },
-      {
-        status: 500,
-        headers: {
-          "Cache-Control": "no-store, max-age=0",
-          "X-Content-Type-Options": "nosniff",
-        },
-      },
-    );
+    return agentIngestJson({ accepted: false, error: "internal_error" }, 500, RESPONSE_POLICY);
   }
 }

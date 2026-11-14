@@ -1,13 +1,20 @@
-import { NextResponse } from "next/server";
-import { authenticateHeartbeat, HeartbeatError } from "../../../../lib/heartbeat";
+import { authenticateHeartbeat } from "../../../../lib/heartbeat";
 import { parseRuntimeInventory, runtimeOnlySecrets } from "../../../../lib/runtime-inventory-core";
-import { authenticateOperationAgentWithSecrets, OperationAgentAuthError } from "../../../../lib/operation-agent-auth-core";
+import { authenticateOperationAgentWithSecrets } from "../../../../lib/operation-agent-auth-core";
 import { ingestRuntimeInventory, runtimeInventoryEnabled } from "../../../../lib/runtime-inventory";
+import {
+  agentIngestErrorResponse,
+  agentIngestJson,
+  type AgentIngestResponsePolicy,
+} from "../../../../lib/agent-ingest-response";
+
+const RESPONSE_POLICY: AgentIngestResponsePolicy = {};
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
-  const respond = (status: number, error: string) => NextResponse.json({ accepted: false, error }, { status, headers: { "Cache-Control": "no-store" } });
+  const respond = (status: number, error: string) =>
+    agentIngestJson({ accepted: false, error }, status, RESPONSE_POLICY);
   if (!runtimeInventoryEnabled()) return respond(404, "not_enabled");
   try {
     if (request.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") return respond(415, "unsupported_media_type");
@@ -36,11 +43,12 @@ export async function POST(request: Request) {
       auth = authenticateHeartbeat(request.headers, raw, payload);
     }
     const result = await ingestRuntimeInventory(payload, auth.nonce);
-    if (result === "accepted") return NextResponse.json({ accepted: true }, { status: 202, headers: { "Cache-Control": "no-store" } });
+    if (result === "accepted") return agentIngestJson({ accepted: true }, 202, RESPONSE_POLICY);
     const codes: Record<string, number> = { unknown_agent: 401, target_not_allowed: 403, replayed_request: 409, rate_limited: 429, invalid_payload: 400 };
     return respond(typeof result === "string" ? codes[result] ?? 503 : 503, typeof result === "string" && Object.hasOwn(codes, result) ? result : "store_unavailable");
   } catch (error) {
-    if (error instanceof HeartbeatError || error instanceof OperationAgentAuthError) return respond(error.status, error.code);
+    const response = agentIngestErrorResponse(error, RESPONSE_POLICY);
+    if (response) return response;
     return respond(503, "store_unavailable");
   }
 }
