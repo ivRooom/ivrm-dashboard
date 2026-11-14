@@ -91,3 +91,9 @@ select 'cloud monitoring database contracts passed' as result;
 -- Issue #232: weekly inventory of long-active signals.
 \i supabase/migrations/202611140005_signal_inventory.sql
 \i tests/signal-inventory-db.sql
+
+-- Issue ivrm-web#749: apply the quiz stock monitor migration and run
+-- its contracts in this same session, so the existing CI step covers
+-- them.
+\i supabase/migrations/202611140007_quiz_stock_monitor.sql
+\i tests/quiz-stock-monitor-db.sql

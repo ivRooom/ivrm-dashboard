@@ -6,6 +6,8 @@
 #   ivrm-cloud-monitor-reconcile-v1       -> reconcile_cloud_monitor_signals_v1()
 #   (point-grant liveness, Issue #221)    -> reconcile_point_grant_signals_v1()
 #     (observations are recorded by ivrm-dash-points-check every 10 min)
+#   (quiz stock monitor, ivrm-web #749)   -> reconcile_quiz_stock_signals_v1()
+#     (observations are recorded by ivrm-dash-quiz-check every 10 min)
 #   (signal inventory, Issue #232)        -> run_signal_inventory_v1()
 #     (internally gated to the Monday 09:00 JST window, once per week)
 #   ivrm-reliability-burn-reconcile       -> HTTP kick to the console route
@@ -39,6 +41,8 @@ $PSQL -c "select public.reconcile_cloud_monitor_signals_v1()" >/dev/null 2>&1 \
   || logger -t ivrm-dash-minutely "cloud-monitor-reconcile failed"
 $PSQL -c "select public.reconcile_point_grant_signals_v1()" >/dev/null 2>&1 \
   || logger -t ivrm-dash-minutely "point-grant-reconcile failed"
+$PSQL -c "select public.reconcile_quiz_stock_signals_v1()" >/dev/null 2>&1 \
+  || logger -t ivrm-dash-minutely "quiz-stock-reconcile failed"
 $PSQL -c "select public.run_signal_inventory_v1()" >/dev/null 2>&1 \
   || logger -t ivrm-dash-minutely "signal-inventory failed"
 

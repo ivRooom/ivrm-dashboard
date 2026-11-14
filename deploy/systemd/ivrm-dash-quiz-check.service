@@ -1,0 +1,7 @@
+[Unit]
+Description=ivrm-dashboard quiz stock checker (ivrm-web Issue #749)
+After=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/ivrm-dashboard-timers/ivrm-dash-quiz-check.sh
