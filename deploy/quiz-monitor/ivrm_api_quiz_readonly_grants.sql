@@ -50,6 +50,19 @@ grant select on ivrm_api.daily_questions to ivrm_dashboard_points_ro;
 grant select on ivrm_api.daily_login_quizzes to ivrm_dashboard_points_ro;
 grant select on ivrm_api.daily_login_quiz_publications to ivrm_dashboard_points_ro;
 
+-- daily_questions has row level security enabled with FORCE and, at
+-- the time of the production application, no policies at all. RLS is
+-- default-deny, so the GRANT above alone left every row invisible to
+-- the read-only role (the checker would have counted 0 ready rows and
+-- false-fired a stock-out). The production application on 2026-11-15
+-- therefore also added this SELECT-only policy; it is recorded here
+-- so the repo matches production. The other two tables have no
+-- policies in production and need none. Idempotent: safe to re-run.
+drop policy if exists ivrm_dashboard_points_ro_select on ivrm_api.daily_questions;
+create policy ivrm_dashboard_points_ro_select on ivrm_api.daily_questions
+  for select to ivrm_dashboard_points_ro
+  using (true);
+
 comment on role ivrm_dashboard_points_ro is
   'ivrm-dashboard monitors (Issues #221 / ivrm-web #749): read-only counts of login_bonus_claims, point_transactions (earn), xp_events, daily_questions, daily_login_quizzes and daily_login_quiz_publications in ivrm_api.';
 
@@ -65,8 +78,13 @@ commit;
 --   --   'ivrm_api.daily_questions', 'INSERT')             -> false
 --   -- has_table_privilege('ivrm_dashboard_points_ro',
 --   --   'ivrm_api.daily_login_quiz_publications', 'SELECT') -> true
+--   -- pg_policies: ivrm_dashboard_points_ro_select exists on
+--   --   ivrm_api.daily_questions (PERMISSIVE, cmd SELECT, roles
+--   --   {ivrm_dashboard_points_ro}, qual 'true', with_check null)
 --
 -- Rollback:
+--   drop policy ivrm_dashboard_points_ro_select
+--     on ivrm_api.daily_questions;
 --   revoke select on ivrm_api.daily_questions,
 --     ivrm_api.daily_login_quizzes,
 --     ivrm_api.daily_login_quiz_publications
