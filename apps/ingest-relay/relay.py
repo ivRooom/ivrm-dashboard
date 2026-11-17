@@ -149,7 +149,9 @@ def build_rpc_params(path: str, payload: dict, nonce: str, body_sha256: str) -> 
             raise RelayError(400, "invalid_payload")
         if not isinstance(payload.get("agentVersion"), str) or not isinstance(payload.get("sentAt"), str):
             raise RelayError(400, "invalid_payload")
-        if not isinstance(payload.get("containers"), list) or "minecraft" not in payload:
+        if not isinstance(payload.get("containers"), list):
+            raise RelayError(400, "invalid_payload")
+        if payload.get("minecraft") is not None and not isinstance(payload.get("minecraft"), dict):
             raise RelayError(400, "invalid_payload")
         params = {
             "p_server_id": payload["serverId"],
@@ -158,7 +160,7 @@ def build_rpc_params(path: str, payload: dict, nonce: str, body_sha256: str) -> 
             "p_request_nonce": nonce,
             "p_body_sha256": body_sha256,
             "p_containers": payload["containers"],
-            "p_minecraft": payload["minecraft"],
+            "p_minecraft": payload.get("minecraft"),
         }
         for field, param_name in HEARTBEAT_HOST_PARAMS.items():
             params[param_name] = host[field]
