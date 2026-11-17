@@ -183,6 +183,41 @@ class RelayTest(unittest.TestCase):
             self.call("/api/agent/backups", backups)
         self.assertEqual(ctx.exception.status, 400)
 
+    def test_runtime_accepted_and_params(self):
+        now = time.time()
+        observed = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
+        names = ["ivrm-admin", "ivrm-api", "ivrm-home", "ivrm-member", "ivrm-contact", "ivrm-cloudflared", "ivrm-runtime-caddy", "ivrm-runtime-health"]
+        containers = [{"collection": "unavailable", "name": name} for name in names]
+        containers[0] = {
+            "collection": "ok", "name": "ivrm-admin", "state": "running", "health": "healthy",
+            "restartCount": 0, "oomKilled": False, "exitCode": 0,
+            "image": "example/ivrm-admin:latest", "imageId": "sha256:" + "a" * 64,
+        }
+        body = json.dumps({"kind": "runtime-inventory-v1", "serverId": SERVER_ID, "observedAt": observed, "containers": containers}).encode()
+        status, _, rpc = self.call("/api/agent/runtime", body)
+        self.assertEqual(status, 202)
+        self.assertEqual(rpc.call_args.args[1], "ingest_runtime_inventory_v1")
+        params = rpc.call_args.args[2]
+        self.assertEqual(params["p_server_id"], SERVER_ID)
+        self.assertEqual(params["p_observed_at"], observed)
+        self.assertEqual(len(params["p_containers"]), 8)
+
+    def test_runtime_wrong_container_count_rejected(self):
+        observed = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        body = json.dumps({"kind": "runtime-inventory-v1", "serverId": SERVER_ID, "observedAt": observed, "containers": []}).encode()
+        with self.assertRaises(relay.RelayError) as ctx:
+            self.call("/api/agent/runtime", body)
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_runtime_stale_observed_rejected(self):
+        observed = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 3600))
+        names = ["ivrm-admin", "ivrm-api", "ivrm-home", "ivrm-member", "ivrm-contact", "ivrm-cloudflared", "ivrm-runtime-caddy", "ivrm-runtime-health"]
+        containers = [{"collection": "unavailable", "name": name} for name in names]
+        body = json.dumps({"kind": "runtime-inventory-v1", "serverId": SERVER_ID, "observedAt": observed, "containers": containers}).encode()
+        with self.assertRaises(relay.RelayError) as ctx:
+            self.call("/api/agent/runtime", body)
+        self.assertEqual(ctx.exception.status, 400)
+
     def test_bad_signature_rejected(self):
         body = heartbeat_body()
         headers = signed_headers(body, secret="x" * 40)

@@ -4,7 +4,7 @@ Issue #242 (A案)。Console (Vercel) が Hobby fair use 超過などで停止し
 
 ## 仕様
 
-- 受ける経路は本系と同一: `POST /api/agent/heartbeat` / `cloud` / `backups` / `logs`、`GET /healthz`。
+- 受ける経路は本系と同一: `POST /api/agent/heartbeat` / `cloud` / `backups` / `logs` / `runtime`、`GET /healthz`。
 - 認証は本系 `apps/web/lib/operation-agent-auth-core.ts` と同一: サーバー別 secret による HMAC-SHA256 (`timestamp.nonce.body`)、timestamp の許容ずれ ±300 秒、nonce は使い捨て (DB 関数側で再生検知)。
 - 永続化は本系と同じ PostgREST RPC (`insert_agent_heartbeat_v3` / `ingest_cloud_monitor_v1` / `ingest_backup_report_v1` / `ingest_console_log_report_v1`) に委ね、結果文字列 (`accepted` / `replayed_request` など) の HTTP ステータスへの対応も本系と揃えている。
 - ペイロードの詳細検証は DB 関数側の原子検証が正本。本サービスは構造の最小チェック (必須フィールドと型) のみ行う。
