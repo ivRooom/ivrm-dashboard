@@ -3,6 +3,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 MODULE_PATH = Path(__file__).with_name("ivrm-backup-reporter.py")
 SPEC = importlib.util.spec_from_file_location("ivrm_backup_reporter", MODULE_PATH)
@@ -71,6 +72,31 @@ class BackupReporterTests(unittest.TestCase):
 
     def test_validate_endpoint_allows_https(self):
         REPORTER.validate_endpoint("https://console.ivrm.jp/api/agent/backups")
+
+    def test_validate_endpoint_allows_tailnet_http(self):
+        for endpoint in (
+            "http://ivrm-db-postgres-01.tailnet.example.ts.net:3939/api/agent/backups",
+            "http://100.117.170.101:3939/api/agent/backups",
+        ):
+            with self.subTest(endpoint=endpoint):
+                REPORTER.validate_endpoint(endpoint)
+
+    def test_validate_endpoint_rejects_ts_net_lookalike(self):
+        with self.assertRaises(ValueError):
+            REPORTER.validate_endpoint("http://evilts.net.example.com/api/agent/backups")
+        with self.assertRaises(ValueError):
+            REPORTER.validate_endpoint("http://100.200.1.1:3939/api/agent/backups")
+
+    def test_deliver_falls_back_on_error_status_and_exception(self):
+        body = b"{}"
+        with mock.patch.object(REPORTER, "send_report", side_effect=[402, 202]) as send:
+            self.assertEqual(REPORTER.deliver(["https://a", "http://b"], "srv", "x" * 32, body), 202)
+            self.assertEqual(send.call_count, 2)
+        with mock.patch.object(REPORTER, "send_report", side_effect=[REPORTER.urllib.error.URLError("down"), 202]):
+            self.assertEqual(REPORTER.deliver(["https://a", "http://b"], "srv", "x" * 32, body), 202)
+        with mock.patch.object(REPORTER, "send_report", side_effect=[202, 202]) as send:
+            self.assertEqual(REPORTER.deliver(["https://a", "http://b"], "srv", "x" * 32, body), 202)
+            self.assertEqual(send.call_count, 1)
 
 
 if __name__ == "__main__":

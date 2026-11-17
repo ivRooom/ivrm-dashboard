@@ -14,6 +14,7 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -28,14 +29,14 @@ import (
 )
 
 const (
-	agentVersion              = "0.6.0"
-	defaultDockerSnapshotPath = "/run/ivrm-agent/docker-state.json"
-	maxDockerSnapshotAge      = 45 * time.Second
-	maxContainersPerSnapshot  = 20
-	maxMinecraftPlayers       = 1_000_000
-	maxMinecraftTPS           = 1_000.0
-	maxMinecraftMSPT          = 60_000.0
-	maxSafeInteger      uint64 = 9_007_199_254_740_991
+	agentVersion                     = "0.6.0"
+	defaultDockerSnapshotPath        = "/run/ivrm-agent/docker-state.json"
+	maxDockerSnapshotAge             = 45 * time.Second
+	maxContainersPerSnapshot         = 20
+	maxMinecraftPlayers              = 1_000_000
+	maxMinecraftTPS                  = 1_000.0
+	maxMinecraftMSPT                 = 60_000.0
+	maxSafeInteger            uint64 = 9_007_199_254_740_991
 )
 
 var containerNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$`)
@@ -63,6 +64,7 @@ var validContainerHealth = map[string]struct{}{
 type config struct {
 	serverID           string
 	endpoint           string
+	fallbackEndpoint   string
 	token              string
 	interval           time.Duration
 	dockerSnapshotPath string
@@ -81,20 +83,20 @@ type hostMetrics struct {
 }
 
 type containerMetrics struct {
-	Name               string   `json:"name"`
-	State              string   `json:"state"`
-	Health             string   `json:"health"`
-	RestartCount       int      `json:"restartCount"`
-	OOMKilled          bool     `json:"oomKilled"`
-	ExitCode           *int     `json:"exitCode"`
-	CPUPercent         *float64 `json:"cpuPercent"`
-	MemoryUsageBytes   *uint64  `json:"memoryUsageBytes"`
-	MemoryLimitBytes   *uint64  `json:"memoryLimitBytes"`
-	NetworkRxBytes     *uint64  `json:"networkRxBytes"`
-	NetworkTxBytes     *uint64  `json:"networkTxBytes"`
-	BlockReadBytes     *uint64  `json:"blockReadBytes"`
-	BlockWriteBytes    *uint64  `json:"blockWriteBytes"`
-	PIDs               *int     `json:"pids"`
+	Name             string   `json:"name"`
+	State            string   `json:"state"`
+	Health           string   `json:"health"`
+	RestartCount     int      `json:"restartCount"`
+	OOMKilled        bool     `json:"oomKilled"`
+	ExitCode         *int     `json:"exitCode"`
+	CPUPercent       *float64 `json:"cpuPercent"`
+	MemoryUsageBytes *uint64  `json:"memoryUsageBytes"`
+	MemoryLimitBytes *uint64  `json:"memoryLimitBytes"`
+	NetworkRxBytes   *uint64  `json:"networkRxBytes"`
+	NetworkTxBytes   *uint64  `json:"networkTxBytes"`
+	BlockReadBytes   *uint64  `json:"blockReadBytes"`
+	BlockWriteBytes  *uint64  `json:"blockWriteBytes"`
+	PIDs             *int     `json:"pids"`
 }
 
 type minecraftEndpoint struct {
@@ -116,12 +118,12 @@ type minecraftPerformance struct {
 }
 
 type minecraftProbe struct {
-	PublicEndpoint          minecraftEndpoint     `json:"publicEndpoint"`
-	Backend                 minecraftEndpoint     `json:"backend"`
-	ProxyPortPublished      bool                  `json:"proxyPortPublished"`
-	BackendPortPublished    bool                  `json:"backendPortPublished"`
-	VoiceChatPortPublished  bool                  `json:"voiceChatPortPublished"`
-	Performance             *minecraftPerformance `json:"performance,omitempty"`
+	PublicEndpoint         minecraftEndpoint     `json:"publicEndpoint"`
+	Backend                minecraftEndpoint     `json:"backend"`
+	ProxyPortPublished     bool                  `json:"proxyPortPublished"`
+	BackendPortPublished   bool                  `json:"backendPortPublished"`
+	VoiceChatPortPublished bool                  `json:"voiceChatPortPublished"`
+	Performance            *minecraftPerformance `json:"performance,omitempty"`
 }
 
 type dockerSnapshot struct {
@@ -185,6 +187,7 @@ func loadConfig() (config, error) {
 	cfg := config{
 		serverID:           os.Getenv("IVRM_AGENT_SERVER_ID"),
 		endpoint:           os.Getenv("IVRM_AGENT_ENDPOINT"),
+		fallbackEndpoint:   strings.TrimSpace(os.Getenv("IVRM_AGENT_FALLBACK_ENDPOINT")),
 		token:              os.Getenv("IVRM_AGENT_TOKEN"),
 		interval:           interval,
 		dockerSnapshotPath: dockerSnapshotPath,
@@ -202,14 +205,48 @@ func loadConfig() (config, error) {
 		return config{}, errors.New("Dockerスナップショットのパスは絶対パスにしてください")
 	}
 
-	parsed, err := url.Parse(cfg.endpoint)
-	if err != nil || parsed.Host == "" {
-		return config{}, errors.New("Endpointが有効なURLではありません")
+	if err := validateEndpoint(cfg.endpoint); err != nil {
+		return config{}, err
 	}
-	if parsed.Scheme != "https" && parsed.Hostname() != "localhost" && parsed.Hostname() != "127.0.0.1" {
-		return config{}, errors.New("本番EndpointにはHTTPSが必要です")
+	if cfg.fallbackEndpoint != "" {
+		if err := validateEndpoint(cfg.fallbackEndpoint); err != nil {
+			return config{}, fmt.Errorf("Fallback Endpointが不正です: %w", err)
+		}
 	}
 	return cfg, nil
+}
+
+func validateEndpoint(endpoint string) error {
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed.Host == "" {
+		return errors.New("Endpointが有効なURLではありません")
+	}
+	if parsed.Scheme == "https" {
+		return nil
+	}
+	hostname := parsed.Hostname()
+	if hostname == "localhost" || hostname == "127.0.0.1" || isTailnetHost(hostname) {
+		return nil
+	}
+	return errors.New("本番EndpointにはHTTPSが必要です")
+}
+
+// isTailnetHost は Tailscale の宛先 (MagicDNS 名 / CGNAT 帯 IP) を判定する。
+// tailnet 内は WireGuard で暗号化されるため、予備 ingest への HTTP を許可する。
+func isTailnetHost(hostname string) bool {
+	if strings.HasSuffix(hostname, ".ts.net") {
+		return true
+	}
+	ip := net.ParseIP(hostname)
+	if ip == nil {
+		return false
+	}
+	ip4 := ip.To4()
+	if ip4 == nil {
+		return false
+	}
+	// 100.64.0.0/10 (Tailscale の CGNAT 帯)
+	return ip4[0] == 100 && ip4[1]&0xC0 == 0x40
 }
 
 func runOnce(ctx context.Context, logger *slog.Logger, cfg config) {
@@ -241,34 +278,28 @@ func runOnce(ctx context.Context, logger *slog.Logger, cfg config) {
 		return
 	}
 
-	nonce, err := newNonce()
-	if err != nil {
-		logger.Error("Nonce生成に失敗しました", "error", err)
-		return
+	endpoints := []string{cfg.endpoint}
+	if cfg.fallbackEndpoint != "" {
+		endpoints = append(endpoints, cfg.fallbackEndpoint)
 	}
-	timestamp := strconv.FormatInt(now.Unix(), 10)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.endpoint, bytes.NewReader(body))
-	if err != nil {
-		logger.Error("リクエスト作成に失敗しました", "error", err)
-		return
+	delivered := false
+	for i, endpoint := range endpoints {
+		status, err := postHeartbeat(ctx, cfg, endpoint, body)
+		if err != nil {
+			logger.Warn("Heartbeat送信に失敗しました", "endpoint_index", i, "error", err)
+			continue
+		}
+		if status < 200 || status >= 300 {
+			logger.Warn("Heartbeat APIがエラーを返しました", "endpoint_index", i, "status", status)
+			continue
+		}
+		if i > 0 {
+			logger.Info("予備ingest経由でHeartbeatを送信しました")
+		}
+		delivered = true
+		break
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "ivrm-agent/"+agentVersion)
-	req.Header.Set("X-IVRM-Agent-ID", cfg.serverID)
-	req.Header.Set("X-IVRM-Timestamp", timestamp)
-	req.Header.Set("X-IVRM-Nonce", nonce)
-	req.Header.Set("X-IVRM-Signature", sign([]byte(cfg.token), timestamp, nonce, body))
-
-	response, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
-	if err != nil {
-		logger.Warn("Heartbeat送信に失敗しました", "error", err)
-		return
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		logger.Warn("Heartbeat APIがエラーを返しました", "status", response.StatusCode)
+	if !delivered {
 		return
 	}
 	logger.Info(
@@ -280,6 +311,34 @@ func runOnce(ctx context.Context, logger *slog.Logger, cfg config) {
 		"minecraft_performance",
 		snapshot.Minecraft != nil && snapshot.Minecraft.Performance != nil,
 	)
+}
+
+// postHeartbeat は署名付きHeartbeatを1回送信する。試行ごとに nonce を新規発行する。
+func postHeartbeat(ctx context.Context, cfg config, endpoint string, body []byte) (int, error) {
+	nonce, err := newNonce()
+	if err != nil {
+		return 0, err
+	}
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "ivrm-agent/"+agentVersion)
+	req.Header.Set("X-IVRM-Agent-ID", cfg.serverID)
+	req.Header.Set("X-IVRM-Timestamp", timestamp)
+	req.Header.Set("X-IVRM-Nonce", nonce)
+	req.Header.Set("X-IVRM-Signature", sign([]byte(cfg.token), timestamp, nonce, body))
+
+	response, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer response.Body.Close()
+	_, _ = io.Copy(io.Discard, response.Body)
+	return response.StatusCode, nil
 }
 
 func readDockerSnapshot(path string, now time.Time) (dockerSnapshot, error) {

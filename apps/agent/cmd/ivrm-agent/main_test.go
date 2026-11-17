@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -324,4 +327,48 @@ func writeSnapshot(t *testing.T, snapshot dockerSnapshot) string {
 		t.Fatalf("テスト用JSONを書き込めません: %v", err)
 	}
 	return path
+}
+
+func TestValidateEndpointAllowsTailnetHTTP(t *testing.T) {
+	for _, endpoint := range []string{
+		"https://console.ivrm.jp/api/agent/heartbeat",
+		"http://localhost:3939/api/agent/heartbeat",
+		"http://ivrm-db-postgres-01.example.ts.net:3939/api/agent/heartbeat",
+		"http://100.117.170.101:3939/api/agent/heartbeat",
+	} {
+		if err := validateEndpoint(endpoint); err != nil {
+			t.Errorf("許可されるべきEndpointが拒否されました: %s: %v", endpoint, err)
+		}
+	}
+	for _, endpoint := range []string{
+		"http://example.com/api/agent/heartbeat",
+		"http://evilts.net.example.com/api/agent/heartbeat",
+		"http://100.200.1.1:3939/api/agent/heartbeat",
+		"http://192.168.1.10:3939/api/agent/heartbeat",
+	} {
+		if err := validateEndpoint(endpoint); err == nil {
+			t.Errorf("拒否されるべきEndpointが許可されました: %s", endpoint)
+		}
+	}
+}
+
+func TestPostHeartbeatSignsEachAttempt(t *testing.T) {
+	var signatures []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		signatures = append(signatures, r.Header.Get("X-IVRM-Signature"))
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+
+	cfg := config{serverID: "aws-app-01", token: strings.Repeat("x", 32)}
+	body := []byte(`{"serverId":"aws-app-01"}`)
+	for i := 0; i < 2; i++ {
+		status, err := postHeartbeat(context.Background(), cfg, server.URL, body)
+		if err != nil || status != http.StatusAccepted {
+			t.Fatalf("postHeartbeatが失敗しました: status=%d err=%v", status, err)
+		}
+	}
+	if len(signatures) != 2 || signatures[0] == "" || signatures[0] == signatures[1] {
+		t.Errorf("試行ごとに異なる署名 (nonce) であるべきです: %v", signatures)
+	}
 }
