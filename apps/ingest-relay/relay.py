@@ -5,7 +5,7 @@ Console (Vercel) が停止しても監視 ingest が止まらないよう、DB �
 tailnet 限定で待ち受ける予備の受け口。認証 (HMAC) と DB 書込み (PostgREST RPC)
 は本系の Web 実装 (apps/web/lib/operation-agent-auth-core.ts ほか) と同一仕様で、
 永続化は同じ DB 関数 (insert_agent_heartbeat_v3 / ingest_cloud_monitor_v1 /
-ingest_backup_report_v1 / ingest_console_log_report_v1) に委ねる。
+ingest_backup_report_v1 / ingest_console_log_report_v1 / ingest_runtime_inventory_v1) に委ねる。
 
 依存は Python 標準ライブラリのみ。
 
@@ -54,10 +54,16 @@ ROUTES = {
         "max_bytes": 64 * 1024,
         "storage_error": "storage_unavailable",
     },
+    "/api/agent/runtime": {
+        "rpc": "ingest_runtime_inventory_v1",
+        "max_bytes": 32 * 1024,
+        "storage_error": "store_unavailable",
+    },
 }
 
 PERSIST_RESULT_STATUS = {
     "unknown_agent": 401,
+    "target_not_allowed": 403,
     "rate_limited": 429,
     "replayed_request": 409,
     "invalid_payload": 400,
@@ -405,6 +411,72 @@ def normalize_backup_runs(payload: dict) -> list:
     return normalized_runs
 
 
+# --- Web 側 parse の移植 (apps/web/lib/runtime-inventory-core.ts) ---
+
+RUNTIME_CONTAINERS = {
+    "aws-app-01": ["ivrm-admin", "ivrm-api", "ivrm-home", "ivrm-member", "ivrm-contact", "ivrm-cloudflared", "ivrm-runtime-caddy", "ivrm-runtime-health"],
+    "lightsail-herta": ["herta-api-1", "herta-studio-1", "herta-worker-1", "herta-bot-1", "herta-postgres-1", "herta-redis-1", "herta-caddy-1", "herta-nginx-1"],
+    "oci-minecraft-01": ["mc-main", "ivrm-velocity", "mc-resource-router", "ivrm-status-api", "caddy"],
+}
+RUNTIME_STATES = {"created", "running", "paused", "restarting", "removing", "exited", "dead"}
+RUNTIME_HEALTHS = {"starting", "healthy", "unhealthy", "none"}
+RUNTIME_OK_KEYS = {"collection", "exitCode", "health", "image", "imageId", "name", "oomKilled", "restartCount", "state"}
+IMAGE_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._:/@-]{0,254}$")
+IMAGE_ID_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
+OBSERVED_AT_SUFFIX = re.compile(r"(Z|[+-]\d\d:\d\d)$")
+
+
+def validate_runtime_inventory(payload: dict) -> None:
+    if set(payload.keys()) != {"containers", "kind", "observedAt", "serverId"}:
+        raise RelayError(400, "invalid_payload")
+    if payload.get("kind") != "runtime-inventory-v1":
+        raise RelayError(400, "invalid_payload")
+    expected = RUNTIME_CONTAINERS.get(payload.get("serverId"))
+    if expected is None:
+        raise RelayError(400, "invalid_payload")
+    observed_at = payload.get("observedAt")
+    if not isinstance(observed_at, str) or not OBSERVED_AT_SUFFIX.search(observed_at):
+        raise RelayError(400, "invalid_payload")
+    observed_ms = parse_timestamp_ms(observed_at)
+    now_ms = time.time() * 1000
+    if observed_ms is None or observed_ms < now_ms - 300_000 or observed_ms > now_ms + 30_000:
+        raise RelayError(400, "invalid_payload")
+    containers = payload.get("containers")
+    if not isinstance(containers, list) or len(containers) != len(expected):
+        raise RelayError(400, "invalid_payload")
+    seen = set()
+    for row in containers:
+        if not isinstance(row, dict) or not isinstance(row.get("name"), str) or row["name"] not in expected or row["name"] in seen:
+            raise RelayError(400, "invalid_payload")
+        seen.add(row["name"])
+        if row.get("collection") == "unavailable":
+            if set(row.keys()) != {"collection", "name"}:
+                raise RelayError(400, "invalid_payload")
+        elif row.get("collection") == "ok":
+            if set(row.keys()) != RUNTIME_OK_KEYS:
+                raise RelayError(400, "invalid_payload")
+            restart_count = row.get("restartCount")
+            exit_code = row.get("exitCode")
+            if (
+                row.get("state") not in RUNTIME_STATES
+                or row.get("health") not in RUNTIME_HEALTHS
+                or not isinstance(row.get("oomKilled"), bool)
+                or isinstance(restart_count, bool)
+                or not isinstance(restart_count, int)
+                or not 0 <= restart_count <= 2147483647
+                or isinstance(exit_code, bool)
+                or not isinstance(exit_code, int)
+                or not 0 <= exit_code <= 255
+                or not isinstance(row.get("image"), str)
+                or not IMAGE_PATTERN.match(row["image"])
+                or not isinstance(row.get("imageId"), str)
+                or not IMAGE_ID_PATTERN.match(row["imageId"])
+            ):
+                raise RelayError(400, "invalid_payload")
+        else:
+            raise RelayError(400, "invalid_payload")
+
+
 def build_rpc_params(path: str, payload: dict, nonce: str, body_sha256: str) -> dict:
     if path == "/api/agent/heartbeat":
         host = payload.get("host")
@@ -458,6 +530,14 @@ def build_rpc_params(path: str, payload: dict, nonce: str, body_sha256: str) -> 
             "p_request_nonce": nonce,
             "p_body_sha256": body_sha256,
             "p_entries": normalize_log_entries(payload),
+        }
+    if path == "/api/agent/runtime":
+        validate_runtime_inventory(payload)
+        return {
+            "p_server_id": payload["serverId"],
+            "p_observed_at": payload["observedAt"],
+            "p_nonce": nonce,
+            "p_containers": payload["containers"],
         }
     raise RelayError(404, "not_found")
 
