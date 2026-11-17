@@ -106,16 +106,82 @@ class RelayTest(unittest.TestCase):
         self.assertEqual(ctx.exception.status, 400)
 
     def test_backups_and_logs_accepted(self):
-        backups = json.dumps({"serverId": SERVER_ID, "reportedAt": "2026-11-18T00:00:00Z", "runs": []}).encode()
+        now = time.time()
+        micro = lambda ts: time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ts)) + ".%06dZ" % int((ts % 1) * 1_000_000)
+        run = {
+            "runId": "123e4567-e89b-12d3-a456-426614174000",
+            "backupTarget": "minecraft-main",
+            "gameMode": "main",
+            "backupType": "world",
+            "destinationType": "s3",
+            "startedAt": micro(now - 600),
+            "completedAt": micro(now - 300),
+            "outcome": "success",
+            "durationSeconds": 300,
+            "sizeBytes": 1024,
+        }
+        backups = json.dumps({"serverId": SERVER_ID, "reportedAt": micro(now), "runs": [run]}).encode()
         status, response, rpc = self.call("/api/agent/backups", backups)
         self.assertEqual(status, 202)
-        self.assertEqual(response["runs"], 0)
+        self.assertEqual(response["runs"], 1)
         self.assertEqual(rpc.call_args.args[1], "ingest_backup_report_v1")
+        params_run = rpc.call_args.args[2]["p_runs"][0]
+        self.assertIsNone(params_run["sha256Verified"])
+        self.assertIsNone(params_run["remoteSyncedAt"])
+        self.assertIsNone(params_run["failureCode"])
 
-        logs = json.dumps({"serverId": SERVER_ID, "reportedAt": "2026-11-18T00:00:00Z", "entries": []}).encode()
+        entry = {
+            "sourceType": "container",
+            "sourceName": "mc-main",
+            "observedAt": micro(now),
+            "level": "info",
+            "message": "hello Bearer abcdefgh12345678 world",
+        }
+        logs = json.dumps({"serverId": SERVER_ID, "reportedAt": micro(now), "entries": [entry]}).encode()
         status, _, rpc = self.call("/api/agent/logs", logs)
         self.assertEqual(status, 202)
         self.assertEqual(rpc.call_args.args[1], "ingest_console_log_report_v1")
+        params_entry = rpc.call_args.args[2]["p_entries"][0]
+        self.assertEqual(params_entry["message"], "hello Bearer [REDACTED] world")
+        expected_event_id = hashlib.sha256(
+            ("container\x00mc-main\x00" + entry["observedAt"] + "\x00hello Bearer [REDACTED] world").encode()
+        ).hexdigest()
+        self.assertEqual(params_entry["eventId"], expected_event_id)
+
+    def test_logs_unknown_source_rejected(self):
+        now = time.time()
+        micro = lambda ts: time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ts)) + ".%06dZ" % int((ts % 1) * 1_000_000)
+        entry = {
+            "sourceType": "container",
+            "sourceName": "unknown-box",
+            "observedAt": micro(now),
+            "level": "info",
+            "message": "hello",
+        }
+        logs = json.dumps({"serverId": SERVER_ID, "reportedAt": micro(now), "entries": [entry]}).encode()
+        with self.assertRaises(relay.RelayError) as ctx:
+            self.call("/api/agent/logs", logs)
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_backups_duplicate_run_rejected(self):
+        now = time.time()
+        micro = lambda ts: time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ts)) + ".%06dZ" % int((ts % 1) * 1_000_000)
+        run = {
+            "runId": "123e4567-e89b-12d3-a456-426614174000",
+            "backupTarget": "minecraft-main",
+            "gameMode": "main",
+            "backupType": "world",
+            "destinationType": "s3",
+            "startedAt": micro(now - 600),
+            "completedAt": micro(now - 300),
+            "outcome": "success",
+            "durationSeconds": 300,
+            "sizeBytes": 1024,
+        }
+        backups = json.dumps({"serverId": SERVER_ID, "reportedAt": micro(now), "runs": [run, run]}).encode()
+        with self.assertRaises(relay.RelayError) as ctx:
+            self.call("/api/agent/backups", backups)
+        self.assertEqual(ctx.exception.status, 400)
 
     def test_bad_signature_rejected(self):
         body = heartbeat_body()
