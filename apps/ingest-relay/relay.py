@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import re
@@ -27,6 +28,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 MAX_CLOCK_SKEW_SECONDS = 300
@@ -139,6 +141,270 @@ def authenticate(headers, raw_body: bytes, expected_server_id: str, secrets: dic
     return nonce, hashlib.sha256(raw_body).hexdigest()
 
 
+# --- Web 側 parse の移植 (apps/web/lib/log-report.ts / backup-report.ts) ---
+# DB 関数は Web が正規化した形を前提に検証するため、relay でも同じ正規化を行う。
+
+LOG_SOURCES = {
+    "mc-main": "container",
+    "mc-block": "container",
+    "ivrm-velocity": "container",
+    "mc-resource": "container",
+    "mc-resource-router": "container",
+    "ivrm-agent": "systemd",
+}
+LOG_LEVELS = {"debug", "info", "warning", "error", "critical"}
+LOG_REPORT_KEYS = {"serverId", "reportedAt", "entries"}
+LOG_ENTRY_KEYS = {"sourceType", "sourceName", "observedAt", "level", "message"}
+RFC3339_MICRO = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$")
+MAX_LOG_ENTRIES = 120
+MAX_LOG_MESSAGE = 2048
+MAX_LOG_RAW_MESSAGE = 4096
+
+_ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+_MC_FORMAT = re.compile(r"§[0-9A-FK-ORX]", re.IGNORECASE)
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+_BEARER = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{8,}", re.IGNORECASE)
+_SECRET_WORDS = r"(?:access[_-]?token|refresh[_-]?token|token|password|passwd|secret|rcon[_-]?password|forwarding[_-]?secret)"
+_SECRET_QUERY = re.compile(r"([?&]" + _SECRET_WORDS + r"=)[^&\s]+", re.IGNORECASE)
+_SECRET_QUOTED = re.compile(
+    r"\b(authorization|" + _SECRET_WORDS + r")\b([\"']?)(\s*[:=]\s*|\s+)([\"'])([^\"']*)\4", re.IGNORECASE
+)
+_SECRET_ASSIGN = re.compile(
+    r"\b(authorization|" + _SECRET_WORDS + r")\b([\"']?)(\s*[:=]\s*|\s+)([^\s,;}\"']+)", re.IGNORECASE
+)
+_IPV4 = re.compile(r"(?<![0-9.])(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}(?![0-9.])")
+_IPV6 = re.compile(r"(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{1,4}:){2,7}[0-9A-Fa-f]{0,4}(?![0-9A-Fa-f:])")
+_IPV6_CANDIDATE = re.compile(r"(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?![0-9A-Fa-f:])")
+
+
+def _is_ipv6(text: str) -> bool:
+    try:
+        return isinstance(ipaddress.ip_address(text), ipaddress.IPv6Address)
+    except ValueError:
+        return False
+
+
+def redact_log_message(message: str) -> str:
+    text = _ANSI.sub("", message)
+    text = _MC_FORMAT.sub("", text)
+    text = _CONTROL.sub(" ", text)
+    text = _BEARER.sub("Bearer [REDACTED]", text)
+    text = _SECRET_QUERY.sub(r"\1[REDACTED]", text)
+    text = _SECRET_QUOTED.sub(lambda m: f"{m.group(1)}{m.group(2)}{m.group(3)}{m.group(4)}[REDACTED]{m.group(4)}", text)
+    text = _SECRET_ASSIGN.sub(r"\1\2\3[REDACTED]", text)
+    text = _IPV4.sub("[REDACTED_IP]", text)
+    text = _IPV6.sub("[REDACTED_IP]", text)
+    text = _IPV6_CANDIDATE.sub(lambda m: "[REDACTED_IP]" if _is_ipv6(m.group(0)) else m.group(0), text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:MAX_LOG_MESSAGE]
+
+
+def parse_timestamp_ms(value: str) -> float | None:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp() * 1000
+
+
+def normalize_log_entries(payload: dict) -> list:
+    if set(payload.keys()) != LOG_REPORT_KEYS:
+        raise RelayError(400, "invalid_payload")
+    reported_at = payload.get("reportedAt")
+    entries = payload.get("entries")
+    if not isinstance(reported_at, str) or not RFC3339_MICRO.match(reported_at):
+        raise RelayError(400, "invalid_payload")
+    if not isinstance(entries, list) or not 1 <= len(entries) <= MAX_LOG_ENTRIES:
+        raise RelayError(400, "invalid_payload")
+    reported_ms = parse_timestamp_ms(reported_at)
+    if reported_ms is None or abs(time.time() * 1000 - reported_ms) > MAX_CLOCK_SKEW_SECONDS * 1000:
+        raise RelayError(401, "expired_request")
+    normalized_by_id: dict[str, dict] = {}
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry.keys()) != LOG_ENTRY_KEYS:
+            raise RelayError(400, "invalid_payload")
+        source_type = entry.get("sourceType")
+        source_name = entry.get("sourceName")
+        observed_at = entry.get("observedAt")
+        level = entry.get("level")
+        message = entry.get("message")
+        if (
+            not isinstance(source_name, str)
+            or LOG_SOURCES.get(source_name) is None
+            or LOG_SOURCES[source_name] != source_type
+            or not isinstance(observed_at, str)
+            or not RFC3339_MICRO.match(observed_at)
+            or level not in LOG_LEVELS
+            or not isinstance(message, str)
+            or not 1 <= len(message) <= MAX_LOG_RAW_MESSAGE
+        ):
+            raise RelayError(400, "invalid_payload")
+        observed_ms = parse_timestamp_ms(observed_at)
+        if observed_ms is None or abs(observed_ms - reported_ms) > MAX_CLOCK_SKEW_SECONDS * 1000:
+            raise RelayError(400, "invalid_payload")
+        redacted = redact_log_message(message)
+        if not redacted:
+            raise RelayError(400, "invalid_payload")
+        normalized = {
+            "sourceType": LOG_SOURCES[source_name],
+            "sourceName": source_name,
+            "observedAt": observed_at,
+            "level": level,
+            "message": redacted,
+        }
+        # eventId は Web と同一: sourceType \0 sourceName \0 observedAt \0 message の sha256
+        event_material = "\x00".join(
+            [normalized["sourceType"], normalized["sourceName"], normalized["observedAt"], normalized["message"]]
+        )
+        normalized["eventId"] = hashlib.sha256(event_material.encode("utf-8")).hexdigest()
+        normalized_by_id.setdefault(normalized["eventId"], normalized)
+    return list(normalized_by_id.values())
+
+
+BACKUP_TYPES = {"world", "config", "permissions", "full"}
+BACKUP_DESTINATIONS = {"local", "s3"}
+BACKUP_OUTCOMES = {"success", "failed", "running", "unknown"}
+BACKUP_FAILURE_CODES = {
+    "source_unavailable",
+    "archive_failed",
+    "checksum_failed",
+    "remote_sync_failed",
+    "retention_failed",
+    "timeout",
+    "permission_denied",
+    "insufficient_space",
+    "unknown",
+}
+BACKUP_REPORT_KEYS = {"serverId", "reportedAt", "runs"}
+BACKUP_RUN_KEYS = {
+    "runId",
+    "backupTarget",
+    "gameMode",
+    "backupType",
+    "destinationType",
+    "startedAt",
+    "completedAt",
+    "outcome",
+    "durationSeconds",
+    "sizeBytes",
+    "sha256Verified",
+    "remoteSyncedAt",
+    "restoreTestedAt",
+    "retentionExpiresAt",
+    "failureCode",
+}
+IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+UUID_PATTERN = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", re.IGNORECASE)
+MAX_BACKUP_RUNS = 20
+MAX_DURATION_SECONDS = 7 * 24 * 60 * 60
+MAX_SAFE_INTEGER = 2**53 - 1
+
+
+def _nullable_timestamp(value) -> tuple[bool, str | None]:
+    if value is None:
+        return True, None
+    if not isinstance(value, str) or parse_timestamp_ms(value) is None:
+        return False, None
+    return True, value
+
+
+def _nullable_safe_int(value, maximum: int) -> tuple[bool, int | None]:
+    if value is None:
+        return True, None
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= maximum:
+        return False, None
+    return True, value
+
+
+def normalize_backup_runs(payload: dict) -> list:
+    if set(payload.keys()) != BACKUP_REPORT_KEYS:
+        raise RelayError(400, "invalid_payload")
+    reported_at = payload.get("reportedAt")
+    runs = payload.get("runs")
+    if not isinstance(reported_at, str) or parse_timestamp_ms(reported_at) is None:
+        raise RelayError(400, "invalid_payload")
+    if not isinstance(runs, list) or not 1 <= len(runs) <= MAX_BACKUP_RUNS:
+        raise RelayError(400, "invalid_payload")
+    reported_ms = parse_timestamp_ms(reported_at)
+    if abs(time.time() * 1000 - reported_ms) > MAX_CLOCK_SKEW_SECONDS * 1000:
+        raise RelayError(401, "expired_request")
+    normalized_runs = []
+    seen_ids = set()
+    for run in runs:
+        if not isinstance(run, dict) or not set(run.keys()) <= BACKUP_RUN_KEYS:
+            raise RelayError(400, "invalid_payload")
+        ok_completed, completed_at = _nullable_timestamp(run.get("completedAt"))
+        ok_remote, remote_synced_at = _nullable_timestamp(run.get("remoteSyncedAt"))
+        ok_restore, restore_tested_at = _nullable_timestamp(run.get("restoreTestedAt"))
+        ok_retention, retention_expires_at = _nullable_timestamp(run.get("retentionExpiresAt"))
+        ok_duration, duration_seconds = _nullable_safe_int(run.get("durationSeconds"), MAX_DURATION_SECONDS)
+        ok_size, size_bytes = _nullable_safe_int(run.get("sizeBytes"), MAX_SAFE_INTEGER)
+        started_at = run.get("startedAt")
+        failure_code = run.get("failureCode")
+        sha_verified = run.get("sha256Verified")
+        if (
+            not isinstance(run.get("runId"), str)
+            or not UUID_PATTERN.match(run["runId"])
+            or not isinstance(run.get("backupTarget"), str)
+            or not IDENTIFIER_PATTERN.match(run["backupTarget"])
+            or not isinstance(run.get("gameMode"), str)
+            or not IDENTIFIER_PATTERN.match(run["gameMode"])
+            or run.get("backupType") not in BACKUP_TYPES
+            or run.get("destinationType") not in BACKUP_DESTINATIONS
+            or not isinstance(started_at, str)
+            or parse_timestamp_ms(started_at) is None
+            or not (ok_completed and ok_remote and ok_restore and ok_retention and ok_duration and ok_size)
+            or run.get("outcome") not in BACKUP_OUTCOMES
+            or (sha_verified is not None and not isinstance(sha_verified, bool))
+            or (failure_code is not None and failure_code not in BACKUP_FAILURE_CODES)
+        ):
+            raise RelayError(400, "invalid_payload")
+        outcome = run["outcome"]
+        started_ms = parse_timestamp_ms(started_at)
+        completed_ms = parse_timestamp_ms(completed_at) if completed_at else None
+        remote_ms = parse_timestamp_ms(remote_synced_at) if remote_synced_at else None
+        restore_ms = parse_timestamp_ms(restore_tested_at) if restore_tested_at else None
+        retention_ms = parse_timestamp_ms(retention_expires_at) if retention_expires_at else None
+        if (
+            started_ms > reported_ms + MAX_CLOCK_SKEW_SECONDS * 1000
+            or started_ms < reported_ms - 90 * 24 * 60 * 60 * 1000
+            or (outcome in ("success", "failed") and (completed_ms is None or duration_seconds is None))
+            or (outcome in ("running", "unknown") and (completed_ms is not None or duration_seconds is not None))
+            or (completed_ms is not None and (completed_ms < started_ms or completed_ms > reported_ms + MAX_CLOCK_SKEW_SECONDS * 1000))
+            or (outcome == "failed" and failure_code is None)
+            or (outcome != "failed" and failure_code is not None)
+            or (remote_ms is not None and (completed_ms is None or remote_ms < completed_ms or remote_ms > reported_ms + MAX_CLOCK_SKEW_SECONDS * 1000))
+            or (restore_ms is not None and (completed_ms is None or restore_ms < completed_ms or restore_ms > reported_ms + MAX_CLOCK_SKEW_SECONDS * 1000))
+            or (retention_ms is not None and (completed_ms is None or retention_ms <= completed_ms))
+        ):
+            raise RelayError(400, "invalid_payload")
+        if run["runId"] in seen_ids:
+            raise RelayError(400, "duplicate_run_id")
+        seen_ids.add(run["runId"])
+        normalized_runs.append(
+            {
+                "runId": run["runId"],
+                "backupTarget": run["backupTarget"],
+                "gameMode": run["gameMode"],
+                "backupType": run["backupType"],
+                "destinationType": run["destinationType"],
+                "startedAt": started_at,
+                "completedAt": completed_at,
+                "outcome": outcome,
+                "durationSeconds": duration_seconds,
+                "sizeBytes": size_bytes,
+                "sha256Verified": sha_verified,
+                "remoteSyncedAt": remote_synced_at,
+                "restoreTestedAt": restore_tested_at,
+                "retentionExpiresAt": retention_expires_at,
+                "failureCode": failure_code,
+            }
+        )
+    return normalized_runs
+
+
 def build_rpc_params(path: str, payload: dict, nonce: str, body_sha256: str) -> dict:
     if path == "/api/agent/heartbeat":
         host = payload.get("host")
@@ -178,24 +444,20 @@ def build_rpc_params(path: str, payload: dict, nonce: str, body_sha256: str) -> 
             "p_results": payload["results"],
         }
     if path == "/api/agent/backups":
-        if not isinstance(payload.get("reportedAt"), str) or not isinstance(payload.get("runs"), list):
-            raise RelayError(400, "invalid_payload")
         return {
             "p_server_id": payload["serverId"],
             "p_reported_at": payload["reportedAt"],
             "p_request_nonce": nonce,
             "p_body_sha256": body_sha256,
-            "p_runs": payload["runs"],
+            "p_runs": normalize_backup_runs(payload),
         }
     if path == "/api/agent/logs":
-        if not isinstance(payload.get("reportedAt"), str) or not isinstance(payload.get("entries"), list):
-            raise RelayError(400, "invalid_payload")
         return {
             "p_server_id": payload["serverId"],
             "p_reported_at": payload["reportedAt"],
             "p_request_nonce": nonce,
             "p_body_sha256": body_sha256,
-            "p_entries": payload["entries"],
+            "p_entries": normalize_log_entries(payload),
         }
     raise RelayError(404, "not_found")
 
