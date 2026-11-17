@@ -74,12 +74,46 @@ def validate_endpoint(endpoint: str) -> None:
     hostname = parsed.hostname
     if hostname == "localhost":
         return
+    if is_tailnet_host(hostname):
+        return
     try:
         if ipaddress.ip_address(hostname).is_loopback:
             return
     except ValueError:
         pass
     raise ValueError("HTTPはlocalhostまたはloopback IPでのみ使用できます")
+
+
+TAILNET_NETWORK = ipaddress.ip_network("100.64.0.0/10")
+
+
+def is_tailnet_host(hostname: str) -> bool:
+    """Tailscale の宛先 (MagicDNS 名 / CGNAT 帯 IP) は WireGuard で暗号化されるため HTTP を許可する。"""
+    if hostname.endswith(".ts.net"):
+        return True
+    try:
+        return ipaddress.ip_address(hostname) in TAILNET_NETWORK
+    except ValueError:
+        return False
+
+
+def deliver(endpoints: list[str], server_id: str, secret: str, body: bytes) -> int:
+    """主系→予備の順に送信し、最初に得た 2xx の status を返す。全滅時は最後の status / 例外。"""
+    last_status: int | None = None
+    last_error: Exception | None = None
+    for endpoint in endpoints:
+        try:
+            status = send_report(endpoint, server_id, secret, body)
+        except urllib.error.URLError as exc:
+            last_error = exc
+            continue
+        if 200 <= status < 300:
+            return status
+        last_status = status
+    if last_status is not None:
+        return last_status
+    assert last_error is not None
+    raise last_error
 
 
 def send_report(endpoint: str, server_id: str, secret: str, body: bytes) -> int:
@@ -126,10 +160,12 @@ def main(argv: list[str] | None = None) -> int:
         print("IVRM_AGENT_SERVER_ID・IVRM_AGENT_BACKUP_ENDPOINT・IVRM_AGENT_TOKENは必須です", file=sys.stderr)
         return 2
 
+    fallback_endpoint = os.environ.get("IVRM_AGENT_BACKUP_FALLBACK_ENDPOINT", "").strip()
+    endpoints = [endpoint] + ([fallback_endpoint] if fallback_endpoint else [])
     try:
         input_value = load_input(Path(args.input))
         body = build_body(server_id, input_value)
-        status = send_report(endpoint, server_id, secret, body)
+        status = deliver(endpoints, server_id, secret, body)
     except (OSError, ValueError, urllib.error.URLError) as exc:
         print(f"Backup Report送信に失敗しました: {exc}", file=sys.stderr)
         return 1

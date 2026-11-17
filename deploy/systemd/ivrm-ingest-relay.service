@@ -1,0 +1,21 @@
+[Unit]
+Description=IVRM Dashboard fallback ingest relay (tailnet only)
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ivrm-relay
+Group=ivrm-relay
+EnvironmentFile=/etc/ivrm-ingest-relay/relay.env
+ExecStart=/usr/bin/python3 /opt/ivrm-ingest-relay/relay.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/etc/ivrm-ingest-relay
+
+[Install]
+WantedBy=multi-user.target

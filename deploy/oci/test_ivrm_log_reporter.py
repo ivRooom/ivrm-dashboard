@@ -100,6 +100,12 @@ class LogReporterTests(unittest.TestCase):
         module.validate_endpoint("https://console.ivrm.jp/api/agent/logs")
         module.validate_endpoint("http://127.0.0.1:3000/api/agent/logs")
 
+    def test_validate_endpoint_allows_tailnet_http(self):
+        module.validate_endpoint("http://db-host.tailnet.example.ts.net:3939/api/agent/logs")
+        module.validate_endpoint("http://100.117.170.101:3939/api/agent/logs")
+        with self.assertRaises(ValueError):
+            module.validate_endpoint("http://100.200.1.1:3939/api/agent/logs")
+
 
 if __name__ == "__main__":
     unittest.main()

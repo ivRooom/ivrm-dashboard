@@ -207,22 +207,38 @@ def collect(config):
     return results
 
 
-def send(config, results):
-    token = os.environ.get("IVRM_AGENT_TOKEN", "")
-    if len(token) < 32:
-        raise CollectionError("not_configured")
-    url = "https://console.ivrm.jp/api/agent/cloud"
-    envelope = {"kind": "cloud-monitor-v1", "serverId": config["collectorServerId"],
-                "observedAt": dt.datetime.now(dt.timezone.utc).isoformat(), "results": results}
-    body = json.dumps(envelope, separators=(",", ":")).encode()
+DEFAULT_INGEST_URL = "https://console.ivrm.jp/api/agent/cloud"
+
+
+def post_envelope(url, token, server_id, body):
+    """署名付き envelope を1回送信する。試行ごとに nonce を新規発行する。"""
     timestamp, nonce = str(int(time.time())), secrets.token_hex(16)
     signature = hmac.new(token.encode(), timestamp.encode()+b"."+nonce.encode()+b"."+body, hashlib.sha256).hexdigest()
     request = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json", "User-Agent": "ivrm-agent/cloud-monitor-v1",
-        "X-IVRM-Agent-ID": config["collectorServerId"], "X-IVRM-Timestamp": timestamp,
+        "X-IVRM-Agent-ID": server_id, "X-IVRM-Timestamp": timestamp,
         "X-IVRM-Nonce": nonce, "X-IVRM-Signature": signature})
     with urllib.request.build_opener(NoRedirect()).open(request, timeout=15) as response:
         if response.status != 202:
             raise CollectionError("provider_error")
+
+
+def send(config, results):
+    token = os.environ.get("IVRM_AGENT_TOKEN", "")
+    if len(token) < 32:
+        raise CollectionError("not_configured")
+    envelope = {"kind": "cloud-monitor-v1", "serverId": config["collectorServerId"],
+                "observedAt": dt.datetime.now(dt.timezone.utc).isoformat(), "results": results}
+    body = json.dumps(envelope, separators=(",", ":")).encode()
+    primary = config.get("ingestUrl") or DEFAULT_INGEST_URL
+    try:
+        post_envelope(primary, token, config["collectorServerId"], body)
+        return
+    except Exception:
+        fallback = config.get("ingestFallbackUrl")
+        if not fallback:
+            raise
+    # 主系が失敗したときだけ予備 ingest (ingest-relay) へ送る。
+    post_envelope(fallback, token, config["collectorServerId"], body)
 
 
 def main():

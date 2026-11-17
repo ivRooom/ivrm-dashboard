@@ -109,5 +109,31 @@ class CollectorTest(unittest.TestCase):
         self.assertEqual(request.full_url, "https://console.ivrm.jp/api/agent/cloud")
         self.assertEqual(headers["user-agent"], "ivrm-agent/cloud-monitor-v1")
 
+    def test_send_falls_back_to_relay_when_primary_fails(self):
+        ok = MagicMock()
+        ok.__enter__.return_value.status = 202
+        opener = MagicMock()
+        opener.open.side_effect = [RuntimeError("primary down"), ok]
+        config = {"collectorServerId": "oci-minecraft-01",
+                  "ingestFallbackUrl": "http://100.117.170.101:3939/api/agent/cloud"}
+        with patch.dict(os.environ, {"IVRM_AGENT_TOKEN": "a" * 32}), patch.object(collector.urllib.request, "build_opener", return_value=opener):
+            collector.send(config, [{"id": "x", "status": "operational", "reasonCode": "ok"}])
+        self.assertEqual(opener.open.call_count, 2)
+        fallback_request = opener.open.call_args_list[1].args[0]
+        self.assertEqual(fallback_request.full_url, "http://100.117.170.101:3939/api/agent/cloud")
+        primary_request = opener.open.call_args_list[0].args[0]
+        # 試行ごとに nonce は新規発行され、body は同一
+        self.assertNotEqual(dict(primary_request.header_items())["X-ivrm-nonce"],
+                            dict(fallback_request.header_items())["X-ivrm-nonce"])
+        self.assertEqual(primary_request.data, fallback_request.data)
+
+    def test_send_does_not_fall_back_without_fallback_url(self):
+        opener = MagicMock()
+        opener.open.side_effect = RuntimeError("primary down")
+        with patch.dict(os.environ, {"IVRM_AGENT_TOKEN": "a" * 32}), patch.object(collector.urllib.request, "build_opener", return_value=opener):
+            with self.assertRaises(RuntimeError):
+                collector.send({"collectorServerId": "oci-minecraft-01"}, [])
+        self.assertEqual(opener.open.call_count, 1)
+
 
 if __name__ == "__main__": unittest.main()
