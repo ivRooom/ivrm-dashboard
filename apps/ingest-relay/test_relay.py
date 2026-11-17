@@ -152,6 +152,28 @@ class RelayTest(unittest.TestCase):
             self.call("/api/agent/cloud", b"")
         self.assertEqual(ctx.exception.status, 400)
 
+    def test_rpc_request_has_explicit_user_agent(self):
+        captured = {}
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return b'"accepted"'
+
+        def fake_urlopen(request, timeout=None):
+            captured["user_agent"] = request.get_header("User-agent")
+            return FakeResponse()
+
+        with mock.patch.object(relay.urllib.request, "urlopen", fake_urlopen):
+            result = relay.call_rpc(self.config, "insert_agent_heartbeat_v3", {}, "storage_unavailable")
+        self.assertEqual(result, "accepted")
+        self.assertEqual(captured["user_agent"], "ivrm-ingest-relay/1.0")
+
     def test_heartbeat_missing_host_field_rejected(self):
         payload = json.loads(heartbeat_body())
         del payload["host"]["cpuCount"]
