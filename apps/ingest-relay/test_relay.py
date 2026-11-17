@@ -60,6 +60,7 @@ class RelayTest(unittest.TestCase):
     def setUp(self) -> None:
         self.config = mock.Mock()
         self.config.secrets = {SERVER_ID: SECRET}
+        self.config.runtime_secrets = {}
         self.config.postgrest_url = "http://postgrest.invalid/rest/v1"
         self.config.service_key = "service-key"
 
@@ -201,6 +202,20 @@ class RelayTest(unittest.TestCase):
         self.assertEqual(params["p_server_id"], SERVER_ID)
         self.assertEqual(params["p_observed_at"], observed)
         self.assertEqual(len(params["p_containers"]), 8)
+
+    def test_runtime_herta_uses_dedicated_secret(self):
+        runtime_secret = "e" * 64
+        self.config.secrets = {"lightsail-herta": SECRET}
+        self.config.runtime_secrets = {"lightsail-herta": runtime_secret}
+        observed = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        names = ["herta-api-1", "herta-studio-1", "herta-worker-1", "herta-bot-1", "herta-postgres-1", "herta-redis-1", "herta-caddy-1", "herta-nginx-1"]
+        containers = [{"collection": "unavailable", "name": name} for name in names]
+        body = json.dumps({"kind": "runtime-inventory-v1", "serverId": "lightsail-herta", "observedAt": observed, "containers": containers}).encode()
+        status, _, _ = self.call("/api/agent/runtime", body, headers=signed_headers(body, secret=runtime_secret, server_id="lightsail-herta"))
+        self.assertEqual(status, 202)
+        with self.assertRaises(relay.RelayError) as ctx:
+            self.call("/api/agent/runtime", body, headers=signed_headers(body, secret=SECRET, server_id="lightsail-herta"))
+        self.assertEqual(ctx.exception.status, 401)
 
     def test_runtime_wrong_container_count_rejected(self):
         observed = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())

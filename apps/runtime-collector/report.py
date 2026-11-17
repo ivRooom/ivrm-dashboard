@@ -1,4 +1,6 @@
 """Unprivileged sender: reads a projected snapshot, never the Docker socket."""
+from __future__ import annotations
+
 import datetime as dt
 import hashlib
 import hmac

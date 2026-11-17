@@ -107,13 +107,28 @@ class Config:
         if not secrets_file:
             raise ValueError("IVRM_RELAY_SECRETS_FILE が必要です")
         with open(secrets_file, encoding="utf-8") as handle:
-            secrets = json.load(handle)
-        if not isinstance(secrets, dict) or not secrets:
+            loaded = json.load(handle)
+        if not isinstance(loaded, dict) or not loaded:
             raise ValueError("secrets ファイルは serverId -> secret の JSON オブジェクトが必要です")
-        for server_id, secret in secrets.items():
+        # 形式は2通り: フラットな {serverId: secret}、または {"agents": {...}, "runtime": {...}}。
+        # runtime は経路別の上書き (lightsail-herta の runtime inventory 専用 secret 等、本系の
+        # runtimeOnlySecrets と同じ分離)。
+        runtime_secrets: dict[str, str] = {}
+        if isinstance(loaded.get("agents"), dict):
+            secrets = loaded["agents"]
+            runtime_raw = loaded.get("runtime") or {}
+            if not isinstance(runtime_raw, dict):
+                raise ValueError("secrets ファイルの runtime エントリが不正です")
+            runtime_secrets = runtime_raw
+        else:
+            secrets = loaded
+        if not secrets:
+            raise ValueError("secrets ファイルは serverId -> secret の JSON オブジェクトが必要です")
+        for server_id, secret in {**secrets, **runtime_secrets}.items():
             if not SERVER_ID_PATTERN.match(server_id) or not isinstance(secret, str) or len(secret) < 32:
                 raise ValueError(f"secrets ファイルのエントリが不正です: {server_id!r}")
         self.secrets: dict[str, str] = secrets
+        self.runtime_secrets: dict[str, str] = runtime_secrets
 
 
 def authenticate(headers, raw_body: bytes, expected_server_id: str, secrets: dict[str, str]) -> tuple[str, str]:
@@ -578,7 +593,11 @@ def handle_ingest(config: Config, path: str, headers, raw_body: bytes) -> tuple[
     if not isinstance(payload, dict) or not isinstance(payload.get("serverId"), str):
         raise RelayError(400, "invalid_payload")
 
-    nonce, body_sha256 = authenticate(headers, raw_body, payload["serverId"], config.secrets)
+    secrets = config.secrets
+    runtime_secrets = getattr(config, "runtime_secrets", None) or {}
+    if path == "/api/agent/runtime" and payload["serverId"] in runtime_secrets:
+        secrets = {**config.secrets, payload["serverId"]: runtime_secrets[payload["serverId"]]}
+    nonce, body_sha256 = authenticate(headers, raw_body, payload["serverId"], secrets)
     params = build_rpc_params(path, payload, nonce, body_sha256)
     result = call_rpc(config, route["rpc"], params, route["storage_error"])
     if result == "accepted":
