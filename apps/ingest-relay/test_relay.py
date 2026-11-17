@@ -82,6 +82,15 @@ class RelayTest(unittest.TestCase):
         self.assertEqual(params["p_request_nonce"], "a" * 32)
         self.assertEqual(params["p_body_sha256"], hashlib.sha256(heartbeat_body()).hexdigest())
 
+    def test_heartbeat_without_minecraft_key_accepted(self):
+        # Go agent は minecraft プローブが無いホストではキー自体を省略する (omitempty)。
+        payload = json.loads(heartbeat_body())
+        del payload["minecraft"]
+        body = json.dumps(payload).encode()
+        status, _, rpc = self.call("/api/agent/heartbeat", body)
+        self.assertEqual(status, 202)
+        self.assertIsNone(rpc.call_args.args[2]["p_minecraft"])
+
     def test_cloud_accepted(self):
         body = json.dumps(
             {"kind": "cloud-monitor-v1", "serverId": SERVER_ID, "observedAt": "2026-11-18T00:00:00Z", "results": []}
