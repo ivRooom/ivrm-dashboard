@@ -207,6 +207,8 @@ def call_rpc(config: Config, rpc_name: str, params: dict, storage_error: str) ->
             "apikey": config.service_key,
             "Authorization": f"Bearer {config.service_key}",
             "Content-Type": "application/json",
+            # Cloudflare が Python 既定の User-Agent を遮断する (error 1010) ため明示する
+            "User-Agent": "ivrm-ingest-relay/1.0",
         },
     )
     try:
